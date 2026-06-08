@@ -1,0 +1,313 @@
+/**
+ * 剧本相关 TypeScript 类型 — 对齐后端 schemas/screenplay.json
+ *
+ * 来源:
+ *   - PR#10 ComposeResponse / ScreenplayResponse(routers/compose.py)
+ *   - schemas/screenplay.json(YAML 内部结构)
+ */
+
+// ============================================================
+// 后端 API 响应
+// ============================================================
+
+export interface NovelInfo {
+  id: string;
+  title: string;
+  source_format: string;
+  source_filename: string;
+  total_chars: number;
+  total_chapters: number;
+  uploaded_at: string;
+}
+
+export interface ScreenplayResponse {
+  screenplay_id: string;
+  novel_id: string;
+  yaml: string; // 完整 YAML 文本
+  stats: Record<string, unknown>;
+  warnings: ComposeWarning[];
+  failed_chapters: number[];
+  schema_version: string;
+  model_name: string | null;
+  created_at: string;
+}
+
+export interface ComposeResponse {
+  screenplay_id: string;
+  novel_id: string;
+  yaml: string;
+  stats: Record<string, unknown>;
+  warnings: ComposeWarning[];
+  failed_chapters: number[];
+  validation_errors: Array<{ layer: string; path: string; message: string }>;
+}
+
+export interface ComposeWarning {
+  layer: string; // location | character | element | scene | decision | chapter
+  path: string;
+  message: string;
+}
+
+// ============================================================
+// YAML 解析后的剧本结构(与 schemas/screenplay.json 对齐)
+// ============================================================
+
+export interface Screenplay {
+  meta: ScreenplayMeta;
+  characters: Character[];
+  locations: Location[];
+  scenes: Scene[];
+  adaptation_decisions?: AdaptationDecision[];
+}
+
+export interface ScreenplayMeta {
+  schema_version: string;
+  title: string;
+  source?: {
+    novel_title?: string;
+    adapted_from_chapters?: number[];
+  };
+  logline?: string;
+  generated_by: {
+    platform: string;
+    schema_version?: string;
+    model?: string;
+    generated_at?: string;
+  };
+  stats?: {
+    total_scenes?: number;
+    total_pages_estimate?: number;
+    high_fidelity_scenes?: number;
+    medium_fidelity_scenes?: number;
+    low_fidelity_scenes?: number;
+  };
+}
+
+export interface Character {
+  id: string; // char_NNN
+  name: string;
+  aka?: string[];
+  description?: string;
+  first_appearance?: string; // scene_NNN
+  arc_summary?: string;
+}
+
+export interface Location {
+  id: string; // loc_NNN
+  name: string;
+  int_ext: "INT" | "EXT" | "INT/EXT";
+  description?: string;
+  first_appearance?: string;
+}
+
+export interface Scene {
+  id: string; // scene_NNN
+  number: number;
+  heading: {
+    int_ext: "INT" | "EXT" | "INT/EXT";
+    location_id: string;
+    time_of_day: string;
+  };
+  summary?: string;
+  characters_present?: string[]; // char_NNN[]
+  source?: {
+    chapter?: number;
+    paragraph_range?: [number, number];
+  };
+  fidelity?: Fidelity;
+  transition_to_next?: string;
+  elements: ScreenplayElement[];
+}
+
+// 结构报告(PR#13)
+export interface StructureReport {
+  screenplay_id: string;
+  scene_count: number;
+  points: TensionPoint[];
+  acts: ActSpan[];
+  overall_health: "excellent" | "good" | "uneven" | "flat";
+  overall_score: number;
+  notes: string[];
+}
+
+export interface TensionPoint {
+  scene_id: string;
+  number: number;
+  tension: number;
+  act: 1 | 2 | 3;
+  is_inciting_incident?: boolean;
+  is_midpoint?: boolean;
+  is_climax?: boolean;
+  breakdown: {
+    density?: number;
+    conflict?: number;
+    monologue?: number;
+    casting?: number;
+    fidelity?: number;
+  };
+}
+
+export interface ActSpan {
+  act: 1 | 2 | 3;
+  start_scene_number: number;
+  end_scene_number: number;
+  scene_count: number;
+  avg_tension: number;
+  peak_tension: number;
+}
+
+// 保真度评分(PR#12)
+export interface Fidelity {
+  level: "high" | "medium" | "low";
+  score?: number;
+  reason?: string;
+  issues?: string[];
+  dimensions?: FidelityDimension[];
+}
+
+export interface FidelityDimension {
+  name: string;
+  score: number;
+  reason?: string;
+}
+
+export type ScreenplayElement =
+  | ActionElement
+  | DialogueElement
+  | ParentheticalElement
+  | VoiceoverElement
+  | TransitionElement
+  | FlashbackElement;
+
+export interface ActionElement {
+  type: "action";
+  id: string; // el_NNN_MMM
+  text: string;
+}
+
+export interface DialogueElement {
+  type: "dialogue";
+  id: string;
+  character_id: string;
+  parenthetical?: string;
+  text: string;
+}
+
+export interface ParentheticalElement {
+  type: "parenthetical";
+  id: string;
+  text: string;
+}
+
+export interface VoiceoverElement {
+  type: "voiceover";
+  id: string;
+  character_id: string;
+  text: string;
+  adaptation_note?: string;
+  voice_source?: "VO" | "OS";   // PR#16 升级 3:VO=画外音/OS=画外音效
+}
+
+export interface TransitionElement {
+  type: "transition";
+  id: string;
+  text: string;
+}
+
+export interface FlashbackElement {
+  type: "flashback_start" | "flashback_end";
+  id: string;
+  marker: string;
+}
+
+// ============================================================
+// 改编决策(差异化创新核心)
+// ============================================================
+
+// 5 种专业改编手法(PR#16 升级 2)
+export type AdaptationOptionType =
+  | "voiceover"
+  | "action_externalize"
+  | "subtext"
+  | "symbolism"
+  | "delete";
+
+export interface AdaptationDecision {
+  id: string; // dec_NNN
+  scene_id: string;
+  element_id: string;
+  original_text: string;
+  options: AdaptationOption[];
+  chosen?: AdaptationOptionType;
+  chosen_at?: string;
+}
+
+export interface AdaptationOption {
+  type: AdaptationOptionType;
+  text?: string;
+  pros?: string;
+  cons?: string;
+  rationale?: string;
+}
+
+// ============================================================
+// 原文段落(从后端 chapter / paragraph 拼出的渲染数据)
+// ============================================================
+
+export interface NovelParagraph {
+  chapter_number: number;
+  chapter_title: string | null;
+  index_in_chapter: number;
+  text: string;
+}
+
+// ============================================================
+// 优化(PR#16 — A 单场精修 + B 整本重排,共用类型)
+// ============================================================
+
+export type OptimizeScope = "single_scene" | "full_screenplay";
+export type OptimizeFocus = "fidelity" | "structure" | "both";
+
+export interface OptimizeRequest {
+  scope: OptimizeScope;
+  target_scene_id?: string;
+  focus?: OptimizeFocus;
+  // PR#16 C:作者已做的决策 — 让 LLM 尊重作者偏好
+  user_decisions?: Record<string, "voiceover" | "action_externalize" | "delete" | "subtext" | "symbolism" | "montage">;
+}
+
+export interface ChangeLogEntry {
+  scene_id: string;
+  original_scene_id: string | null;
+  action: "modified" | "added" | "removed" | "split" | "merged";
+  summary: string;
+  addresses_diagnostic: string;
+  details: string;
+}
+
+export interface OptimizeResponse {
+  new_screenplay_id: string;
+  parent_screenplay_id: string;
+  origin: string;
+  change_log: ChangeLogEntry[];
+  reasoning: string;
+  fallback_reason: string | null;
+  llm_usage: { input_tokens?: number; output_tokens?: number };
+}
+
+// 版本树
+export interface ScreenplayVersion {
+  id: string;
+  parent_screenplay_id: string | null;
+  origin: string;                                   // 'initial' | 'single_scene_<id>' | 'full_screenplay'
+  created_at: string;
+  scene_count: number;
+  change_count: number;
+  reasoning_snippet: string;
+  optimization_log?: {
+    change_log: ChangeLogEntry[];
+    reasoning: string;
+    fallback_reason?: string | null;
+    focus?: string;
+  } | null;
+}

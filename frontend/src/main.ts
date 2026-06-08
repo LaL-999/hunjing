@@ -14,6 +14,8 @@ import { createPinia } from "pinia";
 
 import "./styles/tokens.css";
 import "./styles/global.css";
+// 剧创态视觉桥 — 在 .screenplay-module 作用域内把比赛仓库的令牌名映射到父平台
+import "./screenplay/styles/screenplay-overrides.css";
 
 import App from "./App.vue";
 import { router } from "./router";

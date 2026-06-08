@@ -20,13 +20,25 @@
 
 | 阶段 | 内容 | 状态 |
 |---|---|---|
-| **1** | Dashboard 加 5/6 卡 + 路由占位 | ✅ 完工(本 commit) |
-| 2 | 前端真实代码迁入(浑晶视觉适配) | ⏳ |
+| **1** | Dashboard 加 5/6 卡 + 路由占位 | ✅ 完工(commit cd5cea1)|
+| **2** | 前端真实代码迁入(浑晶视觉适配)| ✅ 完工(2026-06-08 中午)|
 | 3 | 后端代码迁入(加 sp_ 前缀 + user_id) | ⏳ |
 | 4 | DB 迁徙 + Quota 接入 | ⏳ |
 | **5** | 故事圣经 A 隔离 + 角色 Agent 复用层(关键) | ⏳ |
-| 6 | 视觉融合 | ⏳ |
+| 6 | 视觉融合(精修)| ⏳ |
 | 7 | 测试 + 文档收尾 | ⏳ |
+
+### 阶段 2 完工摘要
+
+- 比赛仓库 10 个组件 + 2 个 view + store + types + api 全套复制进 `frontend/src/screenplay/`
+- 视觉桥 `screenplay/styles/screenplay-overrides.css` — 在 `.screenplay-module` 作用域内
+  把比赛令牌名(`--accent` / `--bg` / `--card-bg` 等)映射到父平台 `--color-*`
+  实现"chrome 用父平台浑晶紫,剧本内部保留衬线 + Courier 等宽"的混合气质
+- `api/client.ts` → `api/screenplay-client.ts`,`API_BASE = "/api/screenplay"`(阶段 3 后端会落 prefix)
+- `main.ts` 加一行 import overrides 全局生效
+- `router.push({ name: "home" })` → `name: "screenplay-home"`(对齐父平台路由名)
+- 新增依赖:`js-yaml` + `@types/js-yaml`(`stores/screenplay.ts` 解析 yaml 用)
+- **vue-tsc 0 错 + `npx vite build` 694 modules 2 秒过**
 
 ---
 

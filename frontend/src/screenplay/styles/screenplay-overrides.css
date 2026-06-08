@@ -1,0 +1,101 @@
+/* ============================================================
+ * 剧创态视觉桥 — 把比赛仓库的令牌名映射到父平台令牌
+ *
+ * 比赛仓库用 --accent / --bg / --card-bg 等(文学产品气质 v2)
+ * 父平台用 --color-accent / --color-bg / --color-surface(浑晶 v2)
+ *
+ * 这里在 .screenplay-module 作用域内做映射,让比赛的 9 个组件
+ * 无需改源码即可继承父平台的浑晶紫 + 米白底 + 双主题。
+ *
+ * 字体:chrome 用父平台无衬线;剧本卡内部(action / dialogue)保留
+ *      衬线 + Courier 等宽 — 行业格式合理特例(Hollywood Spec Script)
+ * ============================================================ */
+
+.screenplay-module {
+  /* === 主色:浑晶紫(从 #7C6996 烟紫 → #7C3AED 浑晶紫) === */
+  --accent: var(--color-accent);
+  --accent-hover: var(--color-accent-hover);
+  --accent-soft: var(--color-accent-soft);
+  --accent-text: var(--color-accent-text);
+
+  /* === 背景层级 === */
+  --bg: var(--color-bg);
+  --bg-deep: var(--color-bg-subtle);
+  --card-bg: var(--color-surface);
+  --card-bg-strong: var(--color-surface);
+  --hover-bg: var(--color-surface-hover);
+  --code-bg: var(--color-bg-subtle);
+
+  /* === 文字 === */
+  --text: var(--color-text);
+  --text-strong: var(--color-text);
+  --text-secondary: var(--color-text-muted);
+  --text-muted: var(--color-text-subtle);
+
+  /* === 边框 === */
+  --border: var(--color-border);
+  --border-soft: var(--color-border);
+
+  /* === 状态色(父平台只有 danger,success/warning 用 fallback) === */
+  --success: #5f8f6a;
+  --success-soft: #ecf2ed;
+  --warning: #c39657;
+  --warning-soft: #f7f0e3;
+  --danger: var(--color-danger);
+  --danger-soft: var(--color-danger-soft);
+
+  /* === 改编决策五色(降饱和,与浑晶紫不冲突) === */
+  --decision-voiceover: #7c6996;       /* 烟紫 */
+  --decision-action: #5d8aa8;          /* 钢蓝 */
+  --decision-subtext: #a86d4e;          /* 暮棕 */
+  --decision-symbolism: #6d8a6d;        /* 山岚绿 */
+  --decision-delete: #8a8479;          /* 灰褐 */
+
+  /* === 圆角(父平台没有这套,用 fallback) === */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+
+  /* === 阴影 === */
+  --shadow-sm: 0 1px 1px rgba(50, 40, 20, 0.025);
+  --shadow-md: 0 2px 8px rgba(50, 40, 20, 0.04);
+  --shadow-lg: 0 6px 24px rgba(50, 40, 20, 0.06);
+
+  /* === 留白尺度(对齐父平台 --space-*) === */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+
+  /* === 字体 === */
+  /* chrome(顶栏 / 状态卡 / 按钮)用父平台无衬线 */
+  --font-sans: var(--font-sans, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif);
+  /* 剧本内部 action / dialogue 保留衬线 + 等宽 — 行业格式 */
+  --font-serif: "Source Han Serif SC", "Noto Serif SC", "Songti SC", "宋体", Georgia, serif;
+  --font-mono: "Source Han Mono", "JetBrains Mono", "Fira Code", ui-monospace, "SF Mono", monospace;
+  --font-mono-serif: "Source Han Mono", "Courier Prime", "Courier New", "PingFang SC", monospace;
+
+  /* === 过渡 === */
+  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-base: 240ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 380ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* literary 文学正文 helper class(剧创态独有,父平台没有) */
+.screenplay-module .literary,
+.screenplay-module .literary-heading {
+  font-family: var(--font-serif);
+  letter-spacing: 0.005em;
+}
+.screenplay-module .literary-heading {
+  font-weight: 500;
+  color: var(--text);
+}
+.screenplay-module .scripted {
+  font-family: var(--font-mono-serif);
+}

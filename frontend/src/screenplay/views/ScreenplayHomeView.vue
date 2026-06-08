@@ -1,221 +1,413 @@
 <script setup lang="ts">
 /**
- * 剧创态主页(占位实现 — Sprint SP-S 阶段 1,2026-06-07)
- *
- * 当前为占位,显示"功能上线中"友好页 + GitHub 仓库链接。
- * 阶段 2 会用 hunjing-screenplay 仓库的真实 HomeView 替换:
- *   - 小说上传卡(.txt/.epub/.docx)
- *   - 已上传小说书架(用户隔离)
- *   - 后端 prefix /api/screenplay/* 已规划,见 INTEGRATION_NOTES_SCREENPLAY.md
- *
- * 入口路由:/screenplay
- * 父入口:Dashboard 6 象限 → 剧创态卡
+ * 主页 — 后端状态 + 小说列表入口 + 路线图。
+ * PR#11 从 App.vue 抽离过来,App.vue 改为路由容器。
  */
+import { onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
+
+import NovelUploadCard from "../components/NovelUploadCard.vue";
+import { deleteNovel, getHealth, listNovels } from "../api/screenplay-client";
+import type { NovelInfo } from "../types/screenplay";
 
 const router = useRouter();
 
-function goBack() {
-  router.push("/dashboard");
+const backendStatus = ref<"unknown" | "ok" | "error">("unknown");
+const backendInfo = ref<{
+  version?: string;
+  llm_model?: string;
+  llm_configured?: boolean;
+}>({});
+const errorMsg = ref<string>("");
+
+const novels = ref<NovelInfo[]>([]);
+const novelsLoading = ref<boolean>(false);
+
+async function checkBackend() {
+  try {
+    backendInfo.value = await getHealth();
+    backendStatus.value = "ok";
+  } catch (e) {
+    backendStatus.value = "error";
+    errorMsg.value = e instanceof Error ? e.message : String(e);
+  }
 }
+
+async function loadNovels() {
+  novelsLoading.value = true;
+  try {
+    novels.value = await listNovels();
+  } catch {
+    novels.value = [];
+  } finally {
+    novelsLoading.value = false;
+  }
+}
+
+function openEditor(novelId: string) {
+  router.push({ name: "screenplay-editor", params: { id: novelId } });
+}
+
+async function handleUploaded(novelId: string) {
+  // 上传成功 → 刷新列表 + 直接跳编辑器
+  await loadNovels();
+  openEditor(novelId);
+}
+
+async function handleDelete(novelId: string, title: string, ev: MouseEvent) {
+  // 阻止冒泡(不要触发 openEditor)
+  ev.stopPropagation();
+  if (!confirm(`确定删除《${title}》?同时清除所有章节、剧本、改编决策。`)) {
+    return;
+  }
+  try {
+    await deleteNovel(novelId);
+    await loadNovels();
+  } catch (e) {
+    alert("删除失败:" + (e instanceof Error ? e.message : String(e)));
+  }
+}
+
+onMounted(() => {
+  checkBackend();
+  loadNovels();
+});
 </script>
 
 <template>
-  <main class="screenplay-home">
+  <main class="home screenplay-module">
     <header class="hdr">
-      <button class="back-btn" @click="goBack" aria-label="返回 Dashboard">
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.5"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        >
-          <path d="M19 12H5M12 19l-7-7 7-7" />
-        </svg>
-      </button>
-      <div class="hdr-text">
-        <div class="brand">浑晶</div>
-        <h1 class="title">剧创态</h1>
-        <p class="tagline">由小说,至剧本。</p>
-      </div>
+      <div class="brand">浑晶</div>
+      <h1 class="title literary-heading">剧创态</h1>
+      <p class="tagline">小说 <span class="arrow">→</span> 剧本</p>
+      <p class="sub-tagline">浑晶平台 · 第五创作态</p>
     </header>
 
-    <section class="placeholder-card">
-      <div class="placeholder-icon">
-        <svg
-          width="32"
-          height="32"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
+    <!-- 上传卡 — 直接醒目放最上 -->
+    <NovelUploadCard @uploaded="handleUploaded" />
+
+    <!-- 小说书架 -->
+    <section v-if="!novelsLoading && novels.length > 0" class="shelf">
+      <div class="shelf-title literary-heading">书架</div>
+      <ul class="novel-list">
+        <li
+          v-for="n in novels"
+          :key="n.id"
+          class="novel-item"
+          @click="openEditor(n.id)"
         >
-          <path d="M3 6h18" />
-          <path d="M6 3v6" />
-          <path d="M12 3v6" />
-          <path d="M18 3v6" />
-          <path d="M3 10h18v11H3z" />
-        </svg>
-      </div>
-      <h2>剧创态正在并入浑晶</h2>
-      <p class="ph-body">
-        第 5 创作态由七牛云 1024 暑期实训营窗口内独立开发,正在迁入浑晶平台。
-        <br />
-        预计本周完成与中间态(角色 / 关系 / 事件)的深度协同。
-      </p>
-      <div class="features">
-        <div class="feat">
-          <strong>5 种专业改编手法</strong>
-          <span>V.O. / 动作外化 / 潜台词 / 意象化 / 删除 — 作者拍板</span>
-        </div>
-        <div class="feat">
-          <strong>人机协作优化引擎</strong>
-          <span>单场精修 + 整本重排,自动入版本树可回滚</span>
-        </div>
-        <div class="feat">
-          <strong>fidelity 4 维 + 张力曲线</strong>
-          <span>对白覆盖度 / 角色一致性 / 三幕分布 自动评分</span>
-        </div>
-        <div class="feat">
-          <strong>V.O. / O.S. 工业级声音区分</strong>
-          <span>导演看了立刻知道现场录还是后期配</span>
-        </div>
-      </div>
-      <a
-        class="repo-link"
-        href="https://github.com/LaL-999/hunjing-screenplay"
-        target="_blank"
-        rel="noopener"
-      >
-        查看比赛仓库 →
-      </a>
+          <div class="novel-main">
+            <div class="novel-title literary">{{ n.title }}</div>
+            <div class="novel-meta">
+              <span>{{ n.total_chapters }} 章</span>
+              <span class="meta-sep">·</span>
+              <span>{{ n.total_chars.toLocaleString() }} 字</span>
+              <span class="meta-sep">·</span>
+              <span class="meta-format">{{ n.source_format }}</span>
+            </div>
+          </div>
+          <button
+            class="delete-btn"
+            title="删除"
+            @click="(e) => handleDelete(n.id, n.title, e)"
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <polyline points="3 6 5 6 21 6" />
+              <path
+                d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6m5 0V4a2 2 0 0 1 2-2h0a2 2 0 0 1 2 2v2"
+              />
+            </svg>
+          </button>
+          <span class="open-arrow">›</span>
+        </li>
+      </ul>
     </section>
+
+    <p v-if="!novelsLoading && novels.length === 0" class="shelf-empty literary">
+      书架尚空 — 拖一份小说试试。
+    </p>
+
+    <!-- 系统状态(收到底部,不喧宾夺主) -->
+    <section class="status-line">
+      <template v-if="backendStatus === 'unknown'">
+        <span class="dot dot--pending"></span>
+        <span class="status-text">正在连接服务…</span>
+      </template>
+      <template v-else-if="backendStatus === 'ok'">
+        <span class="dot dot--ok"></span>
+        <span class="status-text">
+          后端就绪
+          <span class="status-meta">· {{ backendInfo.llm_model }}</span>
+          <span
+            v-if="backendInfo.llm_configured === false"
+            class="status-warn"
+          >
+            · LLM 未配置
+          </span>
+        </span>
+      </template>
+      <template v-else>
+        <span class="dot dot--err"></span>
+        <span class="status-text status-err">服务未连接 · {{ errorMsg }}</span>
+      </template>
+    </section>
+
+    <footer class="footer">
+      <a href="https://github.com/LaL-999/hunjing-screenplay" target="_blank"
+        >GitHub 仓库</a
+      >
+      <span class="sep">·</span>
+      <a href="http://localhost:8003/docs" target="_blank">API 文档</a>
+      <span class="sep">·</span>
+      <a
+        href="https://github.com/LaL-999/hunjing-screenplay/blob/main/docs/SCHEMA_DESIGN.md"
+        target="_blank"
+        >Schema 设计</a
+      >
+    </footer>
   </main>
 </template>
 
 <style scoped>
-.screenplay-home {
-  min-height: 100%;
-  padding: var(--space-8) var(--space-6);
+.home {
   max-width: 720px;
-  margin: 0 auto;
+  margin: 36px auto;
+  padding: 0 20px;
+  color: var(--text);
+}
+
+.home {
+  max-width: 640px;
+  margin: var(--space-8) auto;
+  padding: 0 var(--space-5);
 }
 
 .hdr {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-4);
+  text-align: center;
   margin-bottom: var(--space-7);
-}
-.back-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  color: var(--color-text-muted);
-  flex-shrink: 0;
-  margin-top: 4px;
-}
-.back-btn:hover {
-  background: var(--color-surface-hover);
-  color: var(--color-text);
-}
-.hdr-text {
-  flex: 1;
+  padding: var(--space-5) 0;
 }
 .brand {
-  font-size: var(--text-xs);
-  color: var(--color-text-muted);
-  letter-spacing: 0.24em;
-  margin-bottom: var(--space-2);
+  font-family: var(--font-serif);
+  font-size: 13px;
+  color: var(--text-muted);
+  letter-spacing: 0.32em;
+  margin-bottom: var(--space-3);
+  text-transform: none;
 }
 .title {
-  font-size: var(--text-3xl);
-  font-weight: 600;
-  color: var(--color-text);
-  margin: 0;
-  letter-spacing: 0.02em;
+  font-size: 38px;
+  margin: 0 0 var(--space-3);
+  font-weight: 500;
+  color: var(--text-strong);
+  letter-spacing: 0.04em;
+  line-height: 1.2;
 }
 .tagline {
-  font-size: var(--text-base);
-  color: var(--color-text-muted);
-  margin: var(--space-2) 0 0;
+  font-family: var(--font-serif);
+  color: var(--text-secondary);
+  font-size: 16px;
+  margin: 0 0 var(--space-2);
+  letter-spacing: 0.12em;
+}
+.tagline .arrow {
+  display: inline-block;
+  margin: 0 var(--space-2);
+  color: var(--accent);
+  font-family: var(--font-sans);
+  font-weight: 300;
+  font-size: 18px;
+  vertical-align: -1px;
+}
+.sub-tagline {
+  font-family: var(--font-sans);
+  color: var(--text-muted);
+  font-size: 11.5px;
+  margin: 0;
+  letter-spacing: 0.16em;
 }
 
-.placeholder-card {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-xl);
-  padding: var(--space-7) var(--space-6);
-  text-align: center;
+/* === 书架 === */
+.shelf {
+  margin-top: var(--space-6);
+  padding: var(--space-5) 0;
 }
-.placeholder-icon {
-  color: var(--color-accent);
+.shelf-title {
+  font-size: 12px;
+  color: var(--text-muted);
+  letter-spacing: 0.24em;
   margin-bottom: var(--space-4);
-  opacity: 0.7;
+  padding-left: var(--space-2);
+  text-transform: uppercase;
 }
-.placeholder-card h2 {
-  font-size: var(--text-xl);
-  color: var(--color-text);
-  margin: 0 0 var(--space-3);
-  font-weight: 600;
-}
-.ph-body {
-  font-size: var(--text-sm);
-  color: var(--color-text-muted);
-  line-height: 1.8;
-  margin: 0 0 var(--space-6);
+.shelf-empty {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 14px;
+  padding: var(--space-7) 0;
+  margin: 0;
+  font-style: italic;
 }
 
-.features {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-3);
-  text-align: left;
-  margin-bottom: var(--space-6);
+.novel-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
 }
-@media (max-width: 640px) {
-  .features {
-    grid-template-columns: 1fr;
-  }
-}
-.feat {
-  padding: var(--space-3) var(--space-4);
-  background: var(--color-bg);
-  border-radius: var(--radius-md);
+.novel-item {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  padding: var(--space-4) var(--space-3);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  border-radius: var(--radius-md);
+}
+.novel-item + .novel-item {
+  border-top: 1px solid var(--border-soft);
+}
+.novel-item:hover {
+  background: var(--hover-bg);
+}
+.novel-main {
+  flex: 1;
+}
+.novel-title {
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--text-strong);
+  margin-bottom: var(--space-1);
+}
+.novel-meta {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.meta-sep {
+  color: var(--border);
+}
+.meta-format {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  background: var(--code-bg);
+  border-radius: var(--radius-sm);
+}
+.open-arrow {
+  color: var(--text-muted);
+  font-size: 24px;
+  padding-right: var(--space-2);
+  font-family: var(--font-serif);
+  transition: all var(--transition-fast);
+}
+.novel-item:hover .open-arrow {
+  color: var(--accent);
+  transform: translateX(2px);
+}
+
+/* === 状态行 === */
+.status-line {
+  margin-top: var(--space-7);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-soft);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 11px;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+}
+.status-text {
+  display: flex;
+  align-items: center;
   gap: 4px;
 }
-.feat strong {
-  font-size: var(--text-sm);
-  color: var(--color-text);
-  font-weight: 600;
+.status-meta {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
 }
-.feat span {
-  font-size: var(--text-xs);
-  color: var(--color-text-muted);
-  line-height: 1.6;
+.status-warn {
+  color: var(--warning);
+}
+.status-err {
+  color: var(--danger);
+}
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.dot--ok { background: var(--success); }
+.dot--err { background: var(--danger); }
+.dot--warn { background: var(--warning); }
+.dot--pending {
+  background: var(--text-muted);
+  animation: blink 1.6s ease-in-out infinite;
+}
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
 }
 
-.repo-link {
-  display: inline-block;
-  font-size: var(--text-sm);
-  color: var(--color-accent);
-  border-bottom: 1px solid currentColor;
-  padding-bottom: 2px;
+.delete-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  cursor: pointer;
+  margin-right: var(--space-2);
+  opacity: 0;
+  transition: all var(--transition-fast);
 }
-.repo-link:hover {
-  color: var(--color-accent-hover);
+.novel-item:hover .delete-btn {
+  opacity: 1;
+}
+.delete-btn:hover {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.footer {
+  text-align: center;
+  margin-top: var(--space-7);
+  padding-top: var(--space-4);
+  font-size: 11px;
+  color: var(--text-muted);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  letter-spacing: 0.04em;
+}
+.footer a {
+  color: var(--text-muted);
+  transition: color var(--transition-fast);
+}
+.footer a:hover {
+  color: var(--accent);
+  border-bottom: none;
+}
+.footer .sep {
+  color: var(--border);
 }
 </style>
