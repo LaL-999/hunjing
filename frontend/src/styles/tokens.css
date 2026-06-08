@@ -60,6 +60,15 @@
                             "Microsoft YaHei", sans-serif;
   --font-mono:              "SF Mono", "JetBrains Mono", Menlo, Consolas,
                             "Liberation Mono", monospace;
+  /* 衬线 — 剧创态阶段 8 引入的"文学产品"字体,扩为全平台令牌
+   * 用法:大标题 / literary 正文 / 文学引言 / 角色名等需要"质感"的场景
+   * 优先思源宋体 → 苹方 fallback,Windows 也用得上 */
+  --font-serif:             "Source Han Serif SC", "Noto Serif SC",
+                            "Songti SC", "宋体", Georgia,
+                            "Times New Roman", serif;
+  /* 等宽衬线 — 剧本格式行业标准(Courier Prime),也用于代码 + 数字对齐场景 */
+  --font-mono-serif:        "Source Han Mono", "Courier Prime",
+                            "Courier New", "PingFang SC", monospace;
 
   /* ===== 字号(rem 基线 16px) ===== */
   --text-xs:                0.75rem;        /* 12 */
