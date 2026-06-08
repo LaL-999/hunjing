@@ -343,7 +343,7 @@ function toggle() {
           <!-- 填充区域 -->
           <path :d="areaPath" fill="rgba(139, 92, 246, 0.12)" />
 
-          <!-- 张力曲线 -->
+          <!-- 张力曲线 — 阶段 8.3:draw-on 动画(stroke-dasharray) -->
           <path
             :d="linePath"
             fill="none"
@@ -351,6 +351,7 @@ function toggle() {
             stroke-width="2.2"
             stroke-linejoin="round"
             stroke-linecap="round"
+            class="tension-curve"
           />
 
           <!-- 数据点(hover 看数据 / 点击跳转 scene)-->
@@ -380,9 +381,19 @@ function toggle() {
             </g>
           </g>
 
-          <!-- 关键节点 -->
+          <!-- 关键节点 — 阶段 8.3:脉冲高亮(beat-pulse 动画) -->
           <g class="beat-markers">
             <g v-for="(b, idx) in beatMarkers" :key="`beat-${idx}`">
+              <!-- 脉冲外圈 -->
+              <circle
+                :cx="b.cx"
+                :cy="b.cy"
+                r="10"
+                fill="none"
+                :stroke="b.color"
+                stroke-width="1.5"
+                class="beat-pulse"
+              />
               <circle
                 :cx="b.cx"
                 :cy="b.cy"
@@ -553,6 +564,27 @@ function toggle() {
 .chart-wrap {
   position: relative;
 }
+/* 阶段 8.3:张力曲线 draw-on 动画 + 关键节点脉冲 */
+.tension-curve {
+  stroke-dasharray: 2000;
+  stroke-dashoffset: 2000;
+  animation: tension-draw 1.8s ease-out forwards;
+}
+@keyframes tension-draw {
+  to { stroke-dashoffset: 0; }
+}
+.beat-pulse {
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: beat-pulse 2.2s ease-out 1.5s infinite;
+}
+@keyframes beat-pulse {
+  0% { opacity: 0; transform: scale(0.6); }
+  50% { opacity: 0.6; transform: scale(1.4); }
+  100% { opacity: 0; transform: scale(1.8); }
+}
+
 .chart-svg {
   width: 100%;
   height: auto;

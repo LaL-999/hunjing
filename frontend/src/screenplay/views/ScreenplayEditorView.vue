@@ -11,6 +11,7 @@ import { computed, onMounted, provide, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 
 import AdaptationDecisionPanel from "../components/AdaptationDecisionPanel.vue";
+import BridgeGainBanner from "../components/BridgeGainBanner.vue";
 import CharacterProfilesPanel from "../components/CharacterProfilesPanel.vue";
 import ComposeDialog from "../components/ComposeDialog.vue";
 import ExportMenu from "../components/ExportMenu.vue";
@@ -186,6 +187,10 @@ onMounted(() => {
               {{ store.totalScenes }} 场
             </span>
           </h3>
+        </div>
+        <!-- 阶段 8.3 第 4 张牌:桥接增益面板(仅在 stats 含 bridge_* 时显示)-->
+        <div v-if="store.hasScreenplay" class="bridge-banner-wrap">
+          <BridgeGainBanner />
         </div>
         <div class="pane-body">
           <div v-if="!store.hasScreenplay" class="placeholder">
@@ -420,6 +425,11 @@ onMounted(() => {
   flex: 1;
   overflow-y: auto;
   padding: var(--space-5) var(--space-6);
+}
+
+/* 阶段 8.3:桥接增益 banner 容器 — 在 pane-header 和 pane-body 之间 */
+.bridge-banner-wrap {
+  padding: 0 var(--space-6) var(--space-3);
 }
 
 .divider {

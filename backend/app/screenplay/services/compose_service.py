@@ -211,6 +211,12 @@ def orchestrate_full_pipeline(
         "refine_calls": 0,
         "decision_calls": 0,
         "scenes_skipped": 0,
+        # 阶段 8.3 桥接增益计数:每个 bridge agent 注入了多少非空块给 LLM
+        "bridge_drivers_injections": 0,    # SP-2 driver 块非空 → 注入次数
+        "bridge_knowledge_injections": 0,  # SP-3 knowledge 块非空 → 注入次数
+        "bridge_polarity_injections": 0,   # SP-7 polarity 块注入 splitter / extractor 次数
+        "bridge_facts_used": False,        # SP-3 facts(项目级)是否非空注入过
+        "bridge_was_linked": False,        # novel 是否绑定了项目(bool 给前端显示)
     }
 
     # 阶段 5.2:桥接预计算 — SP-7 关系正负极。bible 范围内的角色 + aka 共用,
@@ -218,6 +224,13 @@ def orchestrate_full_pipeline(
     splitter_bridge_block = _build_polarity_bridge_block(novel_id, user_id, bible_for_composer)
     # 阶段 5.5:项目级故事事实块(全 compose 共用,decision 用)
     facts_bridge_block = _build_story_facts_bridge_block(novel_id, user_id)
+    # 阶段 8.3:记录哪些 bridge 块实际用了
+    if splitter_bridge_block:
+        stats_counter["bridge_polarity_injections"] += 1
+        stats_counter["bridge_was_linked"] = True
+    if facts_bridge_block:
+        stats_counter["bridge_facts_used"] = True
+        stats_counter["bridge_was_linked"] = True
 
     for ch in chapters:
         ch_num = ch["number"]
@@ -271,6 +284,16 @@ def orchestrate_full_pipeline(
             extractor_bridge = _build_per_scene_bridge(
                 novel_id, user_id, present_names, scene_index_overall,
             )
+            # 阶段 8.3:累计 bridge 注入次数(显示给用户看"绑定项目的真实回报")
+            if extractor_bridge["drivers"]:
+                stats_counter["bridge_drivers_injections"] += 1
+                stats_counter["bridge_was_linked"] = True
+            if extractor_bridge["knowledge"]:
+                stats_counter["bridge_knowledge_injections"] += 1
+                stats_counter["bridge_was_linked"] = True
+            if extractor_bridge["polarity"]:
+                stats_counter["bridge_polarity_injections"] += 1
+                stats_counter["bridge_was_linked"] = True
 
             # 3b1. element_extractor(接通 SP-2/3/7 三档桥接资产)
             elements = _run_element_extractor(
