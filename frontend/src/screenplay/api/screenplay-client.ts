@@ -226,6 +226,116 @@ export async function planEpisodes(
 }
 
 // ============================================================
+// 阶段 8.4+ — 多视角分集规划(完整版,2026-06-08)
+// ============================================================
+
+export interface EpisodeWithMetaApi {
+  episode_number: number;
+  title: string;
+  scene_ids: string[];
+  est_minutes: number;
+  scene_count: number;
+  first_chapter: number | null;
+  last_chapter: number | null;
+  boundary_reason: string;
+  cliffhanger_potential: number;
+  tension_peak: number;
+  tension_avg: number;
+  summary_preview: string;
+  teaser: string | null;
+  quality_score: number | null;
+}
+
+export interface PerspectivePlanApi {
+  perspective: "rhythm" | "hook" | "arc";
+  label: string;
+  description: string;
+  episodes: EpisodeWithMetaApi[];
+  total_minutes: number;
+  total_scenes: number;
+  rationale: string;
+  cuts: number[];
+  bridge_used: boolean;
+  llm_used: boolean;
+  llm_failed: boolean;
+  aggregate_quality: number | null;
+}
+
+export interface EpisodeQualityScoresApi {
+  episode_number: number;
+  cliffhanger: number;
+  duration_deviation: number;
+  quality: number;
+  notes: string[];
+}
+
+export interface PlanQualityScoresApi {
+  aggregate: number;
+  cliffhanger_strength: number;
+  pacing_evenness: number;
+  character_balance: number;
+  chapter_continuity: number;
+  episode_scores: EpisodeQualityScoresApi[];
+  summary: string;
+}
+
+export interface MultiPerspectivePlanApi {
+  perspectives: PerspectivePlanApi[];
+  target_minutes_per_ep: number;
+  preset: string;
+  preset_label: string;
+  bridge_used: boolean;
+  bridge_data_source: string;
+  tension_curve: number[];
+  candidate_cut_count: number;
+  recommended_perspective: "rhythm" | "hook" | "arc" | null;
+  perspective_scores: Record<string, PlanQualityScoresApi>;
+}
+
+export interface EpisodePresetApi {
+  key: string;
+  label: string;
+  description: string;
+  default_minutes: number | null;
+}
+
+export interface PerspectiveDescApi {
+  key: string;
+  label: string;
+  description: string;
+}
+
+export interface PresetsResponse {
+  presets: EpisodePresetApi[];
+  perspectives: PerspectiveDescApi[];
+}
+
+export async function getEpisodePresets(): Promise<PresetsResponse> {
+  return api.get("/screenplay/episodes/presets");
+}
+
+export async function planEpisodesMulti(
+  novelId: string,
+  options: {
+    preset?: string;
+    target_minutes_per_ep?: number | null;
+    with_llm_titles?: boolean;
+    apply_llm_titles_to_all_perspectives?: boolean;
+  } = {},
+): Promise<MultiPerspectivePlanApi> {
+  return api.post(
+    `/screenplay/novels/${encodeURIComponent(novelId)}/plan-episodes-multi`,
+    {
+      preset: options.preset ?? "short_drama",
+      target_minutes_per_ep: options.target_minutes_per_ep ?? null,
+      with_llm_titles: options.with_llm_titles ?? true,
+      apply_llm_titles_to_all_perspectives:
+        options.apply_llm_titles_to_all_perspectives ?? false,
+    },
+  );
+}
+
+// ============================================================
 // 阶段 8.5 — 多模型对比
 // ============================================================
 
