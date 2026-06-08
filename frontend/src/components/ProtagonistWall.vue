@@ -26,6 +26,7 @@ import {
 import { toast } from "../composables/useToast";
 import { confirm as confirmDialog } from "../composables/useConfirm";
 import BehaviorBaselineEditor from "./BehaviorBaselineEditor.vue";
+import Icon from "./Icon.vue";
 import RelationshipTimeline from "./RelationshipTimeline.vue";
 import type { BehaviorBaseline } from "../api/types";
 
@@ -546,11 +547,12 @@ async function saveBaselineForChar(char: Character) {
         :aria-label="sectionCollapsed ? '展开主角列表' : '折叠主角列表'"
         @click="toggleSection"
       >
-        {{ sectionCollapsed ? "▸" : "▾" }}
+        <Icon :name="sectionCollapsed ? 'chevron_right' : 'chevron_down'" :size="14" />
       </button>
       <div class="wall-title-block">
         <h3 class="wall-title">
-          <span class="title-icon" aria-hidden="true">🎭</span>
+          <!-- 2026-06-08 UI 升级:🎭 → SVG users(主角群) -->
+          <Icon name="character" :size="16" class="title-icon" />
           {{ VIEW_MODE_LABEL[viewMode] }}
           <span class="title-count mono" v-if="!loading">
             {{ visibleCharacters.length }}
@@ -598,7 +600,8 @@ async function saveBaselineForChar(char: Character) {
           @click="reJudge"
         >
           <span v-if="judging" class="spinner" aria-hidden="true"></span>
-          <span>{{ judging ? "判定中…" : "✦ 重新判定" }}</span>
+          <Icon v-else name="spark" :size="13" />
+          <span>{{ judging ? "判定中…" : "重新判定" }}</span>
         </button>
       </div>
     </header>
@@ -621,7 +624,7 @@ async function saveBaselineForChar(char: Character) {
         <p class="empty-title">还没判定过主角</p>
         <p class="empty-hint">
           中间态 / 末尾态导入作品后,后端抽完图谱会自动判定。
-          若你手动加了角色或想强制重判,点击右上方"✦ 重新判定"。
+          若你手动加了角色或想强制重判,点击右上方「重新判定」。
         </p>
       </div>
 

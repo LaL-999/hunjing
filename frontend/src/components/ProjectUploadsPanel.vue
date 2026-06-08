@@ -745,7 +745,7 @@ function refinedStateLabel(u: UploadResponse): string {
               title="调 AI 抽人物 / 关系 / 事件,自动落项目"
               @click="handleExtract(u)"
             >
-              <span class="extract-spark">✦</span> AI 抽图谱
+              <Icon name="spark" :size="13" class="extract-spark" /> AI 抽图谱
             </button>
           </template>
 
@@ -757,7 +757,7 @@ function refinedStateLabel(u: UploadResponse): string {
               title="重新抽图谱(扣 1 次推演配额)"
               @click="handleExtract(u)"
             >
-              <span class="extract-spark">✦</span> 重抽
+              <Icon name="spark" :size="13" class="extract-spark" /> 重抽
             </button>
           </template>
 
@@ -773,7 +773,7 @@ function refinedStateLabel(u: UploadResponse): string {
               title="从已抽完的最后一块继续 — 不扣新配额"
               @click="handleResume(u)"
             >
-              <span class="extract-spark">✦</span> 继续抽取
+              <Icon name="spark" :size="13" class="extract-spark" /> 继续抽取
             </button>
             <button
               type="button"
@@ -781,7 +781,10 @@ function refinedStateLabel(u: UploadResponse): string {
               :disabled="extractingUploadId !== null"
               title="丢弃所有进度从头开始 — 扣 1 次新配额"
               @click="handleRestart(u)"
-            >↻ 重新开始</button>
+            >
+              <Icon name="rotate_ccw" :size="13" />
+              重新开始
+            </button>
           </template>
 
           <template v-else-if="uploadActionGroup(u) === 'zombie_no_resume'">
