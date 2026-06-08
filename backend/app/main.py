@@ -309,6 +309,7 @@ def create_app() -> FastAPI:
             compose as sp_compose,
             decisions as sp_decisions,
             elements as sp_elements,
+            episodes as sp_episodes,
             export as sp_export,
             novels as sp_novels_router,
             optimize as sp_optimize,
@@ -326,6 +327,8 @@ def create_app() -> FastAPI:
         app.include_router(sp_export.router, prefix="/api/screenplay", tags=["screenplay"])
         # 阶段 8.2:角色页 + 关系图 + 桥接资产可视化
         app.include_router(sp_character_profiles.router, prefix="/api/screenplay", tags=["screenplay"])
+        # 阶段 8.4:分集规划 MVP
+        app.include_router(sp_episodes.router, prefix="/api/screenplay", tags=["screenplay"])
     except Exception as e:  # noqa: BLE001
         import logging
         logging.warning("剧创态 router 注册失败(不阻塞父平台): %s", e)

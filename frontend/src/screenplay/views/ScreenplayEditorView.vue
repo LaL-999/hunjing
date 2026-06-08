@@ -14,6 +14,7 @@ import AdaptationDecisionPanel from "../components/AdaptationDecisionPanel.vue";
 import BridgeGainBanner from "../components/BridgeGainBanner.vue";
 import CharacterProfilesPanel from "../components/CharacterProfilesPanel.vue";
 import ComposeDialog from "../components/ComposeDialog.vue";
+import EpisodePlanPanel from "../components/EpisodePlanPanel.vue";
 import ExportMenu from "../components/ExportMenu.vue";
 import NovelTextPanel from "../components/NovelTextPanel.vue";
 import OptimizationModal from "../components/OptimizationModal.vue";
@@ -59,6 +60,11 @@ function closeCharacterPanel() { characterPanelVisible.value = false; }
 const versionDiffVisible = ref<boolean>(false);
 function openVersionDiff() { versionDiffVisible.value = true; }
 function closeVersionDiff() { versionDiffVisible.value = false; }
+
+// 阶段 8.4:分集规划 MVP modal
+const episodePanelVisible = ref<boolean>(false);
+function openEpisodePanel() { episodePanelVisible.value = true; }
+function closeEpisodePanel() { episodePanelVisible.value = false; }
 
 // AI 优化弹窗(A + B 入口共用)
 const optimizationModalVisible = ref<boolean>(false);
@@ -150,6 +156,24 @@ onMounted(() => {
             <path d="M17 21v-2a4 4 0 0 0-2.5-3.7" />
           </svg>
           角色
+        </button>
+        <!-- 阶段 8.4:分集规划 MVP 入口(仅在 hasScreenplay 时) -->
+        <button
+          v-if="store.hasScreenplay"
+          class="secondary-btn"
+          @click="openEpisodePanel"
+          title="按目标单集时长贪心分集"
+        >
+          <svg
+            width="14" height="14" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
+          >
+            <rect x="3" y="3" width="7" height="7" rx="1" />
+            <rect x="14" y="3" width="7" height="7" rx="1" />
+            <rect x="3" y="14" width="7" height="7" rx="1" />
+            <rect x="14" y="14" width="7" height="7" rx="1" />
+          </svg>
+          分集
         </button>
         <VersionSwitcher v-if="store.hasScreenplay" @open-diff="openVersionDiff" />
         <ExportMenu v-if="store.hasScreenplay" />
@@ -253,6 +277,13 @@ onMounted(() => {
     <VersionDiffPanel
       :visible="versionDiffVisible"
       @close="closeVersionDiff"
+    />
+
+    <!-- ===== 阶段 8.4:分集规划 MVP ===== -->
+    <EpisodePlanPanel
+      :novel-id="props.id"
+      :visible="episodePanelVisible"
+      @close="closeEpisodePanel"
     />
   </div>
 </template>

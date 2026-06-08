@@ -193,6 +193,39 @@ export async function getCharacterProfiles(
 }
 
 // ============================================================
+// 阶段 8.4 — 分集规划 MVP
+// ============================================================
+
+export interface EpisodeApi {
+  episode_number: number;
+  title: string;
+  scene_ids: string[];
+  est_minutes: number;
+  scene_count: number;
+  first_chapter: number | null;
+  last_chapter: number | null;
+  boundary_reason: string;
+}
+
+export interface EpisodePlanApi {
+  episodes: EpisodeApi[];
+  total_minutes: number;
+  total_scenes: number;
+  target_minutes_per_ep: number;
+  mode: string; // 'rule' | 'llm'
+}
+
+export async function planEpisodes(
+  novelId: string,
+  targetMinutesPerEp: number,
+): Promise<EpisodePlanApi> {
+  return api.post(
+    `/screenplay/novels/${encodeURIComponent(novelId)}/plan-episodes`,
+    { target_minutes_per_ep: targetMinutesPerEp },
+  );
+}
+
+// ============================================================
 // Screenplay
 // ============================================================
 
