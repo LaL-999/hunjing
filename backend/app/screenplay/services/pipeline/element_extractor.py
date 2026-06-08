@@ -111,11 +111,26 @@ class ElementExtractError(Exception):
     """元素抽取失败(LLM 不可达 / 全部输出非法 / 空场景)。"""
 
 
-def extract_elements(scene_input: SceneTextInput) -> ExtractResult:
+def extract_elements(
+    scene_input: SceneTextInput,
+    *,
+    bridge_drivers_block: str = "",
+    bridge_knowledge_block: str = "",
+    bridge_polarity_block: str = "",
+) -> ExtractResult:
     """抽取一个场景的剧本元素。
 
     Args:
         scene_input: 场景原文 + 角色清单 + 场景头
+        bridge_drivers_block: 阶段 5.3 — SP-2 角色驱动力 markdown 块(可空)
+        bridge_knowledge_block: 阶段 5.3 — SP-3 角色知识边界 markdown 块(可空)
+        bridge_polarity_block: 阶段 5.3 — SP-7 关系正负极 markdown 块(可空)
+
+    桥接块用法:三块都是 prompt-ready markdown,LLM 会在 prompt 铁律指引下
+    在抽对白时同时:
+      - 注入驱动力张力(SP-2):让角色「想要 vs 需要」反映在台词
+      - 守住知识边界(SP-3):让角色不说他不知道的事
+      - 对齐互称语气(SP-7):正负极决定亲密 / 敌对 / 公事称呼
 
     Returns:
         ExtractResult — 含 elements 列表 + LLM token usage
@@ -127,7 +142,7 @@ def extract_elements(scene_input: SceneTextInput) -> ExtractResult:
         raise ElementExtractError("场景原文为空,无法抽取元素")
 
     # 构造 LLM 输入
-    user_input = {
+    user_input: dict = {
         "scene_summary": scene_input.scene_summary,
         "scene_heading": scene_input.scene_heading,
         "scene_text": scene_input.scene_text,
@@ -136,6 +151,13 @@ def extract_elements(scene_input: SceneTextInput) -> ExtractResult:
             for c in scene_input.characters_in_scene
         ],
     }
+    # 阶段 5.3 桥接 — 三档父平台资产 prompt 块(非空才加)
+    if bridge_drivers_block:
+        user_input["character_drivers"] = bridge_drivers_block
+    if bridge_knowledge_block:
+        user_input["character_knowledge"] = bridge_knowledge_block
+    if bridge_polarity_block:
+        user_input["relationship_polarity"] = bridge_polarity_block
 
     try:
         parsed, usage = call_json(_get_system_prompt(), user_input, max_tokens=4000)

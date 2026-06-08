@@ -262,7 +262,15 @@ def orchestrate_full_pipeline(
             chars_in_scene = _resolve_characters_in_scene(sp, bible_for_composer)
             scene_path = f"chapter[{ch_num}].scene[{sp.scene_index_in_chapter}]"
 
-            # 3b1. element_extractor
+            # 阶段 5.3:按场拉桥接资产 — drivers / knowledge 是「本场在场角色」
+            # 维度的,polarity 已在 splitter 算过,这里复用本场角色子集就够
+            present_names = [c.name for c in chars_in_scene]
+            scene_index_overall = len(all_scenes) + 1
+            extractor_bridge = _build_per_scene_bridge(
+                novel_id, user_id, present_names, scene_index_overall,
+            )
+
+            # 3b1. element_extractor(接通 SP-2/3/7 三档桥接资产)
             elements = _run_element_extractor(
                 SceneTextInput(
                     scene_summary=sp.summary,
@@ -275,6 +283,9 @@ def orchestrate_full_pipeline(
                     characters_in_scene=chars_in_scene,
                 ),
                 opts.retry_per_call, warnings, scene_path,
+                bridge_drivers_block=extractor_bridge["drivers"],
+                bridge_knowledge_block=extractor_bridge["knowledge"],
+                bridge_polarity_block=extractor_bridge["polarity"],
             )
             stats_counter["extract_calls"] += 1
 
@@ -449,12 +460,24 @@ def _run_element_extractor(
     retry_count: int,
     warnings: list[dict],
     path: str,
+    *,
+    bridge_drivers_block: str = "",
+    bridge_knowledge_block: str = "",
+    bridge_polarity_block: str = "",
 ) -> list[ScreenplayElement] | None:
-    """extract_elements + 重试。N+1 次都失败 → 记 warning + 返 None(跳过本场)。"""
+    """extract_elements + 重试。N+1 次都失败 → 记 warning + 返 None(跳过本场)。
+
+    阶段 5.3:接通 SP-2/3/7 三档桥接资产,任一非空就透传给 LLM。
+    """
     last_err: Exception | None = None
     for attempt in range(retry_count + 1):
         try:
-            result = extract_elements(scene_input)
+            result = extract_elements(
+                scene_input,
+                bridge_drivers_block=bridge_drivers_block,
+                bridge_knowledge_block=bridge_knowledge_block,
+                bridge_polarity_block=bridge_polarity_block,
+            )
             return result.elements
         except ElementExtractError as e:
             last_err = e
@@ -596,6 +619,63 @@ def _resolve_characters_in_scene(
             name=entry.get("name", ""),
             aka=list(entry.get("aka") or []),
         ))
+    return out
+
+
+def _build_per_scene_bridge(
+    novel_id: str,
+    user_id: str,
+    present_names: list[str],
+    scene_index: int,
+) -> dict[str, str]:
+    """阶段 5.3 按场桥接 — 拿 SP-2 drivers / SP-3 knowledge / SP-7 polarity 三块。
+
+    Args:
+        present_names: 本场在场角色名
+        scene_index: 本场在整本中的索引(给 knowledge 按时间过滤用)
+
+    Returns:
+        {"drivers": str, "knowledge": str, "polarity": str} — 全失败也返 3 个空串
+
+    异常隔离铁律:任一资产抓取失败 → 该字段返 "",剩下的继续。
+    """
+    out = {"drivers": "", "knowledge": "", "polarity": ""}
+    if not present_names:
+        return out
+    try:
+        from app.screenplay.db.connection import get_connection
+        from app.screenplay.services import huimeng_bridge
+        conn = get_connection()
+        try:
+            # SP-2 drivers
+            try:
+                out["drivers"] = huimeng_bridge.get_character_drivers_block(
+                    conn, user_id=user_id, novel_id=novel_id,
+                    character_names=present_names,
+                )
+            except Exception as e:  # noqa: BLE001
+                logger.warning("per_scene_bridge drivers failed: %s", e)
+            # SP-3 knowledge
+            try:
+                out["knowledge"] = huimeng_bridge.get_character_knowledge_block(
+                    conn, user_id=user_id, novel_id=novel_id,
+                    character_names=present_names,
+                    current_scene_index=scene_index,
+                )
+            except Exception as e:  # noqa: BLE001
+                logger.warning("per_scene_bridge knowledge failed: %s", e)
+            # SP-7 polarity(本场角色子集)
+            try:
+                out["polarity"] = huimeng_bridge.get_relationship_polarity_block(
+                    conn, user_id=user_id, novel_id=novel_id,
+                    character_names=present_names,
+                )
+            except Exception as e:  # noqa: BLE001
+                logger.warning("per_scene_bridge polarity failed: %s", e)
+        finally:
+            conn.close()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("per_scene_bridge connect failed: %s", e)
     return out
 
 
