@@ -13,10 +13,16 @@
  *   - 已绑定 + 0 注入 → 灰色 banner 提示"绑定了但父平台未填字段"
  *   - 未绑定 → 透明小贴士"绑定项目后这里会显示桥接用量"
  */
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import { useScreenplayStore } from "../stores/screenplay";
 
 const store = useScreenplayStore();
+
+// 2026-06-08 用户精修:支持折叠 / 展开(默认展开,用户点击切换)
+const collapsed = ref<boolean>(false);
+function toggleCollapsed() {
+  collapsed.value = !collapsed.value;
+}
 
 interface BridgeStats {
   bridge_drivers_injections: number;
@@ -72,9 +78,25 @@ const mode = computed<"active" | "linked-empty" | "unlinked" | "hidden">(() => {
       <div class="bgb-body">
         <div class="bgb-title">
           <span class="bgb-title-text">浑晶桥接已生效</span>
-          <span class="bgb-total">本次 compose 注入 {{ totalInjections }} 处父平台资产</span>
+          <!-- 2026-06-08 用户精修:删"本次 compose 注入 N 处父平台资产"文案,
+               第五态已在浑晶平台内,无需"父平台"措辞,显突兀 -->
+          <button
+            type="button"
+            class="bgb-toggle"
+            :title="collapsed ? '展开桥接细节' : '收起'"
+            :aria-expanded="!collapsed"
+            @click="toggleCollapsed"
+          >
+            <svg
+              width="14" height="14" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
+              :style="{ transform: collapsed ? 'rotate(0deg)' : 'rotate(180deg)', transition: 'transform 200ms ease' }"
+            >
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </button>
         </div>
-        <div class="bgb-chips">
+        <div v-if="!collapsed" class="bgb-chips">
           <span
             v-if="bridgeStats.bridge_drivers_injections > 0"
             class="bgb-chip"
@@ -204,17 +226,32 @@ const mode = computed<"active" | "linked-empty" | "unlinked" | "hidden">(() => {
 }
 .bgb-title {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 10px;
   flex-wrap: wrap;
   margin-bottom: 6px;
 }
 .bgb-title-text {
   font-size: 12.5px;
+  flex: 1;
 }
-.bgb-total {
-  font-size: 11.5px;
+/* 2026-06-08:折叠按钮 ghost 风格,只在 hover 时给 bg */
+.bgb-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
   color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.bgb-toggle:hover {
+  background: var(--hover-bg);
+  color: var(--accent);
 }
 .bgb-chips {
   display: flex;

@@ -354,20 +354,28 @@ function toggle() {
             class="tension-curve"
           />
 
-          <!-- 数据点(hover 看数据 / 点击跳转 scene)-->
+          <!-- 数据点(hover 看数据 / 点击跳转 scene)
+               2026-06-08 用户精修:hit area 圆 fill=transparent 在部分浏览器
+               pointer-events 默认 visiblePainted = 不接收事件,导致鼠标
+               精准指向可见点反而命中不上(只在边缘命中)。
+               治理:显式 pointer-events="all" + cursor=pointer 在父 g。
+               同时把 hit area 加大到 r=16(原 14)+ 给整个 g 加 cursor。 -->
           <g class="data-points">
             <g
               v-for="(p, i) in points"
               :key="p.scene_id"
+              class="data-point-group"
               @mouseenter="handleHover(i)"
               @click="handleClick(i)"
             >
-              <!-- 透明 hit area -->
+              <!-- 透明 hit area:r=16,pointer-events=all 强制接收 -->
               <circle
                 :cx="xForIndex(i, points.length)"
                 :cy="yForTension(p.tension)"
-                r="14"
-                fill="transparent"
+                r="16"
+                fill="white"
+                fill-opacity="0"
+                pointer-events="all"
               />
               <!-- 可见点 -->
               <circle
@@ -377,6 +385,7 @@ function toggle() {
                 :fill="hoverIndex === i ? 'var(--accent)' : 'white'"
                 :stroke="hoverIndex === i ? 'white' : 'var(--accent)'"
                 stroke-width="2"
+                pointer-events="none"
               />
             </g>
           </g>

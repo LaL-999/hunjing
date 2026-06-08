@@ -343,12 +343,20 @@ onMounted(() => {
 </template>
 
 <style scoped>
+/* 2026-06-08 用户精修:用户反馈"右侧主视窗能轻微滑动遮挡上部"。
+ * 根因:height: 100vh 包含浏览器整高,但父平台 App.vue 的 main 容器只占
+ * vh - topbar/sidebar 部分。100vh 超过父高 → 整个 .editor 在父容器内
+ * 产生溢出,顶部被 chrome 遮住一部分。
+ * 修复:height: 100% 跟随父容器实际高度,overflow: hidden 拒绝任何外溢。
+ */
 .editor {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 100%;
+  min-height: 0;
   background: var(--bg);
   color: var(--text);
+  overflow: hidden;
 }
 
 /* ===== 顶栏 — 更轻、更文气 ===== */

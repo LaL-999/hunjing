@@ -76,6 +76,10 @@ async function loadNovels() {
   }
 }
 
+function backToDashboard() {
+  router.push({ name: "home" });
+}
+
 function openEditor(novelId: string) {
   router.push({ name: "screenplay-editor", params: { id: novelId } });
 }
@@ -168,6 +172,22 @@ onMounted(() => {
 
 <template>
   <main class="home screenplay-module">
+    <!-- 2026-06-08 用户精修:左上返回浑晶主页按钮(独立 absolute,不挤标题) -->
+    <button
+      type="button"
+      class="home-back-btn"
+      @click="backToDashboard"
+      title="返回浑晶主页"
+    >
+      <svg
+        width="14" height="14" viewBox="0 0 24 24" fill="none"
+        stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
+      >
+        <path d="M19 12H5M12 19l-7-7 7-7" />
+      </svg>
+      <span>浑晶主页</span>
+    </button>
+
     <header class="hdr">
       <div class="brand">浑晶</div>
       <h1 class="title literary-heading">剧创态</h1>
@@ -283,26 +303,17 @@ onMounted(() => {
       书架尚空 — 拖一份小说试试。
     </p>
 
-    <!-- 系统状态(收到底部,不喧宾夺主) -->
-    <section class="status-line">
-      <template v-if="backendStatus === 'unknown'">
-        <span class="dot dot--pending"></span>
-        <span class="status-text">正在连接服务…</span>
+    <!-- 系统状态:2026-06-08 用户精修 — 只在异常时显示(底部弹 toast 风格)
+         正常态隐藏,不再占据"父平台路由"占位行 -->
+    <section
+      v-if="backendStatus === 'error' || (backendStatus === 'ok' && backendInfo.llm_configured === false)"
+      class="status-line"
+    >
+      <template v-if="backendStatus === 'ok' && backendInfo.llm_configured === false">
+        <span class="dot dot--warn"></span>
+        <span class="status-text status-warn">LLM 未配置 — 请先去配置 BYOK</span>
       </template>
-      <template v-else-if="backendStatus === 'ok'">
-        <span class="dot dot--ok"></span>
-        <span class="status-text">
-          后端就绪
-          <span class="status-meta">· {{ backendInfo.llm_model }}</span>
-          <span
-            v-if="backendInfo.llm_configured === false"
-            class="status-warn"
-          >
-            · LLM 未配置
-          </span>
-        </span>
-      </template>
-      <template v-else>
+      <template v-else-if="backendStatus === 'error'">
         <span class="dot dot--err"></span>
         <span class="status-text status-err">服务未连接 · {{ errorMsg }}</span>
       </template>
@@ -375,17 +386,51 @@ onMounted(() => {
 </template>
 
 <style scoped>
+/* 2026-06-08 用户精修:锁滚动 — 整个 home 占满可见区域不溢出,
+ * 中间 shelf 内部滚动(超出时)。
+ * 父平台 main 容器是 flex 子项,我们用 height: 100% 撑满 → 不再产生外层滚动条
+ */
 .home {
-  max-width: 640px;
-  margin: var(--space-8) auto;
-  padding: 0 var(--space-5);
+  max-width: 720px;
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-5) var(--space-5);
   color: var(--text);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;   /* 给 .home-back-btn 做 absolute 锚 */
+}
+
+/* 返回按钮 — 左上角 ghost 风格,与剧创态质感一致 */
+.home-back-btn {
+  position: absolute;
+  top: var(--space-4);
+  left: var(--space-5);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px 6px 10px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  z-index: 5;
+}
+.home-back-btn:hover {
+  background: var(--hover-bg);
+  color: var(--text);
+  border-color: var(--border);
 }
 
 .hdr {
   text-align: center;
-  margin-bottom: var(--space-7);
-  padding: var(--space-5) 0;
+  margin-bottom: var(--space-6);
+  padding: var(--space-4) 0 var(--space-2);
+  flex-shrink: 0;
 }
 .brand {
   font-family: var(--font-serif);
@@ -457,10 +502,13 @@ onMounted(() => {
   letter-spacing: 0.04em;
 }
 
-/* === 书架 === */
+/* === 书架 — 2026-06-08 用户精修:flex 1 + 内部滚,主页不再外溢 === */
 .shelf {
-  margin-top: var(--space-6);
-  padding: var(--space-5) 0;
+  flex: 1;
+  min-height: 0;
+  margin-top: var(--space-5);
+  padding: var(--space-4) 0;
+  overflow-y: auto;
 }
 .shelf-title {
   font-size: 12px;
