@@ -23,7 +23,7 @@
 | **1** | Dashboard 加 5/6 卡 + 路由占位 | ✅ 完工(commit cd5cea1)|
 | **2** | 前端真实代码迁入(浑晶视觉适配)| ✅ 完工(2026-06-08 中午)|
 | **3** | 后端代码迁入 + 表名 sp_ 前缀 + router 鉴权挂载 | ✅ 完工(2026-06-08 下午)|
-| 3.5 | service 层 SQL user_id 过滤(数据用户级隔离) | ⏳ 待做 |
+| **3.5** | service 层 SQL user_id 过滤(数据用户级隔离) | ✅ 完工(2026-06-08 傍晚)|
 | 4 | DB 迁徙 + Quota 接入 | ⏳ |
 | **5** | 故事圣经 A 隔离 + 角色 Agent 复用层(关键) | ⏳ |
 | 6 | 视觉融合(精修)| ⏳ |
@@ -46,12 +46,45 @@
   - 18 个 `/api/screenplay/*` 路由全部注册
   - `pytest --co` 962 测试收集成功(父平台测试无污染)
 
-### 阶段 3.5 待办(SQL 用户隔离)
+### 阶段 3.5 完工摘要
 
-- service 层(ingest_service / screenplay_store / story_bible_service / yaml_composer 桥)接收 user_id 参数
-- 写入时 INSERT 带 user_id 列
-- 读取时 WHERE user_id = ? 过滤
-- 防止用户 A 看到用户 B 的小说 / 剧本
+把"router 鉴权层 → service 层 SQL where 子句"的最后一公里走完。
+JWT 已在阶段 3 拦住未登录访问,但 service 函数还接受裸 novel_id / screenplay_id,
+意味着用户 A 拿到用户 B 的 ID(snoop / 越权扫库)仍能读到内容。3.5 把所有
+读写函数都加上 `user_id`,在 SQL 层 WHERE / JOIN 校验归属。
+
+**改动文件**(11 个):
+
+services/(4 个全部加 user_id 隔离):
+- ingest_service.py — persist/get/list/delete + get_chapter_paragraphs 全加 user_id
+  + is_novel_owned_by_user 轻量 helper
+- story_bible_service.py — import_bible_from_json / extract_bible_with_llm / get_bible
+  全加 user_id;_persist_bible 私有不需要(调用者已校验)
+- screenplay_store.py — save_screenplay 必填 user_id 且 INSERT 前 SELECT 1 校验归属
+  (PermissionError 兜底);get_latest/by_id/list_versions/list_screenplays 全 JOIN sp_novels
+- compose_service.py — orchestrate_full_pipeline 必填 user_id 透传到所有子调用
+- pipeline/scene_splitter.py — split_chapter_from_db 必填 user_id
+
+routers/(6 个全部 inject Depends(get_current_user)):
+- novels.py ✓(阶段 3 已经 inject)
+- story_bibles.py ✓(3 endpoint 全 inject)
+- scenes.py ✓(split + JOIN sp_novels 校验)
+- optimize.py ✓(POST optimize + GET versions)
+- compose.py ✓(POST compose + 3 GET endpoint)
+- export.py ✓(fountain/txt/yaml 3 个 + _load_parsed_screenplay 加 user_id)
+- elements.py / attributions.py / decisions.py — 无状态 endpoint(纯 LLM 调用)
+  阶段 3 的 router-level Depends 已经足够,阶段 3.5 无改动
+
+**安全模型**:
+- 跨用户访问统一返 404 / None / [] / False(隔离 = 无知),不暴露"存在但是别人的"
+- save_screenplay 防御性 SELECT 1 校验,即使 router bug 直接 INSERT 也拒绝
+- JOIN sp_novels 是核心隔离机制 — bible / screenplay 这种没直接 user_id 字段的
+  子表,通过父 novel 归属间接限定
+
+**验证**:
+- `from app.main import app` 成功导入(18 个 /api/screenplay 路由都注册)
+- `pytest --co` 962 测试收集(与阶段 3 一致,父平台测试无变化)
+- 18 个 endpoint 的"传 ID 不传 user"路径已全部封堵
 
 ### 阶段 2 完工摘要
 

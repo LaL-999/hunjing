@@ -1,4 +1,4 @@
-"""剧本导出 API — PR#17。
+"""剧本导出 API — PR#17(阶段 3.5 加 user_id 隔离)。
 
 提供 3 种行业级格式导出:
   GET /screenplays/{id}/export.fountain   ← 行业标准,Final Draft 等可导入
@@ -6,6 +6,7 @@
   GET /screenplays/{id}/export.yaml       ← 原始结构化数据
 
 所有 endpoint 返回 attachment 让浏览器自动下载。
+所有 endpoint 校验剧本所属 novel 归属当前用户(防越权下载)。
 """
 from __future__ import annotations
 
@@ -13,9 +14,8 @@ from urllib.parse import quote
 
 import yaml as yamllib
 from fastapi import Depends, APIRouter, HTTPException, status
-from app.deps import get_current_user
-from app.models.user import User
 from fastapi.responses import Response
+
 from app.deps import get_current_user
 from app.models.user import User
 
@@ -29,9 +29,11 @@ from app.screenplay.services.screenplay_exporter import (
 router = APIRouter(tags=["export"], dependencies=[Depends(get_current_user)])
 
 
-def _load_parsed_screenplay(screenplay_id: str) -> tuple[dict, dict]:
-    """拉记录 + 解析 yaml,返 (parsed_dict, raw_record)。"""
-    record = screenplay_store.get_screenplay_by_id(screenplay_id)
+def _load_parsed_screenplay(
+    screenplay_id: str, user_id: int,
+) -> tuple[dict, dict]:
+    """拉记录 + 解析 yaml,返 (parsed_dict, raw_record)。校验 user 归属。"""
+    record = screenplay_store.get_screenplay_by_id(screenplay_id, user_id=user_id)
     if record is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -82,29 +84,36 @@ def _make_download_response(content: str, filename: str, mime: str) -> Response:
 
 
 @router.get("/screenplays/{screenplay_id}/export.fountain")
-def export_fountain(screenplay_id: str) -> Response:
+def export_fountain(
+    screenplay_id: str,
+    user: User = Depends(get_current_user),
+) -> Response:
     """导出 Fountain 格式 — 行业标准,Final Draft / WriterDuet 等可直接导入。"""
-    parsed, _ = _load_parsed_screenplay(screenplay_id)
+    parsed, _ = _load_parsed_screenplay(screenplay_id, user_id=user.id)
     content = export_to_fountain(parsed)
     filename = make_export_filename(parsed, "fountain")
     return _make_download_response(content, filename, "text/plain; charset=utf-8")
 
 
 @router.get("/screenplays/{screenplay_id}/export.txt")
-def export_txt(screenplay_id: str) -> Response:
+def export_txt(
+    screenplay_id: str,
+    user: User = Depends(get_current_user),
+) -> Response:
     """导出 TXT 格式 — 中文友好纯文本,适合微信发送 / 打印。"""
-    parsed, _ = _load_parsed_screenplay(screenplay_id)
+    parsed, _ = _load_parsed_screenplay(screenplay_id, user_id=user.id)
     content = export_to_txt(parsed)
     filename = make_export_filename(parsed, "txt")
     return _make_download_response(content, filename, "text/plain; charset=utf-8")
 
 
 @router.get("/screenplays/{screenplay_id}/export.yaml")
-def export_yaml(screenplay_id: str) -> Response:
+def export_yaml(
+    screenplay_id: str,
+    user: User = Depends(get_current_user),
+) -> Response:
     """导出 YAML 格式 — 原始结构化数据,给工具链 / 二次开发用。"""
-    _, record = _load_parsed_screenplay(screenplay_id)
+    parsed, record = _load_parsed_screenplay(screenplay_id, user_id=user.id)
     yaml_text = record["yaml_text"]
-    # 文件名用 meta.title
-    parsed, _ = _load_parsed_screenplay(screenplay_id)
     filename = make_export_filename(parsed, "yaml")
     return _make_download_response(yaml_text, filename, "application/x-yaml; charset=utf-8")

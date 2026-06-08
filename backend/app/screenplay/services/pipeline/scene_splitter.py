@@ -223,16 +223,16 @@ def _parse_and_validate_scenes(
 # ============================================================
 
 
-def split_chapter_from_db(novel_id: str, chapter_id: str) -> SplitResult:
-    """便捷入口 — 拉 DB 数据 + 调切分器。
+def split_chapter_from_db(novel_id: str, chapter_id: str, user_id: int) -> SplitResult:
+    """便捷入口 — 拉 DB 数据 + 调切分器(必须传 user_id 校验归属)。
 
     Raises:
-        ValueError: novel 不存在 / chapter 不属于该 novel / 圣经不存在
+        ValueError: novel 不存在 / chapter 不属于该 novel(或不属于该用户)/ 圣经不存在
         SceneSplitError: 切分失败
     """
     from app.screenplay.services import ingest_service, story_bible_service
 
-    novel = ingest_service.get_novel(novel_id)
+    novel = ingest_service.get_novel(novel_id, user_id=user_id)
     if novel is None:
         raise ValueError(f"novel_id {novel_id} 不存在")
 
@@ -244,12 +244,12 @@ def split_chapter_from_db(novel_id: str, chapter_id: str) -> SplitResult:
     if target_chapter is None:
         raise ValueError(f"chapter_id {chapter_id} 不属于 novel {novel_id}")
 
-    paragraphs = ingest_service.get_chapter_paragraphs(chapter_id) or []
+    paragraphs = ingest_service.get_chapter_paragraphs(chapter_id, user_id=user_id) or []
     paragraphs_input = [
         {"index": p["index_in_chapter"], "text": p["text"]} for p in paragraphs
     ]
 
-    bible = story_bible_service.get_bible(novel_id)
+    bible = story_bible_service.get_bible(novel_id, user_id=user_id)
     if bible is None:
         raise ValueError("故事圣经尚未创建 — 请先 POST /novels/{id}/story-bible 或 /story-bible/auto")
 

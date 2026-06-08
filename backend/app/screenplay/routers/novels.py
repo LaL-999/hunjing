@@ -1,9 +1,10 @@
 """小说摄入 API。
 
-Endpoints:
+Endpoints(全部需要 Bearer JWT,user 通过 Depends 注入 → 透传到 service 层做 SQL 级隔离):
   POST   /novels                     上传 + 解析 + 落库,返摘要
-  GET    /novels                     列出所有已上传作品
+  GET    /novels                     列出当前用户所有已上传作品
   GET    /novels/{novel_id}          单本详情(含章节列表,不含段落)
+  DELETE /novels/{novel_id}          删除小说(级联清章节/段落/圣经/剧本)
   GET    /chapters/{chapter_id}      单章全部段落
 """
 from __future__ import annotations
@@ -20,7 +21,10 @@ router = APIRouter(tags=["novels"], dependencies=[Depends(get_current_user)])
 
 
 @router.post("/novels")
-async def api_upload_novel(file: UploadFile = File(...)) -> dict:
+async def api_upload_novel(
+    file: UploadFile = File(...),
+    user: User = Depends(get_current_user),
+) -> dict:
     """上传小说文件 → 解析 → 落库。
 
     Returns:
@@ -53,19 +57,22 @@ async def api_upload_novel(file: UploadFile = File(...)) -> dict:
             detail={"code": "PARSE_ERROR", "message": str(e)},
         )
 
-    # 落库
-    summary = ingest_service.persist_novel(parsed, file.filename)
+    # 落库(user.id 写入 sp_novels.user_id)
+    summary = ingest_service.persist_novel(parsed, file.filename, user_id=user.id)
     return summary
 
 
 @router.get("/novels")
-def api_list_novels() -> dict:
-    return {"items": ingest_service.list_novels()}
+def api_list_novels(user: User = Depends(get_current_user)) -> dict:
+    return {"items": ingest_service.list_novels(user_id=user.id)}
 
 
 @router.get("/novels/{novel_id}")
-def api_get_novel(novel_id: str) -> dict:
-    novel = ingest_service.get_novel(novel_id)
+def api_get_novel(
+    novel_id: str,
+    user: User = Depends(get_current_user),
+) -> dict:
+    novel = ingest_service.get_novel(novel_id, user_id=user.id)
     if novel is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -75,9 +82,12 @@ def api_get_novel(novel_id: str) -> dict:
 
 
 @router.delete("/novels/{novel_id}", status_code=status.HTTP_204_NO_CONTENT)
-def api_delete_novel(novel_id: str):
+def api_delete_novel(
+    novel_id: str,
+    user: User = Depends(get_current_user),
+):
     """删除小说(级联清章节 / 段落 / 故事圣经 / screenplays)。"""
-    deleted = ingest_service.delete_novel(novel_id)
+    deleted = ingest_service.delete_novel(novel_id, user_id=user.id)
     if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -87,8 +97,11 @@ def api_delete_novel(novel_id: str):
 
 
 @router.get("/chapters/{chapter_id}")
-def api_get_chapter(chapter_id: str) -> dict:
-    paragraphs = ingest_service.get_chapter_paragraphs(chapter_id)
+def api_get_chapter(
+    chapter_id: str,
+    user: User = Depends(get_current_user),
+) -> dict:
+    paragraphs = ingest_service.get_chapter_paragraphs(chapter_id, user_id=user.id)
     if paragraphs is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

@@ -92,9 +92,13 @@ class VersionInfo(BaseModel):
     "/screenplays/{screenplay_id}/optimize",
     response_model=OptimizeResponse,
 )
-def api_optimize_screenplay(screenplay_id: str, body: OptimizeRequestBody) -> dict:
+def api_optimize_screenplay(
+    screenplay_id: str,
+    body: OptimizeRequestBody,
+    user: User = Depends(get_current_user),
+) -> dict:
     """A/B 入口共用 — 跑 LLM 优化 → 存新版 → 返摘要。"""
-    record = screenplay_store.get_screenplay_by_id(screenplay_id)
+    record = screenplay_store.get_screenplay_by_id(screenplay_id, user_id=user.id)
     if record is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -148,6 +152,7 @@ def api_optimize_screenplay(screenplay_id: str, body: OptimizeRequestBody) -> di
     _refresh_fidelity_in_screenplay(
         result.optimized_screenplay,
         record["novel_id"],
+        user.id,
     )
     _purge_orphan_decisions(result.optimized_screenplay)
     _attach_decisions_for_new_scenes(
@@ -196,6 +201,7 @@ def api_optimize_screenplay(screenplay_id: str, body: OptimizeRequestBody) -> di
     }
     new_id = screenplay_store.save_screenplay(
         novel_id=record["novel_id"],
+        user_id=user.id,
         yaml_text=new_yaml_text,
         stats=stats,
         warnings=[],
@@ -229,9 +235,12 @@ def api_optimize_screenplay(screenplay_id: str, body: OptimizeRequestBody) -> di
 
 
 @router.get("/novels/{novel_id}/versions")
-def api_list_versions(novel_id: str) -> dict:
-    """返该 novel 所有剧本版本(版本树切换用)。"""
-    versions = screenplay_store.list_versions_for_novel(novel_id)
+def api_list_versions(
+    novel_id: str,
+    user: User = Depends(get_current_user),
+) -> dict:
+    """返该 novel 所有剧本版本(版本树切换用,user 校验通过 JOIN sp_novels)。"""
+    versions = screenplay_store.list_versions_for_novel(novel_id, user_id=user.id)
     return {"items": versions}
 
 
@@ -546,8 +555,15 @@ def _summarize_author_decisions(
 # ============================================================
 
 
-def _refresh_fidelity_in_screenplay(screenplay: dict, novel_id: str) -> None:
+def _refresh_fidelity_in_screenplay(
+    screenplay: dict, novel_id: str, user_id: int,
+) -> None:
     """对优化后的 yaml 逐场重算 fidelity,写回 scene.fidelity 字段(in-place)。
+
+    Args:
+        screenplay: 要重算 fidelity 的 yaml dict(in-place 修改)
+        novel_id: 关联 novel(校验归属于 user_id)
+        user_id: 当前请求用户 — 防越权拉别人的原文
 
     数据流:
       1. 拉 novel 的 chapters / paragraphs(用于拼 scene_text 原文)
@@ -562,13 +578,13 @@ def _refresh_fidelity_in_screenplay(screenplay: dict, novel_id: str) -> None:
         return
 
     # 拉小说原文 — 给 fidelity 算对白覆盖度提供 baseline
-    novel = ingest_service.get_novel(novel_id)
+    novel = ingest_service.get_novel(novel_id, user_id=user_id)
     if novel is None:
         return
     # chapter_number → paragraphs
     paragraphs_by_chapter: dict[int, list[str]] = {}
     for ch in novel.get("chapters", []):
-        rows = ingest_service.get_chapter_paragraphs(ch["id"]) or []
+        rows = ingest_service.get_chapter_paragraphs(ch["id"], user_id=user_id) or []
         # 按 index_in_chapter 排序后取 text
         rows_sorted = sorted(
             rows, key=lambda r: r.get("index_in_chapter", 0),

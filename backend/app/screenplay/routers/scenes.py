@@ -38,26 +38,34 @@ class SplitResponseOut(BaseModel):
 
 
 @router.post("/chapters/{chapter_id}/split", response_model=SplitResponseOut)
-def api_split_chapter(chapter_id: str) -> dict:
+def api_split_chapter(
+    chapter_id: str,
+    user: User = Depends(get_current_user),
+) -> dict:
     """调 LLM 把该章切分为场景列表。
 
     前置条件:
       - 该 novel 已上传 + 已有故事圣经(POST /novels/{id}/story-bible)
+      - 该 chapter 所属 novel 属于当前用户(SQL 级隔离)
     """
-    # 找该 chapter 属于哪个 novel
-    conn = ingest_service.get_chapter_paragraphs(chapter_id)
-    if conn is None:
+    # 找该 chapter 属于哪个 novel(同时校验归属)
+    paragraphs = ingest_service.get_chapter_paragraphs(chapter_id, user_id=user.id)
+    if paragraphs is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"code": "CHAPTER_NOT_FOUND", "message": "章节不存在"},
         )
 
-    # 通过 DB 拿 novel_id(简便起见,SQL 直查)
+    # 通过 DB 拿 novel_id(已经过 get_chapter_paragraphs 隔离校验,这里安全)
     from app.screenplay.db.connection import get_connection
     db = get_connection()
     try:
         row = db.execute(
-            "SELECT novel_id FROM sp_chapters WHERE id = ?", (chapter_id,),
+            """SELECT c.novel_id
+                 FROM sp_chapters c
+                 JOIN sp_novels n ON n.id = c.novel_id
+                WHERE c.id = ? AND n.user_id = ?""",
+            (chapter_id, user.id),
         ).fetchone()
     finally:
         db.close()
@@ -69,7 +77,7 @@ def api_split_chapter(chapter_id: str) -> dict:
     novel_id = row["novel_id"]
 
     try:
-        result = split_chapter_from_db(novel_id, chapter_id)
+        result = split_chapter_from_db(novel_id, chapter_id, user_id=user.id)
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

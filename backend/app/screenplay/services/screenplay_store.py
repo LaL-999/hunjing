@@ -1,12 +1,17 @@
-"""剧本持久化服务 — PR#10 commit 2。
+"""剧本持久化服务 — PR#10 commit 2;阶段 3.5(2026-06-08)加 user_id 隔离。
 
 一次 compose 调 LLM 几十次,贵且慢。持久化后 GET 直接返,demo 视频
 点查询是秒响应,不卡帧。
 
 同一 novel 允许多次 compose(用户改 bible / 章节后重跑)→ 每次新建一行,
-GET 默认返最新那条;list 接口给"历史版本对比"留口子(本 PR 不前端化)。
+GET 默认返最新那条;list 接口给"历史版本对比"留口子。
 
 stats / warnings / failed_chapters 在 DB 存 JSON text,读取时 json.loads。
+
+阶段 3.5(2026-06-08):
+  - save_screenplay 必填 user_id,落库前验证 novel 属于该用户(防越权 INSERT)
+  - 所有读函数(get_latest / get_by_id / list_versions / list_screenplays)必填 user_id
+  - 内部 JOIN sp_novels 校验 n.user_id = ?,跨用户访问统一返 None / [](= 视为不存在)
 """
 from __future__ import annotations
 
@@ -35,6 +40,7 @@ def _new_id() -> str:
 
 def save_screenplay(
     novel_id: str,
+    user_id: int,
     yaml_text: str,
     stats: dict,
     warnings: list[dict],
@@ -47,26 +53,35 @@ def save_screenplay(
 ) -> str:
     """持久化一次 compose 结果,返 screenplay_id。
 
-    PR#16 新增 3 个字段:
+    阶段 3.5:落库前先验证 novel 属于该用户。若不属于,抛 PermissionError
+    (router 应当转 404 给前端,不暴露"该 novel 存在但是别人的")。
+
+    PR#16 字段:
         parent_screenplay_id: 上一版的 id(版本树父节点),initial compose 为 None
         optimization_origin: 'initial' | 'single_scene_<id>' | 'full_screenplay'
         optimization_log: {change_log, reasoning} — AI 优化日志(initial 为 None)
 
-    Args:
-        novel_id: 关联的 novels.id
-        ... 见原参数
-        parent_screenplay_id: 版本树父节点
-        optimization_origin: 本版本的来源
-        optimization_log: 优化过程的 change_log + reasoning
-
     Returns:
         新建的 screenplay_id(UUID hex)
+
+    Raises:
+        PermissionError: novel 不存在或不属于该用户
     """
     screenplay_id = _new_id()
     now = _now_iso()
 
     conn = get_connection()
     try:
+        # 验证 novel 归属(防越权 INSERT)
+        own_row = conn.execute(
+            "SELECT 1 FROM sp_novels WHERE id = ? AND user_id = ?",
+            (novel_id, user_id),
+        ).fetchone()
+        if own_row is None:
+            raise PermissionError(
+                f"novel_id {novel_id} 不存在或不属于 user {user_id}"
+            )
+
         conn.execute(
             """INSERT INTO sp_screenplays
                (id, novel_id, yaml_text, stats_json, warnings_json,
@@ -120,17 +135,21 @@ def _row_to_dict(row) -> dict[str, Any]:
     }
 
 
-def get_latest_screenplay(novel_id: str) -> dict | None:
-    """返指定 novel 最新一次 compose 的剧本(按 created_at 倒序)。无则返 None。"""
+def get_latest_screenplay(novel_id: str, user_id: int) -> dict | None:
+    """返指定 novel 最新一次 compose 的剧本(按 created_at 倒序)。
+
+    隔离:JOIN sp_novels 校验 user_id;novel 不属于该用户则返 None。
+    """
     conn = get_connection()
     try:
         cur = conn.execute(
-            """SELECT *
-               FROM sp_screenplays
-               WHERE novel_id = ?
-               ORDER BY created_at DESC
-               LIMIT 1""",
-            (novel_id,),
+            """SELECT sp.*
+                 FROM sp_screenplays sp
+                 JOIN sp_novels n ON n.id = sp.novel_id
+                WHERE sp.novel_id = ? AND n.user_id = ?
+             ORDER BY sp.created_at DESC
+                LIMIT 1""",
+            (novel_id, user_id),
         )
         row = cur.fetchone()
         if row is None:
@@ -140,15 +159,16 @@ def get_latest_screenplay(novel_id: str) -> dict | None:
         conn.close()
 
 
-def get_screenplay_by_id(screenplay_id: str) -> dict | None:
-    """按 id 取一条剧本。无则返 None。"""
+def get_screenplay_by_id(screenplay_id: str, user_id: int) -> dict | None:
+    """按 id 取一条剧本(校验所属 novel 归属当前用户)。无则返 None。"""
     conn = get_connection()
     try:
         cur = conn.execute(
-            """SELECT *
-               FROM sp_screenplays
-               WHERE id = ?""",
-            (screenplay_id,),
+            """SELECT sp.*
+                 FROM sp_screenplays sp
+                 JOIN sp_novels n ON n.id = sp.novel_id
+                WHERE sp.id = ? AND n.user_id = ?""",
+            (screenplay_id, user_id),
         )
         row = cur.fetchone()
         if row is None:
@@ -158,8 +178,10 @@ def get_screenplay_by_id(screenplay_id: str) -> dict | None:
         conn.close()
 
 
-def list_versions_for_novel(novel_id: str) -> list[dict]:
+def list_versions_for_novel(novel_id: str, user_id: int) -> list[dict]:
     """返指定 novel 的所有版本(紧凑信息,不含 yaml_text 全文)— 给版本切换 UI 用。
+
+    隔离:JOIN sp_novels 校验 user_id;novel 不属于该用户则返 []。
 
     每条含:id, parent_screenplay_id, optimization_origin, created_at,
     + 摘要(scene_count + total_pages_estimate 从 stats 算)+ change_log 摘要。
@@ -167,12 +189,13 @@ def list_versions_for_novel(novel_id: str) -> list[dict]:
     conn = get_connection()
     try:
         cur = conn.execute(
-            """SELECT id, parent_screenplay_id, optimization_origin,
-                      optimization_log_json, stats_json, created_at
-               FROM sp_screenplays
-               WHERE novel_id = ?
-               ORDER BY created_at ASC""",
-            (novel_id,),
+            """SELECT sp.id, sp.parent_screenplay_id, sp.optimization_origin,
+                      sp.optimization_log_json, sp.stats_json, sp.created_at
+                 FROM sp_screenplays sp
+                 JOIN sp_novels n ON n.id = sp.novel_id
+                WHERE sp.novel_id = ? AND n.user_id = ?
+             ORDER BY sp.created_at ASC""",
+            (novel_id, user_id),
         )
         out: list[dict] = []
         for row in cur.fetchall():
@@ -194,19 +217,20 @@ def list_versions_for_novel(novel_id: str) -> list[dict]:
         conn.close()
 
 
-def list_screenplays(novel_id: str) -> list[dict]:
+def list_screenplays(novel_id: str, user_id: int) -> list[dict]:
     """返指定 novel 的所有 compose 记录,按 created_at 倒序(最新在前)。
 
-    给"历史版本对比"功能留口子(本 PR 不前端化)。
+    隔离:JOIN sp_novels 校验 user_id;novel 不属于该用户则返 []。
     """
     conn = get_connection()
     try:
         cur = conn.execute(
-            """SELECT *
-               FROM sp_screenplays
-               WHERE novel_id = ?
-               ORDER BY created_at DESC""",
-            (novel_id,),
+            """SELECT sp.*
+                 FROM sp_screenplays sp
+                 JOIN sp_novels n ON n.id = sp.novel_id
+                WHERE sp.novel_id = ? AND n.user_id = ?
+             ORDER BY sp.created_at DESC""",
+            (novel_id, user_id),
         )
         return [_row_to_dict(row) for row in cur.fetchall()]
     finally:

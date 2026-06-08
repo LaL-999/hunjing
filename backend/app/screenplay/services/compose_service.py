@@ -116,6 +116,7 @@ class ComposePipelineError(Exception):
 
 def orchestrate_full_pipeline(
     novel_id: str,
+    user_id: int,
     options: ComposeOptions | None = None,
     progress_callback: Callable[[dict], None] | None = None,
 ) -> ComposePipelineResult:
@@ -123,6 +124,7 @@ def orchestrate_full_pipeline(
 
     Args:
         novel_id: 已摄入的小说 ID
+        user_id: 父平台 users.id(用于 SQL 层数据隔离 — 阶段 3.5)
         options: 编排选项(默认全开)
         progress_callback: 可选,每章完成 / 每场失败时调用 dict 进度事件
 
@@ -131,7 +133,7 @@ def orchestrate_full_pipeline(
 
     Raises:
         ComposePipelineError(code):
-          - NOVEL_NOT_FOUND       — novel_id 不存在
+          - NOVEL_NOT_FOUND       — novel_id 不存在或不属于该用户
           - NO_CHAPTERS           — novel 无章节
           - BIBLE_FAILED          — 无 bible 且自动抽取也失败
           - BIBLE_EMPTY           — bible 抽完仍无 characters
@@ -141,9 +143,9 @@ def orchestrate_full_pipeline(
     opts = options or ComposeOptions()
 
     # ============================================================
-    # 1. 取 novel + chapters
+    # 1. 取 novel + chapters(必须属于当前用户)
     # ============================================================
-    novel = ingest_service.get_novel(novel_id)
+    novel = ingest_service.get_novel(novel_id, user_id=user_id)
     if novel is None:
         raise ComposePipelineError(f"novel {novel_id} 不存在", code="NOVEL_NOT_FOUND")
 
@@ -160,18 +162,20 @@ def orchestrate_full_pipeline(
     })
 
     # ============================================================
-    # 2. 取或生成 bible
+    # 2. 取或生成 bible(user_id 透传,校验归属)
     # ============================================================
-    bible = story_bible_service.get_bible(novel_id)
+    bible = story_bible_service.get_bible(novel_id, user_id=user_id)
     if bible is None:
         _emit(progress_callback, "bible_extracting", {"novel_id": novel_id})
         try:
-            story_bible_service.extract_bible_with_llm(novel_id, max_chapters=3)
+            story_bible_service.extract_bible_with_llm(
+                novel_id, user_id=user_id, max_chapters=3,
+            )
         except (LlmCallFailed, LlmJsonParseFailed) as e:
             raise ComposePipelineError(
                 f"自动抽取故事圣经失败:{e}", code="BIBLE_FAILED",
             ) from e
-        bible = story_bible_service.get_bible(novel_id)
+        bible = story_bible_service.get_bible(novel_id, user_id=user_id)
 
     if bible is None or not bible.get("characters"):
         raise ComposePipelineError(
@@ -212,7 +216,7 @@ def orchestrate_full_pipeline(
     for ch in chapters:
         ch_num = ch["number"]
         ch_id = ch["id"]
-        paragraphs = ingest_service.get_chapter_paragraphs(ch_id) or []
+        paragraphs = ingest_service.get_chapter_paragraphs(ch_id, user_id=user_id) or []
         if not paragraphs:
             warnings.append({
                 "layer": "chapter", "path": f"chapter[{ch_num}]",
@@ -375,6 +379,7 @@ def orchestrate_full_pipeline(
 
     screenplay_id = screenplay_store.save_screenplay(
         novel_id=novel_id,
+        user_id=user_id,
         yaml_text=compose_result.yaml_text,
         stats=final_stats,
         warnings=warnings,

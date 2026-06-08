@@ -34,37 +34,24 @@ def _new_id() -> str:
 # 主入口 — JSON 导入
 # ============================================================
 
-def import_bible_from_json(novel_id: str, payload: dict) -> dict:
+def import_bible_from_json(novel_id: str, payload: dict, user_id: int) -> dict:
     """从用户提供的 JSON 导入故事圣经。
 
-    payload 结构:
-        {
-          "characters": [
-            {"name": "林深", "aka": ["林先生"], "description": "...", "is_protagonist": true},
-            ...
-          ],
-          "locations": [
-            {"name": "老城钟表铺", "int_ext": "INT", "description": "..."},
-            ...
-          ],
-          "relationships": [
-            {"source_name": "林深", "target_name": "陌生女子", "type": "陌生→交集", "description": "..."},
-            ...
-          ],
-          "events": [
-            {"description": "...", "chapter_number": 1, "participant_names": ["林深"]},
-            ...
-          ]
-        }
+    payload 结构: ...(见 schema)
+
+    Args:
+        novel_id: 关联的小说 ID(必须属于当前用户)
+        payload: 圣经 JSON
+        user_id: 父平台 users.id(用于 SQL 隔离)
 
     Returns:
         bible_id + 各表插入数
 
     Raises:
-        ValueError: novel_id 不存在 / payload 不规范
+        ValueError: novel_id 不存在或不属于该用户 / payload 不规范
     """
-    # 检 novel 存在
-    novel = ingest_service.get_novel(novel_id)
+    # 检 novel 存在 + 属于当前用户
+    novel = ingest_service.get_novel(novel_id, user_id=user_id)
     if novel is None:
         raise ValueError(f"novel_id {novel_id} 不存在")
 
@@ -128,23 +115,23 @@ _EXTRACT_SYSTEM_PROMPT = """你是一个小说文本分析专家。从用户提�
 """
 
 
-def extract_bible_with_llm(novel_id: str, max_chapters: int = 3) -> dict:
+def extract_bible_with_llm(novel_id: str, user_id: int, max_chapters: int = 3) -> dict:
     """LLM 自动抽取故事圣经。
 
     流程:
-      1. 拉小说前 max_chapters 章原文
+      1. 拉小说前 max_chapters 章原文(必须属于当前用户)
       2. 拼 prompt,调 call_json
       3. name → id 映射(确保 relationships / events 引用合法)
       4. 落库
     """
-    novel = ingest_service.get_novel(novel_id)
+    novel = ingest_service.get_novel(novel_id, user_id=user_id)
     if novel is None:
         raise ValueError(f"novel_id {novel_id} 不存在")
 
     # 拉前 N 章原文
     text_chunks: list[str] = []
     for ch in novel["chapters"][:max_chapters]:
-        paragraphs = ingest_service.get_chapter_paragraphs(ch["id"]) or []
+        paragraphs = ingest_service.get_chapter_paragraphs(ch["id"], user_id=user_id) or []
         text_chunks.append(f"# 第 {ch['number']} 章 {ch['title'] or ''}\n")
         text_chunks.extend(p["text"] for p in paragraphs)
     full_text = "\n\n".join(text_chunks)
@@ -316,12 +303,19 @@ def _persist_bible(
 # 查询
 # ============================================================
 
-def get_bible(novel_id: str) -> dict | None:
-    """完整圣经 — 给前端显示用。"""
+def get_bible(novel_id: str, user_id: int) -> dict | None:
+    """完整圣经 — 给前端显示用。
+
+    隔离:走 JOIN sp_novels 校验 user_id,若 novel 不属于该用户返 None。
+    """
     conn = get_connection()
     try:
         bible = conn.execute(
-            "SELECT * FROM sp_story_bibles WHERE novel_id = ?", (novel_id,),
+            """SELECT b.*
+                 FROM sp_story_bibles b
+                 JOIN sp_novels n ON n.id = b.novel_id
+                WHERE b.novel_id = ? AND n.user_id = ?""",
+            (novel_id, user_id),
         ).fetchone()
         if bible is None:
             return None

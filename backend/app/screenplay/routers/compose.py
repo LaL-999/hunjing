@@ -82,11 +82,12 @@ class ScreenplayResponse(BaseModel):
 def api_compose_screenplay(
     novel_id: str,
     req: ComposeRequest = Body(default_factory=ComposeRequest),
+    user: User = Depends(get_current_user),
 ) -> dict:
     """端到端编排:小说 → 多 agent → 完整剧本 YAML(持久化)。
 
     Errors:
-      404 NOVEL_NOT_FOUND     — novel_id 不存在
+      404 NOVEL_NOT_FOUND     — novel_id 不存在或不属于该用户
       422 NO_CHAPTERS         — novel 无章节
       422 BIBLE_EMPTY         — 故事圣经为空(且自动抽取后仍为空)
       502 BIBLE_FAILED        — 故事圣经自动抽取失败(LLM 调用错)
@@ -101,7 +102,9 @@ def api_compose_screenplay(
     )
 
     try:
-        result = compose_service.orchestrate_full_pipeline(novel_id, options=opts)
+        result = compose_service.orchestrate_full_pipeline(
+            novel_id, user_id=user.id, options=opts,
+        )
     except compose_service.ComposePipelineError as e:
         status_code = _err_code_to_status(e.code)
         raise HTTPException(
@@ -130,9 +133,12 @@ def api_compose_screenplay(
     "/novels/{novel_id}/screenplay",
     response_model=ScreenplayResponse,
 )
-def api_get_latest_screenplay(novel_id: str) -> dict:
-    """返该 novel 最新一次 compose 的剧本。从未 compose 则 404。"""
-    record = screenplay_store.get_latest_screenplay(novel_id)
+def api_get_latest_screenplay(
+    novel_id: str,
+    user: User = Depends(get_current_user),
+) -> dict:
+    """返该 novel 最新一次 compose 的剧本(校验归属当前用户)。从未 compose 则 404。"""
+    record = screenplay_store.get_latest_screenplay(novel_id, user_id=user.id)
     if record is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -145,14 +151,18 @@ def api_get_latest_screenplay(novel_id: str) -> dict:
 
 
 @router.get("/screenplays/{screenplay_id}/structure")
-def api_get_screenplay_structure(screenplay_id: str) -> dict:
+def api_get_screenplay_structure(
+    screenplay_id: str,
+    user: User = Depends(get_current_user),
+) -> dict:
     """剧本结构报告(张力曲线 + 三幕分区 + 关键节点)— PR#13。
 
     服务端解析 YAML,程序级计算结构指标(不调 LLM)。
+    校验剧本所属 novel 归属当前用户。
     """
     import yaml as yamllib
 
-    record = screenplay_store.get_screenplay_by_id(screenplay_id)
+    record = screenplay_store.get_screenplay_by_id(screenplay_id, user_id=user.id)
     if record is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -256,9 +266,12 @@ def api_get_screenplay_structure(screenplay_id: str) -> dict:
     "/screenplays/{screenplay_id}",
     response_model=ScreenplayResponse,
 )
-def api_get_screenplay_by_id(screenplay_id: str) -> dict:
-    """按 screenplay_id 取一条(给历史版本对比留口子)。"""
-    record = screenplay_store.get_screenplay_by_id(screenplay_id)
+def api_get_screenplay_by_id(
+    screenplay_id: str,
+    user: User = Depends(get_current_user),
+) -> dict:
+    """按 screenplay_id 取一条(校验归属当前用户)。给历史版本对比留口子。"""
+    record = screenplay_store.get_screenplay_by_id(screenplay_id, user_id=user.id)
     if record is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
