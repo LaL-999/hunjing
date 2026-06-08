@@ -96,19 +96,23 @@ function handleProjectCreated(p: Project, mode: ProjectMode) {
   >
     <AppSidebar v-if="!isFullscreen" />
 
-    <!-- 2026-06-08:sidebar 折叠后的"展开"浮动按钮 — fixed 在屏幕左上 -->
+    <!-- 2026-06-08 用户精修 v2:统一 toggle 按钮,贴在 sidebar 右边缘
+         展开态:left = sidebar-width 沿 sidebar 右沿
+         折叠态:left = 0 贴屏幕最左
+         CSS transition 同步滑动,永远在同一视觉锚点(屏幕中线),不破坏 sidebar header -->
     <button
-      v-if="!isFullscreen && sidebarCollapsed"
+      v-if="!isFullscreen"
       type="button"
-      class="sidebar-expand-fab"
-      title="展开侧栏"
-      aria-label="展开侧栏"
+      class="sidebar-toggle-edge"
+      :class="{ 'is-collapsed': sidebarCollapsed }"
+      :title="sidebarCollapsed ? '展开侧栏' : '收起侧栏'"
+      :aria-label="sidebarCollapsed ? '展开侧栏' : '收起侧栏'"
       @click="toggleSidebar"
     >
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
-           stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-        <rect x="3" y="3" width="18" height="18" rx="2" />
-        <line x1="9" y1="3" x2="9" y2="21" />
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+           stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline v-if="sidebarCollapsed" points="9 18 15 12 9 6" />
+        <polyline v-else points="15 18 9 12 15 6" />
       </svg>
     </button>
 
@@ -169,29 +173,46 @@ function handleProjectCreated(p: Project, mode: ProjectMode) {
   flex-direction: column;
 }
 
-/* 2026-06-08:sidebar 折叠浮动展开按钮 — fixed 左上,跟 sidebar header 同高 */
-.sidebar-expand-fab {
+/* 2026-06-08 用户精修 v2:贴边浮动 toggle 按钮(Notion 风格)
+ *   - 固定在屏幕垂直 50% 位置
+ *   - 默认贴在 sidebar 右沿(left = sidebar-width)
+ *   - 折叠后贴在屏幕最左(left = 0)
+ *   - 与 sidebar 同 duration 同 ease,完全同步滑动
+ *   - 半圆视觉(右侧圆角):像把手,语义清楚
+ *   - hover 才显出底色,默认浅
+ */
+.sidebar-toggle-edge {
   position: fixed;
-  top: 12px;
-  left: 12px;
-  z-index: var(--z-sticky);
+  top: 50%;
+  left: var(--sidebar-width);
+  transform: translate(-50%, -50%);
+  z-index: calc(var(--z-modal-backdrop) - 1);   /* sidebar 之上 / modal 之下 */
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 18px;
+  height: 56px;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  color: var(--color-text-muted);
+  border-radius: 4px;
+  color: var(--color-text-subtle);
   cursor: pointer;
-  box-shadow: var(--shadow-sm);
-  transition: all var(--duration-fast) var(--ease-out);
+  opacity: 0.5;
+  transition:
+    left var(--duration-base) var(--ease-out-soft),
+    opacity var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
 }
-.sidebar-expand-fab:hover {
+.sidebar-toggle-edge.is-collapsed {
+  left: 0;
+  transform: translate(0, -50%);
+}
+.sidebar-toggle-edge:hover {
+  opacity: 1;
+  background: var(--color-accent-soft);
   color: var(--color-accent);
   border-color: var(--color-accent-border);
-  background: var(--color-surface-hover);
 }
 
 .app-main-content {

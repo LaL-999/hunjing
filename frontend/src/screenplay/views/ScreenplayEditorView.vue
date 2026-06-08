@@ -266,11 +266,12 @@ onMounted(() => {
             </span>
           </h3>
         </div>
-        <!-- 阶段 8.3 第 4 张牌:桥接增益面板(仅在 stats 含 bridge_* 时显示)-->
-        <div v-if="store.hasScreenplay" class="bridge-banner-wrap">
-          <BridgeGainBanner />
-        </div>
         <div class="pane-body">
+          <!-- 2026-06-08 用户精修:桥接增益面板挪进 pane-body,跟"结构报告"
+               一样随主内容滚动,不再 sticky 占用顶部空间。 -->
+          <div v-if="store.hasScreenplay" class="bridge-banner-wrap">
+            <BridgeGainBanner />
+          </div>
           <div v-if="!store.hasScreenplay" class="placeholder">
             <div class="placeholder-icon">
               <svg
@@ -532,9 +533,10 @@ onMounted(() => {
   padding: var(--space-5) var(--space-6);
 }
 
-/* 阶段 8.3:桥接增益 banner 容器 — 在 pane-header 和 pane-body 之间 */
+/* 2026-06-08 用户精修:挪到 pane-body 内,容器 padding 不再外延,
+   靠 pane-body 自己的 padding;只用 margin-bottom 给下方剧本一点空气 */
 .bridge-banner-wrap {
-  padding: 0 var(--space-6) var(--space-3);
+  margin-bottom: var(--space-3);
 }
 
 .divider {
