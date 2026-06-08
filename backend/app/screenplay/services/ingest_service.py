@@ -139,12 +139,17 @@ def delete_novel(novel_id: str, user_id: str) -> bool:
 
 
 def list_novels(user_id: str) -> list[dict]:
-    """当前用户上传过的所有小说(按上传时间倒序)。"""
+    """当前用户上传过的所有小说(按上传时间倒序)。
+
+    2026-06-08 bug fix:返回 linked_project_id 让前端书架直接显示绑定状态,
+    避免之前的 N+1 问题(每本小说额外发 1 个 getNovel 请求只为读这一字段)。
+    """
     conn = get_connection()
     try:
         rows = conn.execute(
             """SELECT id, title, source_format, source_filename,
-                      total_chars, total_chapters, uploaded_at
+                      total_chars, total_chapters, uploaded_at,
+                      linked_project_id
                  FROM sp_novels
                 WHERE user_id = ?
              ORDER BY uploaded_at DESC""",

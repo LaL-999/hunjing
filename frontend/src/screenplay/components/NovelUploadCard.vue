@@ -8,6 +8,7 @@
 import { ref } from "vue";
 
 import { uploadNovel } from "../api/screenplay-client";
+import { ApiError } from "../../api/client";
 
 const emit = defineEmits<{
   (e: "uploaded", novelId: string): void;
@@ -45,11 +46,30 @@ async function handleFile(file: File) {
     const r = await uploadNovel(file);
     emit("uploaded", r.novel_id);
   } catch (e) {
-    errorMsg.value = e instanceof Error ? e.message : String(e);
+    // 2026-06-08 友好错误消息 — 用户之前看到的 "请求失败 (500)" 无法判断原因
+    errorMsg.value = humanizeUploadError(e);
   } finally {
     isUploading.value = false;
     if (fileInput.value) fileInput.value.value = "";
   }
+}
+
+function humanizeUploadError(e: unknown): string {
+  if (e instanceof ApiError) {
+    // 后端 detail.message 优先(parser/格式具体错)
+    if (e.detail && typeof e.detail === "object" && "message" in e.detail) {
+      const m = (e.detail as { message?: string }).message;
+      if (typeof m === "string" && m) return m;
+    }
+    // 按 status code 给友好提示
+    if (e.status === 401) return "会话已过期 — 请刷新页面重新登录";
+    if (e.status === 413) return `文件过大 — 后端限制 ${MAX_MB}MB`;
+    if (e.status === 400) return `文件解析失败 — ${e.message || "格式可能损坏"}`;
+    if (e.status === 500) return "服务器内部错误 — 已记录,请稍后重试或联系作者";
+    if (e.status === 0) return "网络异常 — 检查后端是否启动";
+    return `上传失败 (${e.status} ${e.code})`;
+  }
+  return e instanceof Error ? e.message : String(e);
 }
 
 function onChange(e: Event) {

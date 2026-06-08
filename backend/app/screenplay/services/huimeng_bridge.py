@@ -199,10 +199,13 @@ def get_character_snapshots_block(
         return ""
     try:
         # 1. 找该项目最近完成的 simulation
+        # 注:simulations 表字段叫 `state`(不是 status),CHECK 取值含 'done'
+        # bug fix 2026-06-08:原来写 status='done' 会 silent fail(SQL no such column),
+        # bridge try/except 吞错 → SP-4 资产永远拉不到。
         sim = fetch_one(
             conn,
             "SELECT id FROM simulations "
-            "WHERE project_id=? AND status='done' "
+            "WHERE project_id=? AND state='done' "
             "ORDER BY created_at DESC LIMIT 1",
             (project_id,),
         )

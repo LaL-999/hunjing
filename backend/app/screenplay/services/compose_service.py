@@ -401,16 +401,25 @@ def orchestrate_full_pipeline(
         "yaml_schema_valid": validation.valid,
     }
 
-    screenplay_id = screenplay_store.save_screenplay(
-        novel_id=novel_id,
-        user_id=user_id,
-        yaml_text=compose_result.yaml_text,
-        stats=final_stats,
-        warnings=warnings,
-        failed_chapters=failed_chapters,
-        schema_version="1.0",
-        model_name=settings.deepseek_model,
-    )
+    # 防御性 catch:理论上 step 1 已经验证 novel 属于 user(get_novel(user_id)),
+    # 这里 save_screenplay 内部的 user_id 二次校验不会失败;但若 LLM 跑期间 novel
+    # 被删 / 用户权限变了,会抛 PermissionError。转 ComposePipelineError 让 router 报 404。
+    try:
+        screenplay_id = screenplay_store.save_screenplay(
+            novel_id=novel_id,
+            user_id=user_id,
+            yaml_text=compose_result.yaml_text,
+            stats=final_stats,
+            warnings=warnings,
+            failed_chapters=failed_chapters,
+            schema_version="1.0",
+            model_name=settings.deepseek_model,
+        )
+    except PermissionError as e:
+        raise ComposePipelineError(
+            f"作品状态异常,无法保存剧本(可能在编排期间被删除):{e}",
+            code="NOVEL_NOT_FOUND",
+        ) from e
 
     _emit(progress_callback, "pipeline_done", {
         "screenplay_id": screenplay_id,

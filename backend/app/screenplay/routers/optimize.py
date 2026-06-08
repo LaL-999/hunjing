@@ -205,19 +205,32 @@ def api_optimize_screenplay(
         "fallback_reason": result.fallback_reason,
         "focus": body.focus,
     }
-    new_id = screenplay_store.save_screenplay(
-        novel_id=record["novel_id"],
-        user_id=user.id,
-        yaml_text=new_yaml_text,
-        stats=stats,
-        warnings=[],
-        failed_chapters=[],
-        schema_version=record["schema_version"],
-        model_name=record["model_name"],
-        parent_screenplay_id=screenplay_id,
-        optimization_origin=origin,
-        optimization_log=optimization_log_dict,
-    )
+    # 防御性 catch:save_screenplay 在 novel 不属于 user 时抛 PermissionError。
+    # 理论上前置 get_screenplay_by_id 已校验 record 归属当前用户,这里不该触发;
+    # 但若 schema 不一致(history bug / 数据迁移异常),裸 PermissionError 会 500。
+    try:
+        new_id = screenplay_store.save_screenplay(
+            novel_id=record["novel_id"],
+            user_id=user.id,
+            yaml_text=new_yaml_text,
+            stats=stats,
+            warnings=[],
+            failed_chapters=[],
+            schema_version=record["schema_version"],
+            model_name=record["model_name"],
+            parent_screenplay_id=screenplay_id,
+            optimization_origin=origin,
+            optimization_log=optimization_log_dict,
+        )
+    except PermissionError:
+        # 隔离=无知:转 404 不暴露内部 user_id 校验细节
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "code": "SCREENPLAY_NOT_FOUND",
+                "message": "剧本所属作品状态异常,无法保存新版本",
+            },
+        )
 
     return {
         "new_screenplay_id": new_id,

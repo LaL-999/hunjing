@@ -15,7 +15,6 @@ import NovelUploadCard from "../components/NovelUploadCard.vue";
 import {
   deleteNovel,
   getHealth,
-  getNovel,
   listNovels,
   linkNovelToProject,
   listProjectsForLink,
@@ -63,18 +62,12 @@ async function loadNovels() {
   novelsLoading.value = true;
   try {
     novels.value = await listNovels();
-    // 阶段 5.1:并行拉每本的 linked_project_id(getNovel 详情)
+    // 2026-06-08 bug fix:list_novels 后端现已直接返 linked_project_id,
+    // 不再 Promise.all N+1 拉详情(100 本 = 100 请求性能灾难)
     const linkMap: Record<string, string | null> = {};
-    await Promise.all(
-      novels.value.map(async (n) => {
-        try {
-          const detail = await getNovel(n.id);
-          linkMap[n.id] = detail.linked_project_id ?? null;
-        } catch {
-          linkMap[n.id] = null;
-        }
-      }),
-    );
+    for (const n of novels.value) {
+      linkMap[n.id] = n.linked_project_id ?? null;
+    }
     linkedProjectByNovel.value = linkMap;
   } catch {
     novels.value = [];

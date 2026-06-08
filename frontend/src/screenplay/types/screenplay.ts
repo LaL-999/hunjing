@@ -18,6 +18,8 @@ export interface NovelInfo {
   total_chars: number;
   total_chapters: number;
   uploaded_at: string;
+  /** 阶段 5.1 桥接 — 绑定到的父平台 project ID;NULL = 未绑定 */
+  linked_project_id?: string | null;
 }
 
 export interface ScreenplayResponse {
