@@ -1,21 +1,50 @@
-"""分集规划 API — 阶段 8.4 MVP(2026-06-08)。
+"""分集规划 API — 阶段 8.4(MVP 规则版)+ 阶段 8.4+(多视角完整版,2026-06-08)。
 
-Endpoint:
-  POST /novels/{novel_id}/plan-episodes  body: { target_minutes_per_ep? }
-    → EpisodePlan
+Endpoints:
+  POST /novels/{novel_id}/plan-episodes       (MVP)
+    body: { target_minutes_per_ep? }
+    → EpisodePlan(纯规则版,向后兼容旧前端)
+
+  POST /novels/{novel_id}/plan-episodes-multi (完整版)
+    body: { preset?, target_minutes_per_ep?, with_llm_titles? }
+    → MultiPerspectivePlan + 4 维评分 + LLM logline 标题
 
 跨用户隔离:user_id 经 Depends(get_current_user) 注入,透传 service。
+
+完整版流水线(plan-episodes-multi):
+  ① dramatic_curve_analyzer → 算每场张力 / cliffhanger / 候选切点
+  ② multi_perspective_planner → 3 视角并行切集(rhythm / hook / arc)
+  ③ episode_quality_scorer    → 每方案 4 维评分
+  ④ episode_title_writer       → 推荐方案的标题 + 下集预告(LLM, BYOK)
+  ⑤ 用评分重选 recommended_perspective(替代 Phase 3 启发式)
 """
 from __future__ import annotations
 
-from fastapi import Depends, APIRouter, HTTPException, status
-from app.deps import get_current_user
-from app.models.user import User
+import logging
+from typing import Optional
+
+import yaml as yamllib
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
-from app.screenplay.services import episode_planner
+from app.deps import get_current_user
+from app.models.user import User
+from app.screenplay.services import (
+    episode_planner,
+    episode_quality_scorer,
+    episode_title_writer,
+    multi_perspective_planner,
+    screenplay_store,
+)
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["episodes"], dependencies=[Depends(get_current_user)])
+
+
+# ============================================================
+# MVP 规则版(阶段 8.4)— 保留不动,向后兼容
+# ============================================================
 
 
 class PlanEpisodesBody(BaseModel):
@@ -36,8 +65,8 @@ def api_plan_episodes(
     """对该 novel 的最新剧本做分集规划(MVP 规则版)。
 
     Errors:
-      404 NOVEL_NOT_FOUND     作品未生成剧本
-      400 PLAN_FAILED         规划失败(yaml 解析 / 场景缺失)
+      404 SCREENPLAY_NOT_FOUND  作品未生成剧本
+      400 PLAN_FAILED           规划失败(yaml 解析 / 场景缺失)
     """
     try:
         plan = episode_planner.plan_episodes(
@@ -46,7 +75,6 @@ def api_plan_episodes(
             target_minutes_per_ep=body.target_minutes_per_ep,
         )
     except episode_planner.EpisodePlanError as e:
-        # 区分两类:无剧本 vs 规划本身失败
         msg = str(e)
         if "尚未生成剧本" in msg:
             raise HTTPException(
@@ -58,3 +86,195 @@ def api_plan_episodes(
             detail={"code": "PLAN_FAILED", "message": msg},
         )
     return episode_planner.to_dict(plan)
+
+
+# ============================================================
+# 完整版(阶段 8.4+ Phase 6)— 多视角 + 4 维评分 + LLM logline
+# ============================================================
+
+
+class PlanEpisodesMultiBody(BaseModel):
+    preset: str = Field(
+        default="short_drama",
+        description=(
+            "预设档:short_drama(2-3 min)/ long_drama(8-12 min)/"
+            " anime(22-30 min)/ custom"
+        ),
+    )
+    target_minutes_per_ep: Optional[float] = Field(
+        default=None,
+        ge=0.5,
+        le=60.0,
+        description="若 preset=custom 必填;其他档可选覆盖默认",
+    )
+    with_llm_titles: bool = Field(
+        default=True,
+        description=(
+            "true=对推荐方案的 episodes 调 LLM 写 logline 标题 + 下集预告;"
+            "false=保持规则标题(节省 token)"
+        ),
+    )
+    apply_llm_titles_to_all_perspectives: bool = Field(
+        default=False,
+        description=(
+            "true=对 3 个视角都调 LLM 写标题(3× LLM 成本);"
+            "false=只对推荐方案(默认,经济)"
+        ),
+    )
+
+
+@router.post("/novels/{novel_id}/plan-episodes-multi")
+def api_plan_episodes_multi(
+    novel_id: str,
+    body: PlanEpisodesMultiBody = PlanEpisodesMultiBody(),
+    user: User = Depends(get_current_user),
+) -> dict:
+    """对该 novel 跑完整版多视角分集规划。
+
+    流水线:
+      ① 多视角生成(rhythm + hook + arc)
+      ② 每方案 4 维评分
+      ③ 用评分选最佳方案
+      ④ 对推荐方案的 episodes 调 LLM 写 logline + teaser(可选)
+      ⑤ 返完整 plan + 评分
+
+    Errors:
+      404 SCREENPLAY_NOT_FOUND  作品未生成剧本
+      400 PLAN_FAILED           规划失败(yaml 解析 / 场景缺失 / preset 无效)
+    """
+    try:
+        plan = multi_perspective_planner.plan_with_perspectives(
+            novel_id,
+            user_id=user.id,
+            preset=body.preset,
+            target_minutes_per_ep=body.target_minutes_per_ep,
+        )
+    except multi_perspective_planner.MultiPerspectivePlanError as e:
+        msg = str(e)
+        if "尚未生成剧本" in msg:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"code": "SCREENPLAY_NOT_FOUND", "message": msg},
+            )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "PLAN_FAILED", "message": msg},
+        )
+
+    # 拉一次 yaml,后面 scorer / title_writer 都要用
+    record = screenplay_store.get_latest_screenplay(novel_id, user_id=user.id)
+    if record is None:
+        # 上面 plan_with_perspectives 已校验过,这里防御
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "SCREENPLAY_NOT_FOUND", "message": "剧本不存在"},
+        )
+    try:
+        parsed = yamllib.safe_load(record["yaml_text"]) or {}
+    except yamllib.YAMLError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "YAML_PARSE_FAILED", "message": f"剧本 yaml 解析失败:{e}"},
+        )
+    scenes_yaml = parsed.get("scenes") or []
+    characters_yaml = parsed.get("characters") or []
+
+    # ② 每方案评分(用评分填回 plan)
+    perspective_scores: dict[str, episode_quality_scorer.PlanQualityScores] = {}
+    for persp in plan.perspectives:
+        if not persp.episodes:
+            continue
+        try:
+            scores = episode_quality_scorer.score_plan(
+                persp.episodes,
+                target_minutes_per_ep=plan.target_minutes_per_ep,
+                cuts=persp.cuts,
+                scenes_yaml=scenes_yaml,
+                characters_yaml=characters_yaml,
+            )
+            perspective_scores[persp.perspective] = scores
+            persp.aggregate_quality = scores.aggregate
+            # 填每集 quality_score
+            ep_score_map = {es.episode_number: es for es in scores.episode_scores}
+            for ep in persp.episodes:
+                es = ep_score_map.get(ep.episode_number)
+                if es is not None:
+                    ep.quality_score = es.quality
+        except Exception as e:  # noqa: BLE001
+            logger.warning(
+                "scoring perspective=%s failed: %s", persp.perspective, e,
+            )
+
+    # ③ 用评分重选 recommended_perspective(替代 Phase 3 启发式)
+    if perspective_scores:
+        best = episode_quality_scorer.pick_best_perspective(perspective_scores)
+        if best is not None:
+            plan.recommended_perspective = best
+
+    # ④ LLM 标题(可选,只对推荐方案 或 全部视角)
+    is_short_drama = body.preset == "short_drama"
+    if body.with_llm_titles:
+        if body.apply_llm_titles_to_all_perspectives:
+            target_perspectives = plan.perspectives
+        else:
+            target_perspectives = [
+                p for p in plan.perspectives
+                if p.perspective == plan.recommended_perspective and p.episodes
+            ]
+
+        for persp in target_perspectives:
+            if not persp.episodes:
+                continue
+            try:
+                title_map = episode_title_writer.write_titles_and_teasers(
+                    persp.episodes,
+                    user_id=user.id,
+                    novel_id=novel_id,
+                    scenes_yaml=scenes_yaml,
+                    characters_yaml=characters_yaml,
+                    is_short_drama=is_short_drama,
+                )
+                if title_map:
+                    episode_title_writer.apply_to_episodes(
+                        persp.episodes, title_map, keep_rule_prefix=True,
+                    )
+            except Exception as e:  # noqa: BLE001
+                logger.warning(
+                    "title_writer perspective=%s failed: %s", persp.perspective, e,
+                )
+
+    # ⑤ 组装响应:plan.to_dict() + perspective_scores(给前端展示分数详情)
+    response = plan.to_dict()
+    response["perspective_scores"] = {
+        name: scores.to_dict() for name, scores in perspective_scores.items()
+    }
+    return response
+
+
+# ============================================================
+# 元数据:可选档案 + 视角说明(给前端 hard-coded 备份)
+# ============================================================
+
+
+@router.get("/episodes/presets")
+def api_get_presets() -> dict:
+    """返预设档列表 + 视角说明。前端启动时拉一次。"""
+    return {
+        "presets": [
+            {
+                "key": key,
+                "label": cfg["label"],
+                "description": cfg["description"],
+                "default_minutes": cfg["target_minutes"],
+            }
+            for key, cfg in multi_perspective_planner.PRESETS.items()
+        ],
+        "perspectives": [
+            {
+                "key": key,
+                "label": multi_perspective_planner.PERSPECTIVE_LABELS[key],
+                "description": multi_perspective_planner.PERSPECTIVE_DESCRIPTIONS[key],
+            }
+            for key in ("rhythm", "hook", "arc")
+        ],
+    }
