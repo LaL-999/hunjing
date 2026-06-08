@@ -602,3 +602,124 @@ def get_canonical_score(yaml_dict: dict) -> dict:
 - 本地路径:`C:\Users\Administrator\Desktop\hunjing-screenplay\`
 - 比赛窗口:2026-06-05 ~ 06-07
 - 完工状态:PR#1-16 全部 merged,218 测试通过,vue-tsc 0 错
+
+---
+
+## 阶段 8.4+ 分集完整版升级(2026-06-08 用户拍板 7 项全补)
+
+阶段 8.4 MVP(`233fb20`)是规则版分集,用户敏锐识别为"工程妥协",授权按
+**多视角创作质量最高方向**升级。本节为 8.4+ 全 9 个 commit 收尾文档。
+
+### 用户原话(关键决策定锚)
+
+- "分集 MVP?只是 MVP 而不是完整版吗?" — 识别妥协
+- "demo 素材?我并不是要做一个只能演示的 demo 素材呀,我是要真正做一个高质量产品的"
+- "你以多视角往创作质量提升最高的方向去做,我很放心你的决策"
+
+### 7 项升级落地清单(全栈完工)
+
+| 编号 | 内容 | 实现位置 |
+|---|---|---|
+| **A** | 戏剧张力曲线驱动切集 | `dramatic_curve_analyzer.py` + `multi_perspective_planner._plan_rhythm` |
+| **B** | 每集结尾 cliffhanger 检测 | `_compute_cliffhanger_potentials` + `_plan_hook` |
+| **C** | LLM logline 标题 | `episode_title_writer.py` BYOK 批量 LLM 调用 |
+| **D** | 桥接 SP-4 状态时间线 | `_try_load_bridge_emotion_curve` SQL JOIN simulation_scenes |
+| **E** | 桥接 SP-2 角色弧光 | `_plan_arc` 调 `huimeng_bridge.get_character_drivers_block` + LLM |
+| **F** | 集间评分(4 维) | `episode_quality_scorer.py` cliffhanger/pacing/character/chapter |
+| **G** | 预设档(短剧/长剧/番剧/自定义) | `multi_perspective_planner.PRESETS` 4 档 + `/episodes/presets` |
+
+### 多视角分集(核心创新,Phase 3)
+
+3 视角并行生成,用户对比择优:
+
+  - **rhythm 节奏视角** — tension valley 切集,适合长剧 / 情感戏
+  - **hook 钩子视角** — cliffhanger 阈值排序,适合短剧 / 悬疑
+  - **arc 角色弧光视角** — LLM 推断转折点(桥接 SP-2 driver),适合人物剧
+
+每视角输出 PerspectivePlan + 一句 rationale + 4 维评分。
+LLM 失败(arc)→ 自动回退 rhythm 算法,标 `llm_failed=true`。
+
+### 完整流水线(`/plan-episodes-multi`)
+
+```
+[用户点 生成分集]
+  ↓
+① dramatic_curve_analyzer.analyze_dramatic_curve()
+    桥接 SP-4 → 每场 tension_score / cliffhanger_potential / 候选切点
+  ↓
+② multi_perspective_planner.plan_with_perspectives()
+    3 视角并行(arc 视角 LLM 调用,失败 fallback rhythm)
+  ↓
+③ episode_quality_scorer.score_plan(每方案)
+    4 维评分填回 plan.aggregate_quality / ep.quality_score
+  ↓
+④ pick_best_perspective → 替代 Phase 3 启发式 recommended
+  ↓
+⑤ episode_title_writer.write_titles_and_teasers(推荐方案)
+    LLM logline + 下集预告,批量 1 次调用拿全部
+  ↓
+[response: MultiPerspectivePlan + perspective_scores]
+```
+
+### 测试覆盖(78 case 全过)
+
+| Phase | 测试文件 | case 数 |
+|---|---|---|
+| 2 | test_dramatic_curve_analyzer.py | 20 |
+| 3 | test_multi_perspective_planner.py | 18 |
+| 4 | test_episode_title_writer.py | 13 |
+| 5 | test_episode_quality_scorer.py | 17 |
+| 6 | test_episodes_endpoint.py (扩展) | 10 |
+
+全 regression:300 passed, 11 skipped(已知 CLI), 0 failed。
+
+### 9 个独立 commit
+
+| Phase | commit | 内容 |
+|---|---|---|
+| 1 | 191f953(Phase 2 包含) | 摸底桥接 + LLM 链路 |
+| 2 | `191f953` | dramatic_curve_analyzer.py + 20 测试 |
+| 3 | `e3845e0` | multi_perspective_planner.py + 18 测试 |
+| 4 | `598d8dd` | episode_title_writer.py + 13 测试 |
+| 5 | `cc09a3e` | episode_quality_scorer.py + 17 测试 |
+| 6 | `1a5b7d1` | routers/episodes.py 扩 + 8 测试 |
+| 7 | `8378edf` | EpisodePlanPanel.vue 三视角对比 UI |
+| 8 | `874af51` | 跨用户隔离测试 + 全套 regression |
+| 9 | (本 commit) | INTEGRATION_NOTES + MEMORY 更新 |
+
+### 关键设计决策
+
+1. **新 endpoint 不破坏旧的** — `/plan-episodes` MVP 仍工作(向后兼容),
+   新 `/plan-episodes-multi` 是完整版。前端默认走 multi。
+
+2. **桥接资产是可选增益,不是强制依赖** — 用户没绑定父平台 project /
+   没跑过 simulation 也能用,只是 arc 视角 LLM 凭剧本推断弧光、tension
+   评分不带 0.4 增强。
+
+3. **LLM 调用全部经 BYOK** — 通过 `call_llm_json` 自动从 ContextVar 读
+   user_id,用户的 vendor key 优先,失败回退平台默认。
+
+4. **异常隔离铁律** — 任一视角失败、LLM 失败、桥接失败,都不阻断响应。
+   降级到次优方案,标志位告知前端(`llm_failed` / `bridge_used`)。
+
+5. **预设档 4 档** — `short_drama` 2.5min / `long_drama` 10min /
+   `anime` 22min / `custom` 用户自定义。每档不只是时长不同,
+   cliffhanger 阈值也不同(短剧要 ≥0.50 强钩子,长剧允许 ≥0.35)。
+
+### 与 Plan A 八项的关系
+
+阶段 8 的 Plan A 列表里,8.4 标"# 4 分集 MVP",8.4+ 完整版**不在原 Plan A
+里** —— 是用户敏锐识别后追加的高优。
+
+至此剧创态的"分集"功能从工程妥协升级为真产品级:
+- 不是"演示用 demo"
+- 不是"60 分够用 MVP"
+- 是接通桥接 + 多视角 LLM + 4 维评分的**作者级提案桌面**
+
+### 推迟项(用户实测后再决定)
+
+- **3c Fountain → Final Draft round-trip 验证** — 需付费软件 + 真编剧实测
+- **集间衔接 LLM 评分** — 4 维启发式已够,LLM 增强等用户反馈
+- **导出分集大纲 PDF / MD** — 平台审稿场景,等用户提需求
+- **章节级 arc 编辑** — 用户拿到分集后回头改的能力,Phase 10 候选
+
