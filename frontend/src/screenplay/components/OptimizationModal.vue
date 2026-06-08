@@ -88,9 +88,13 @@ const qualityPreCheck = computed<{
   // full_screenplay
   const struct = store.structureReport;
   if (!struct) return null;
-  const score = typeof struct.overall_score === "number" ? struct.overall_score : 0;
+  // 2026-06-08 bug fix:overall_score 后端是 0-1 浮点(structure_analyzer.py L111)。
+  // 旧 score>=75 判断永远不可能成立 → "结构优秀,改动很小"提示永远进不来。
+  // 加智能判断:>1 直接用(防未来后端改 0-100),否则当 0-1 处理,统一归一化到 0-100。
+  const rawScore = typeof struct.overall_score === "number" ? struct.overall_score : 0;
+  const score100 = rawScore > 1 ? rawScore : rawScore * 100;
   const notes = struct.notes ?? [];
-  if (struct.overall_health === "excellent" && score >= 75 && notes.length === 0) {
+  if (struct.overall_health === "excellent" && score100 >= 75 && notes.length === 0) {
     return {
       level: "high",
       reason: "整本结构优秀 (≥75) 且无 notes — 可能改动很小。",
@@ -318,7 +322,16 @@ async function handleReject() {
                   <span class="diag-key">结构健康度</span>
                   <span class="diag-value">
                     {{ store.structureReport?.overall_health }} ·
-                    {{ store.structureReport?.overall_score }}/100
+                    <!-- 2026-06-08 bug fix:overall_score 后端是 0-1 浮点,
+                         旧代码直接显示 → "0.56/100",应 ×100 取整。
+                         加 >1 判断保兼容(若后端某天改返 0-100)。 -->
+                    {{
+                      Math.round(
+                        (store.structureReport?.overall_score ?? 0) > 1
+                          ? (store.structureReport?.overall_score ?? 0)
+                          : (store.structureReport?.overall_score ?? 0) * 100,
+                      )
+                    }}/100
                   </span>
                 </div>
                 <ul v-if="structureNotes.length" class="diag-issues">
