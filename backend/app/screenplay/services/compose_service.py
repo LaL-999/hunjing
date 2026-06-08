@@ -213,6 +213,10 @@ def orchestrate_full_pipeline(
         "scenes_skipped": 0,
     }
 
+    # 阶段 5.2:桥接预计算 — SP-7 关系正负极。bible 范围内的角色 + aka 共用,
+    # 不必每章重查。挂了就返空块,scene_splitter 退化到无桥接模式。
+    splitter_bridge_block = _build_polarity_bridge_block(novel_id, user_id, bible_for_composer)
+
     for ch in chapters:
         ch_num = ch["number"]
         ch_id = ch["id"]
@@ -237,6 +241,7 @@ def orchestrate_full_pipeline(
                 story_bible=bible_for_llm,
             ),
             opts.retry_per_call, warnings,
+            bridge_block=splitter_bridge_block,
         )
         stats_counter["split_calls"] += 1
 
@@ -414,13 +419,18 @@ def _run_scene_splitter(
     chapter_input: ChapterInput,
     retry_count: int,
     warnings: list[dict],
+    *,
+    bridge_block: str = "",
 ) -> object | None:
-    """split_chapter + 重试。N+1 次都失败 → 记 warning + 返 None。"""
+    """split_chapter + 重试。N+1 次都失败 → 记 warning + 返 None。
+
+    bridge_block: 阶段 5.2 — SP-7 关系正负极 prompt 块,透传给 split_chapter。
+    """
     ch_num = chapter_input.chapter_number
     last_err: Exception | None = None
     for attempt in range(retry_count + 1):
         try:
-            return split_chapter(chapter_input)
+            return split_chapter(chapter_input, bridge_block=bridge_block)
         except SceneSplitError as e:
             last_err = e
             logger.warning(
@@ -587,6 +597,43 @@ def _resolve_characters_in_scene(
             aka=list(entry.get("aka") or []),
         ))
     return out
+
+
+def _build_polarity_bridge_block(
+    novel_id: str, user_id: str, bible_for_composer: dict,
+) -> str:
+    """阶段 5.2 桥接预计算 — bible 范围内全部角色名 → SP-7 关系正负极块。
+
+    一次 compose 全章共用,不重查。任何失败返 "" — 不阻断主流程。
+    """
+    char_names: list[str] = []
+    for c in bible_for_composer.get("characters") or []:
+        if not isinstance(c, dict):
+            continue
+        nm = (c.get("name") or "").strip()
+        if nm:
+            char_names.append(nm)
+        for a in c.get("aka") or []:
+            if isinstance(a, str) and a.strip():
+                char_names.append(a.strip())
+
+    if not char_names:
+        return ""
+
+    try:
+        from app.screenplay.db.connection import get_connection
+        from app.screenplay.services import huimeng_bridge
+        conn = get_connection()
+        try:
+            return huimeng_bridge.get_relationship_polarity_block(
+                conn, user_id=user_id, novel_id=novel_id,
+                character_names=char_names,
+            )
+        finally:
+            conn.close()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("polarity bridge failed (downgrade to no-bridge): %s", e)
+        return ""
 
 
 def _emit(

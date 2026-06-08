@@ -99,11 +99,17 @@ class SceneSplitError(Exception):
     """场景切分失败(LLM 不可达 / 输出不合规 / 修复 N 次后仍非法)。"""
 
 
-def split_chapter(chapter: ChapterInput) -> SplitResult:
+def split_chapter(
+    chapter: ChapterInput,
+    *,
+    bridge_block: str = "",
+) -> SplitResult:
     """切分一章为场景列表。
 
     Args:
         chapter: 章节输入(段落 + 故事圣经)
+        bridge_block: 阶段 5.2 桥接 — SP-7 关系正负极 markdown 块(可空)。
+                      若非空,作为单独的"扩展上下文"字段附加给 LLM。
 
     Returns:
         SplitResult — 含 scenes 列表 + LLM token usage
@@ -115,12 +121,15 @@ def split_chapter(chapter: ChapterInput) -> SplitResult:
         # 空章 → 返 0 场景,不报错
         return SplitResult(chapter_number=chapter.chapter_number)
 
-    user_input = {
+    user_input: dict[str, Any] = {
         "chapter_number": chapter.chapter_number,
         "chapter_title": chapter.chapter_title or "",
         "paragraphs": chapter.paragraphs,
         "story_bible": chapter.story_bible,
     }
+    # 阶段 5.2:把 SP-7 关系极性块作为单独字段,LLM 会按 prompt 铁律读取
+    if bridge_block:
+        user_input["relationship_context"] = bridge_block
 
     try:
         parsed, usage = call_json(_get_system_prompt(), user_input, max_tokens=4000)
@@ -265,11 +274,41 @@ def split_chapter_from_db(novel_id: str, chapter_id: str, user_id: str) -> Split
         ],
     }
 
+    # 阶段 5.2 桥接 — 抓本章可能在场的所有角色名(取 bible characters 全名 + aka)
+    # → 查 SP-7 关系正负极。任何失败 → 返空块,不阻断切分。
+    char_names_for_bridge: list[str] = []
+    for c in bible.get("characters") or []:
+        nm = (c.get("name") or "").strip()
+        if nm:
+            char_names_for_bridge.append(nm)
+        for a in c.get("aka") or []:
+            if isinstance(a, str) and a.strip():
+                char_names_for_bridge.append(a.strip())
+
+    bridge_block = ""
+    if char_names_for_bridge:
+        try:
+            from app.screenplay.db.connection import get_connection
+            from app.screenplay.services import huimeng_bridge
+            conn = get_connection()
+            try:
+                bridge_block = huimeng_bridge.get_relationship_polarity_block(
+                    conn,
+                    user_id=user_id,
+                    novel_id=novel_id,
+                    character_names=char_names_for_bridge,
+                )
+            finally:
+                conn.close()
+        except Exception:  # noqa: BLE001 — 桥接挂掉绝不阻断切分
+            bridge_block = ""
+
     return split_chapter(
         ChapterInput(
             chapter_number=target_chapter["number"],
             chapter_title=target_chapter.get("title"),
             paragraphs=paragraphs_input,
             story_bible=bible_input,
-        )
+        ),
+        bridge_block=bridge_block,
     )
