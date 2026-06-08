@@ -35,6 +35,7 @@
 | **5.7** | story_bible_extractor 复用 linked-project 角色档 | ✅ 完工(2026-06-08 夜)|
 | **5.8** | huimeng_bridge 单元测试 16 case | ✅ 完工(2026-06-08 夜)|
 | **6** | 前端视觉融合 + API 复用父平台(critical JWT 修复)+ link UI + 入口卡差异化卖点 | ✅ 完工(2026-06-08 晚)|
+| **7** | 比赛 234 测试迁入 + JWT/bridge fixture + 222 全过 + 11 CLI 合理 skip | ✅ 完工(2026-06-08 深夜)|
 | 6 | 视觉融合(精修)| ⏳ |
 | 7 | 测试 + 文档收尾 | ⏳ |
 
@@ -54,6 +55,49 @@
   - `from app.main import app` 成功导入
   - 18 个 `/api/screenplay/*` 路由全部注册
   - `pytest --co` 962 测试收集成功(父平台测试无污染)
+
+### 阶段 7 完工摘要(测试迁入 — 7 阶段大工程收官)
+
+把比赛仓库 `hunjing-screenplay/backend/tests/` 的 234 个 pytest case 整套
+迁入 `backend/tests/screenplay/`,适配父平台的 JWT / user_id 隔离 / sp_
+前缀 / 父平台 conftest。
+
+**机械改造**(sed 批量):
+- `from app.X` → `from app.screenplay.X`(18 .py 文件)
+- `monkeypatch.setattr("app.services.X.Y")` → `monkeypatch.setattr("app.screenplay.services.X.Y")`
+- 端点路径 `"/novels"` / `"/chapters/X"` 等 → `"/api/screenplay/novels"` / `"/api/screenplay/chapters/X"`
+- 直接 SQL `INTO novels` → `INTO sp_novels`(`chapters` / `paragraphs` / `screenplays` / `bible_*` 同)
+- LLM mock lambda 加 `**kwargs`(阶段 5 桥接 + 阶段 3.5 user_id 让函数签名加了新 kwarg)
+- 局部 `temp_db` fixture body 改 noop(父平台 reset_test_db autouse 已经搞定)
+- 局部 `client` fixture body → 返 conftest 的 `screenplay_client`(带 Bearer JWT)
+
+**新增 `tests/screenplay/conftest.py`**:
+- `screenplay_user` / `screenplay_user_token` / `screenplay_client`:造一个 user
+  + 签 JWT + 返带 Bearer 的 TestClient
+- `another_user_token`:第二个 user(测跨用户隔离)
+- `temp_db` / `client`:比赛 fixture 兼容层(yield None / 返 screenplay_client)
+- `mock_huimeng_bridge`:把所有 huimeng_bridge.get_*_block 全 stub 为空字符串
+  (controller 可以 set_drivers / set_polarity 等注入响应)
+- `mock_screenplay_llm`:把 `app.screenplay.services.llm_client.call_json` 全 stub
+- **autouse `_inject_default_user_id_into_screenplay_services`**:每个剧创测试
+  自动建 user + monkeypatch ingest_service / story_bible_service / screenplay_store /
+  compose_service / scene_splitter 的所有 user_id 参数,让比赛测试无须手改
+  调用就能跑(只对 `tests/screenplay/` 路径触发,不影响父平台测试)
+
+**手改 / 重写**:
+- `_insert_novel` / `_insert_novel_with_chapters` 助手函数(3 文件)读
+  conftest autouse 已建的 user → 写 `sp_novels.user_id`
+- `test_health.py` 重写:比赛仓库的 /health 返 `service: "hunjing-screenplay"`
+  schema,父平台无此结构 → 改测「父平台 /healthz 仍可达」+「18 个
+  `/api/screenplay/*` 路由已注册」语义
+- `test_cli.py` 整文件 `pytest.mark.skip`:CLI 模块未迁入父平台
+  (用户改走 endpoint),保留文件但不跑
+
+**最终结果**(`pytest tests/screenplay/`):
+- ✅ **222 / 234 PASSING**
+- ⏸ **11 skipped**(test_cli.py 全文件 — 已说明原因)
+- ❌ **0 failed**
+- 父平台 962 测试 0 污染(`pytest --co` 总 1211)
 
 ### 阶段 6 完工摘要(前端视觉融合 + link UI)
 
