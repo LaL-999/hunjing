@@ -26,7 +26,8 @@
 | **3.5** | service 层 SQL user_id 过滤(数据用户级隔离) | ✅ 完工(2026-06-08 傍晚)|
 | **4** | DB schema 进 migration runner(quota 后期五态统一)| ✅ 完工(2026-06-08 夜)|
 | **4.5** | sp_novels.user_id INTEGER→TEXT 类型对齐(阶段 3 留 bug)| ✅ 完工(2026-06-08 夜)|
-| **5** | 故事圣经 A 隔离 + 角色 Agent 复用层(关键) | ⏳ |
+| **5.1** | huimeng_bridge 桥接层骨架 + linked_project_id + PATCH /link endpoint | ✅ 完工(2026-06-08 夜)|
+| **5.2-5.7** | 6 agent 逐个接通 SP-2/3/4/7 资产 | ⏳ 接力中 |
 | 6 | 视觉融合(精修)| ⏳ |
 | 7 | 测试 + 文档收尾 | ⏳ |
 
@@ -46,6 +47,48 @@
   - `from app.main import app` 成功导入
   - 18 个 `/api/screenplay/*` 路由全部注册
   - `pytest --co` 962 测试收集成功(父平台测试无污染)
+
+### 阶段 5.1 完工摘要(huimeng_bridge 骨架就位)
+
+阶段 5 是产品差异化命脉 — 决定剧创态是"独立 SaaS"还是"浑晶真护城河"。
+拆成 7 个子阶段:5.1 桥接层骨架 + 5.2-5.7 六个 agent 逐个接通。
+
+**改动**:
+- migration 086:`sp_novels` 加 `linked_project_id TEXT` FK projects ON DELETE SET NULL
+- `app/screenplay/services/huimeng_bridge.py`(~410 行):6 个 get_*_block 函数
+  + link_novel_to_project + get_linked_characters
+- `app/screenplay/routers/novels.py`:新 endpoint `PATCH /novels/{id}/link`
+  body `{ project_id }` 或 `{ project_id: null }`
+
+**6 个 get_*_block 函数 → 产出 prompt 块**:
+| 函数 | 接通父平台资产 | 用于哪个 agent |
+|---|---|---|
+| `get_character_drivers_block` | SP-2 surface_goal/deep_need/secret_json | element_extractor / dialogue_attributor / adaptation_decision |
+| `get_character_knowledge_block` | SP-3 story_facts + character_knowledge | element_extractor / scene_splitter / adaptation_decision |
+| `get_character_snapshots_block` | SP-4 character_state_snapshots | screenplay_optimizer 跨场一致性 |
+| `get_relationship_polarity_block` | SP-7 relationships.polarity | scene_splitter / element_extractor / dialogue_attributor |
+| `get_story_facts_block` | SP-3 story_facts(项目级)| adaptation_decision 不许编造细节 |
+| `get_linked_characters` | characters 表全字段 | story_bible_extractor 复用已建角色 |
+
+**异常隔离铁律**:
+- 每个 get_*_block 失败(浑晶 service 抛错 / 表不存在)→ 返 `""` 或 `[]`
+- **绝不阻断**剧创 agent — 桥接挂掉,剧本质量降级但仍能出
+- 桥接的"额外语料"是奢侈品 prompt 增强,不是 critical path
+
+**安全模型**:
+- 所有 get_*_block 必须传 `user_id`,内部走 `_resolve_project_id(user_id, novel_id)`
+- 校验 sp_novels 归属当前用户 → 拿 linked_project_id
+- 跨用户访问 sp_novels 返 None → bridge 退化 "" → 等于未 link
+- link_novel_to_project 双重校验:novel 属于 user + project 属于 user
+
+**未链接的兜底**:
+- linked_project_id NULL → bridge 函数返空块 → agent 用纯小说原文跑(等于阶段 3 行为)
+- 用户在前端绑定后,**同名角色立刻享受所有 SP-2/3/4/7 资产增益**
+
+**验证**:
+- ✓ `from app.main import app` — 19 个 /api/screenplay 路由(原 18 + 新 /link)
+- ✓ pytest --co 962 测试无污染
+- ✓ migration 086 自动应用(linked_project_id 列已加)
 
 ### 阶段 4.5 完工摘要
 
