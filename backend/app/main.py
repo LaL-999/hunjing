@@ -305,6 +305,7 @@ def create_app() -> FastAPI:
     try:
         from app.screenplay.routers import (
             attributions as sp_attributions,
+            character_profiles as sp_character_profiles,
             compose as sp_compose,
             decisions as sp_decisions,
             elements as sp_elements,
@@ -323,6 +324,8 @@ def create_app() -> FastAPI:
         app.include_router(sp_compose.router, prefix="/api/screenplay", tags=["screenplay"])
         app.include_router(sp_optimize.router, prefix="/api/screenplay", tags=["screenplay"])
         app.include_router(sp_export.router, prefix="/api/screenplay", tags=["screenplay"])
+        # 阶段 8.2:角色页 + 关系图 + 桥接资产可视化
+        app.include_router(sp_character_profiles.router, prefix="/api/screenplay", tags=["screenplay"])
     except Exception as e:  # noqa: BLE001
         import logging
         logging.warning("剧创态 router 注册失败(不阻塞父平台): %s", e)

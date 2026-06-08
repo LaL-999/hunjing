@@ -11,6 +11,7 @@ import { computed, onMounted, provide, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 
 import AdaptationDecisionPanel from "../components/AdaptationDecisionPanel.vue";
+import CharacterProfilesPanel from "../components/CharacterProfilesPanel.vue";
 import ComposeDialog from "../components/ComposeDialog.vue";
 import ExportMenu from "../components/ExportMenu.vue";
 import NovelTextPanel from "../components/NovelTextPanel.vue";
@@ -46,6 +47,11 @@ function openComposeDialog() {
 function closeComposeDialog() {
   composeDialogVisible.value = false;
 }
+
+// 阶段 8.2:角色档案 + 关系图 全屏 modal
+const characterPanelVisible = ref<boolean>(false);
+function openCharacterPanel() { characterPanelVisible.value = true; }
+function closeCharacterPanel() { characterPanelVisible.value = false; }
 
 // AI 优化弹窗(A + B 入口共用)
 const optimizationModalVisible = ref<boolean>(false);
@@ -120,6 +126,24 @@ onMounted(() => {
         </div>
       </div>
       <div class="topbar-right">
+        <!-- 阶段 8.2:角色档案 + 关系图入口 -->
+        <button
+          class="secondary-btn"
+          @click="openCharacterPanel"
+          :disabled="store.loadingState === 'loading'"
+          title="角色档案 + 关系图 + 桥接资产"
+        >
+          <svg
+            width="14" height="14" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
+          >
+            <circle cx="9" cy="7" r="3" />
+            <path d="M14.5 9.5a2.5 2.5 0 1 0 0-5" />
+            <path d="M2 21v-2a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v2" />
+            <path d="M17 21v-2a4 4 0 0 0-2.5-3.7" />
+          </svg>
+          角色
+        </button>
         <VersionSwitcher v-if="store.hasScreenplay" />
         <ExportMenu v-if="store.hasScreenplay" />
         <button
@@ -205,6 +229,13 @@ onMounted(() => {
       :scope="optimizationScope"
       :target-scene-id="optimizationTargetScene"
       @close="closeOptimizationModal"
+    />
+
+    <!-- ===== 阶段 8.2:角色档案 + 关系图 ===== -->
+    <CharacterProfilesPanel
+      :novel-id="props.id"
+      :visible="characterPanelVisible"
+      @close="closeCharacterPanel"
     />
   </div>
 </template>
@@ -313,6 +344,32 @@ onMounted(() => {
   background: var(--accent-hover);
 }
 .primary-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* 阶段 8.2:secondary-btn 用于"角色"等次级操作 */
+.secondary-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 14px;
+  border-radius: var(--radius-md);
+  background: var(--card-bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  font-size: 12.5px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.secondary-btn:hover:not(:disabled) {
+  background: var(--hover-bg);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.secondary-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }

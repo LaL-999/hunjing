@@ -112,6 +112,87 @@ export async function listProjectsForLink(): Promise<Project[]> {
 }
 
 // ============================================================
+// 阶段 8.2 — 角色档案 + 关系图
+// ============================================================
+
+export interface CharacterStatsApi {
+  scene_count: number;
+  chapter_count: number;
+  dialogue_count: number;
+  voiceover_count: number;
+  first_appearance_scene: string | null;
+  first_appearance_number: number | null;
+  role_tier: "protagonist" | "supporting" | "bit_part" | "extra";
+}
+
+export interface CharacterKeyEventApi {
+  description: string;
+  chapter_number: number | null;
+}
+
+export interface CharacterBridgeAssetsApi {
+  surface_goal: string | null;
+  deep_need: string | null;
+  fatal_blind_spot: string | null;
+  arc_from_to: string | null;
+  secrets: Array<{ description: string; hidden_from?: string[] }>;
+  snapshot_position: string | null;
+  snapshot_hp_status: string | null;
+  snapshot_emotion_top: string | null;
+  snapshot_inventory: string[];
+}
+
+export interface CharacterProfileApi {
+  id: string;
+  name: string;
+  aka: string[];
+  description: string;
+  is_protagonist: boolean;
+  stats: CharacterStatsApi;
+  relationships: Array<{
+    target_id: string;
+    target_name: string;
+    type: string;
+    description: string;
+  }>;
+  key_events: CharacterKeyEventApi[];
+  bridge_assets: CharacterBridgeAssetsApi | null;
+}
+
+export interface GraphNodeApi {
+  id: string;
+  name: string;
+  role_tier: string;
+  weight: number;
+  is_protagonist: boolean;
+  has_bridge_assets: boolean;
+}
+
+export interface GraphEdgeApi {
+  source: string;
+  target: string;
+  type: string;
+  description: string;
+  polarity: "positive" | "negative" | "neutral" | null;
+}
+
+export interface CharacterProfilesResponse {
+  novel_id: string;
+  screenplay_id: string;
+  linked_project_id: string | null;
+  characters: CharacterProfileApi[];
+  graph: { nodes: GraphNodeApi[]; edges: GraphEdgeApi[] };
+}
+
+export async function getCharacterProfiles(
+  novelId: string,
+): Promise<CharacterProfilesResponse> {
+  return api.get(
+    `/screenplay/novels/${encodeURIComponent(novelId)}/characters`,
+  );
+}
+
+// ============================================================
 // Screenplay
 // ============================================================
 
