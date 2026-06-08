@@ -329,13 +329,31 @@ function backToProject() {
 <template>
   <div class="ft-view">
     <header class="ft-hdr">
-      <button class="back-btn" @click="backToProject">← 返回项目</button>
-      <h2>续作家族树</h2>
-      <div v-if="data" class="ft-stats">
-        <span class="stat-chip">{{ data.stats.total_sims }} 篇</span>
-        <span class="stat-chip">{{ data.stats.roots }} 根</span>
-        <span class="stat-chip">最深 {{ data.stats.max_depth + 1 }} 代</span>
-        <span class="stat-chip">{{ data.stats.combo_batches }} 反事实批次</span>
+      <button class="back-btn" @click="backToProject" title="返回项目">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M19 12H5M12 19l-7-7 7-7" />
+        </svg>
+        <span>项目</span>
+      </button>
+      <div class="ft-title-block">
+        <h2 class="ft-title">续作家族树</h2>
+        <p v-if="data" class="ft-meta">
+          <span class="meta-num mono">{{ data.stats.total_sims }}</span>
+          <span class="meta-lbl">篇推演</span>
+          <span class="meta-dot">·</span>
+          <span class="meta-num mono">{{ data.stats.roots }}</span>
+          <span class="meta-lbl">根</span>
+          <span class="meta-dot">·</span>
+          <span class="meta-lbl">最深</span>
+          <span class="meta-num mono">{{ data.stats.max_depth + 1 }}</span>
+          <span class="meta-lbl">代</span>
+          <span v-if="data.stats.combo_batches > 0" class="meta-dot">·</span>
+          <template v-if="data.stats.combo_batches > 0">
+            <span class="meta-num mono">{{ data.stats.combo_batches }}</span>
+            <span class="meta-lbl">反事实批次</span>
+          </template>
+        </p>
       </div>
     </header>
 
@@ -358,39 +376,37 @@ function backToProject() {
         class="ft-svg"
         :viewBox="`0 0 ${svgWidth} ${svgHeight}`"
       >
-        <!-- 边(子→父连线)-->
+        <!-- 边(子→父连线)— 2026-06-08 改 class 让 CSS 控制色,响应双主题 -->
         <g class="ft-edges">
           <path
             v-for="(e, i) in edges"
             :key="`edge-${i}`"
             :d="`M ${e.x1} ${e.y1} C ${e.x1} ${(e.y1 + e.y2) / 2}, ${e.x2} ${(e.y1 + e.y2) / 2}, ${e.x2} ${e.y2}`"
             fill="none"
-            :stroke="e.isMultiParent ? '#c4b5fd' : '#d1d5db'"
-            :stroke-width="e.isMultiParent ? 1.5 : 1.2"
-            :stroke-dasharray="e.isMultiParent ? '4 4' : 'none'"
+            :class="e.isMultiParent ? 'ft-edge ft-edge--cf' : 'ft-edge ft-edge--default'"
           />
         </g>
 
-        <!-- combination batch 背景框(把同 batch 的 N 个兄弟框起来) -->
+        <!-- combination batch 容器(2026-06-08 重设计:去虚线 PPT 感,改左侧 indicator + 顶部标签) -->
         <g class="ft-batch-bg">
-          <rect
+          <!-- 左边 2px 紫色 indicator 表示 batch 起始边界 -->
+          <line
             v-for="(g, i) in layout.comboGroups"
-            :key="`batch-${i}`"
-            :x="nodeX(g.rootCol) - 8"
-            :y="nodeY(0) - 14"
-            :width="g.members.length * COL_W - (COL_W - NODE_W) + 8"
-            :height="(g.row + 1) * ROW_H + 8"
-            rx="10"
-            fill="rgba(139, 92, 246, 0.04)"
-            stroke="rgba(139, 92, 246, 0.18)"
-            stroke-width="1"
-            stroke-dasharray="3 3"
+            :key="`batch-line-${i}`"
+            :x1="nodeX(g.rootCol) - 12"
+            :y1="nodeY(0) - 6"
+            :x2="nodeX(g.rootCol) - 12"
+            :y2="nodeY(g.row) + NODE_H + 6"
+            stroke="var(--color-accent)"
+            stroke-width="2"
+            stroke-linecap="round"
+            opacity="0.55"
           />
           <text
             v-for="(g, i) in layout.comboGroups"
             :key="`batch-lbl-${i}`"
-            :x="nodeX(g.rootCol) + 4"
-            :y="nodeY(0) - 18"
+            :x="nodeX(g.rootCol) - 4"
+            :y="nodeY(0) - 14"
             class="ft-batch-label"
           >反事实批次 · {{ g.combo.total_combinations }} 组</text>
         </g>
@@ -430,7 +446,12 @@ function backToProject() {
                 <span class="ft-node-chars">{{ n.narrative_chars.toLocaleString() }} 字</span>
                 <span class="ft-node-sep">·</span>
                 <span class="ft-node-mode">{{ n.mode }}</span>
-                <span v-if="n.with_grand_finale" class="ft-node-finale" title="走向终章">★ 终章</span>
+                <span v-if="n.with_grand_finale" class="ft-node-finale" title="走向终章">
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                  </svg>
+                  终章
+                </span>
               </div>
             </div>
           </foreignObject>
@@ -449,9 +470,18 @@ function backToProject() {
             <span
               class="dr-state"
               :style="{ color: stateColor(drawerNode.state).text }"
-            >● {{ stateLabel(drawerNode.state) }}</span>
+            >
+              <span class="dr-state-dot" :style="{ background: stateColor(drawerNode.state).text }"></span>
+              {{ stateLabel(drawerNode.state) }}
+            </span>
           </div>
-          <button class="dr-close" @click="closeDrawer" aria-label="关闭">×</button>
+          <button class="dr-close" @click="closeDrawer" aria-label="关闭">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
         </header>
 
         <div class="dr-body">
@@ -466,7 +496,12 @@ function backToProject() {
             <span class="dr-meta-sep">·</span>
             <span>{{ drawerNode.mode }} 模式</span>
             <span v-if="drawerNode.with_grand_finale" class="dr-meta-sep">·</span>
-            <span v-if="drawerNode.with_grand_finale" class="dr-finale">⭐ 走向终章</span>
+            <span v-if="drawerNode.with_grand_finale" class="dr-finale">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+              </svg>
+              走向终章
+            </span>
           </p>
 
           <div class="dr-section">
@@ -488,9 +523,19 @@ function backToProject() {
             v-if="drawerNode.combination_run_id"
             class="dr-btn dr-btn--ghost"
             @click="gotoCompare(drawerNode)"
-          >⇆ 查看批次</button>
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M7 16V4 M3 8l4-4 4 4 M17 8v12 M21 16l-4 4-4-4" />
+            </svg>
+            查看批次
+          </button>
           <button class="dr-btn dr-btn--primary" @click="gotoDetail(drawerNode)">
-            查看完整 →
+            <span>查看完整</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M5 12h14 M12 5l7 7-7 7" />
+            </svg>
           </button>
         </footer>
       </aside>
@@ -503,151 +548,216 @@ function backToProject() {
 </template>
 
 <style scoped>
+/* 2026-06-08 UI 大升级 T10:
+ *   - 全部硬编码色 → var(--color-*) tokens(响应双主题)
+ *   - chip 药丸 → inline meta(像剧创态共 N 篇风格)
+ *   - back-btn 去米色框 → ghost(透明 hover 出底)
+ *   - canvas 加 faint grid 背景纹理(去空旷)
+ */
+
 .ft-view {
-  padding: 24px;
+  padding: var(--space-6) var(--space-8);
   max-width: 1600px;
   margin: 0 auto;
   position: relative;
+  background: var(--color-bg);
+  min-height: calc(100vh - var(--topbar-height));
 }
 
 .ft-hdr {
   display: flex;
   align-items: center;
-  gap: 16px;
-  margin-bottom: 20px;
+  gap: var(--space-5);
+  margin-bottom: var(--space-6);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--color-border);
 }
 .back-btn {
-  background: var(--color-surface-2, #f1f5f9);
-  border: 1px solid var(--color-border, #e5e7eb);
-  border-radius: 7px;
-  padding: 6px 12px;
-  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  padding: 5px 10px 5px 8px;
+  font-size: var(--text-xs);
   cursor: pointer;
-  color: #4a4640;
+  color: var(--color-text-muted);
+  transition: all var(--duration-fast) var(--ease-out);
 }
 .back-btn:hover {
-  background: #f7f5f0;
+  background: var(--color-surface-hover);
+  color: var(--color-text);
 }
-.ft-hdr h2 {
-  margin: 0;
-  font-size: var(--text-xl, 18px);
-  font-weight: 600;
-}
-.ft-stats {
+.ft-title-block {
   display: flex;
-  gap: 6px;
-  margin-left: auto;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
 }
-.stat-chip {
-  background: #f7f5f0;
-  border: 1px solid #ece8de;
-  border-radius: 999px;
-  padding: 3px 10px;
-  font-size: 11.5px;
-  color: #6a665e;
+.ft-title {
+  margin: 0;
+  font-size: var(--text-xl);
   font-weight: 500;
+  color: var(--color-text);
+  font-family: var(--font-serif);
+  letter-spacing: 0.01em;
+}
+.ft-meta {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px;
+  font-size: var(--text-xs);
+  letter-spacing: 0.04em;
+  color: var(--color-text-subtle);
+}
+.meta-num {
+  color: var(--color-accent-text);
+  font-weight: 600;
+  font-size: var(--text-sm);
+}
+.meta-lbl {
+  color: var(--color-text-muted);
+}
+.meta-dot {
+  color: var(--color-text-subtle);
+  opacity: 0.6;
+  margin: 0 2px;
+}
+.mono {
+  font-family: var(--font-mono);
 }
 
 .err-banner {
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-  color: #b91c1c;
+  background: var(--color-danger-soft);
+  border-left: 3px solid var(--color-danger);
+  color: var(--color-danger);
   padding: 10px 14px;
-  border-radius: 8px;
-  margin-bottom: 16px;
-  font-size: 13px;
+  border-radius: var(--radius-sm);
+  margin-bottom: var(--space-4);
+  font-size: var(--text-sm);
 }
 
 .ft-skeleton {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: 20px 0;
+  gap: var(--space-4);
+  padding: var(--space-5) 0;
 }
 
 .empty-state {
   text-align: center;
-  padding: 80px 0;
-  color: #9a968d;
+  padding: var(--space-16) 0;
+  color: var(--color-text-subtle);
 }
 .empty-title {
-  font-size: 14px;
+  font-size: var(--text-base);
   font-weight: 500;
-  color: #6a665e;
+  color: var(--color-text-muted);
   margin: 0 0 6px;
+  font-family: var(--font-serif);
 }
 .empty-hint {
-  font-size: 12px;
+  font-size: var(--text-xs);
   margin: 0;
 }
 
-/* ===== SVG 画布 ===== */
+/* ===== SVG 画布 — 加 faint grid 治"空旷感"(grid 在 ::before,主 bg 纯净) ===== */
 .ft-canvas {
-  background: var(--color-surface, #fff);
-  border: 1px solid var(--color-border, #ece8de);
-  border-radius: 12px;
-  padding: 12px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5) var(--space-6);
   overflow: auto;
   max-height: calc(100vh - 220px);
+  position: relative;
+}
+/* 浅 grid 背景纹理 — 极淡,只在 canvas 大留白时给视觉锚定,不抢节点焦点 */
+.ft-canvas::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(to right, var(--color-border) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--color-border) 1px, transparent 1px);
+  background-size: 48px 48px;
+  opacity: 0.35;
+  pointer-events: none;
+  border-radius: var(--radius-lg);
 }
 
 .ft-svg {
   display: block;
+  position: relative;
 }
 
-/* ===== 节点(2026-06-06 v2 重设计 — 低饱和现代风,foreignObject + HTML)===== */
+/* 边 — class 化以响应 tokens / 双主题 */
+.ft-edge--default {
+  stroke: var(--color-border-strong);
+  stroke-width: 1.2;
+}
+.ft-edge--cf {
+  stroke: var(--color-accent-border);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 4;
+}
+
+/* ===== 节点卡 — 2026-06-08 重设计,全 tokens + 阴影克制 ===== */
 .ft-node {
   box-sizing: border-box;
   height: 100%;
   width: 100%;
-  padding: 12px 14px;
-  background: var(--color-surface, #fff);
-  border: 1px solid var(--color-border, #ece8de);
-  border-radius: 10px;
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
   cursor: pointer;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  gap: 4px;
-  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
-  transition: border-color 180ms, box-shadow 180ms;
+  gap: 6px;
+  font-family: var(--font-sans);
+  transition: all var(--duration-fast) var(--ease-out);
   position: relative;
   overflow: hidden;
 }
-/* 左侧 2px 状态色 indicator(全身高)— 低调但可识别 */
+/* 左侧 3px 状态色 indicator(全身高,加粗一点更可识别)*/
 .ft-node::before {
   content: "";
   position: absolute;
   left: 0; top: 0; bottom: 0;
-  width: 2px;
-  background: #d1d5db;
+  width: 3px;
+  background: var(--color-text-subtle);
 }
-.ft-node--done::before    { background: #10b981; }
-.ft-node--running::before { background: #6366f1; }
-.ft-node--pending::before { background: #9ca3af; }
-.ft-node--failed::before  { background: #ef4444; }
+.ft-node--done::before    { background: var(--color-success); }
+.ft-node--running::before { background: var(--color-accent); }
+.ft-node--pending::before { background: var(--color-text-subtle); }
+.ft-node--failed::before  { background: var(--color-danger); }
 
-/* hover — 只动 box-shadow + border 颜色,不动 transform(避免闪烁)*/
 .ft-node:hover {
-  border-color: #c4bfb3;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 0, 0, 0.03);
+  border-color: var(--color-accent-border);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
 }
 
-/* 独立合并产物 — 金色虚线右上角小标签代替整个边框,更克制 */
+/* 独立合并产物 — 金色右上角小角标,克制 */
 .ft-node--final {
-  border-color: #fcd34d;
+  border-color: var(--color-warning);
 }
 .ft-node--final::after {
   content: "合并产物";
   position: absolute;
   top: 0;
   right: 0;
-  background: #fef3c7;
-  color: #92400e;
+  background: var(--color-warning-soft);
+  color: var(--color-warning);
   font-size: 9.5px;
   font-weight: 600;
-  padding: 2px 6px;
-  border-radius: 0 9px 0 6px;
+  padding: 2px 8px;
+  border-radius: 0 var(--radius-lg) 0 var(--radius-sm);
   letter-spacing: 0.04em;
 }
 
@@ -657,40 +767,42 @@ function backToProject() {
   align-items: center;
   gap: 6px;
   font-size: 10.5px;
-  color: #9a968d;
+  color: var(--color-text-subtle);
   font-weight: 500;
   letter-spacing: 0.04em;
 }
 .ft-node-dot {
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   flex-shrink: 0;
-  background: #d1d5db;
+  background: var(--color-text-subtle);
 }
-.ft-dot--done    { background: #10b981; }
+.ft-dot--done    { background: var(--color-success); }
 .ft-dot--running {
-  background: #6366f1;
+  background: var(--color-accent);
   animation: ft-dot-pulse 1.4s ease-in-out infinite;
 }
-.ft-dot--pending { background: #9ca3af; }
-.ft-dot--failed  { background: #ef4444; }
+.ft-dot--pending { background: var(--color-text-subtle); }
+.ft-dot--failed  { background: var(--color-danger); }
 .ft-node-depth {
-  color: #6a665e;
+  color: var(--color-text);
   font-weight: 600;
+  font-family: var(--font-mono);
+  font-size: 11px;
 }
 .ft-node-state {
   margin-left: auto;
-  color: #9a968d;
+  color: var(--color-text-muted);
 }
 
-/* row2 — divergence 主标题,3 行 line-clamp(短文案 1-2 行,长文案最多 3 行)*/
+/* row2 — divergence 主标题 */
 .ft-node-title {
   font-size: 12.5px;
-  color: #2a2724;
+  color: var(--color-text);
   line-height: 1.55;
   font-weight: 500;
-  flex: 1;                  /* 占满中间剩余空间 */
+  flex: 1;
   min-height: 0;
   display: -webkit-box;
   -webkit-line-clamp: 3;
@@ -699,66 +811,75 @@ function backToProject() {
   text-overflow: ellipsis;
   word-break: break-all;
 }
+/* 反事实组合路径标签 — 用衬线斜体 + 微紫,去掉过亮的紫底色 */
 .ft-path {
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  color: #6d28d9;
-  font-size: 12px;
-  background: #ede9fe;
-  padding: 1px 6px;
-  border-radius: 4px;
+  font-family: var(--font-mono);
+  color: var(--color-accent-text);
+  font-size: 11.5px;
+  background: var(--color-accent-soft);
+  padding: 1px 7px;
+  border-radius: var(--radius-sm);
+  letter-spacing: 0.02em;
 }
 
-/* row3 — 字数 / 模式 / 终章标 */
+/* row3 — 字数 / 模式 / 终章 */
 .ft-node-row3 {
   display: flex;
   align-items: center;
   gap: 5px;
   font-size: 10.5px;
-  color: #9a968d;
+  color: var(--color-text-subtle);
   font-variant-numeric: tabular-nums;
 }
 .ft-node-chars {
-  color: #4a4640;
+  color: var(--color-text);
   font-weight: 600;
+  font-family: var(--font-mono);
 }
-.ft-node-sep { color: #d1cdc1; }
+.ft-node-sep { color: var(--color-border-strong); }
 .ft-node-mode {
   text-transform: lowercase;
   letter-spacing: 0.02em;
+  color: var(--color-text-muted);
 }
 .ft-node-finale {
   margin-left: auto;
-  color: #d97706;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--color-warning);
   font-weight: 600;
-  background: #fef3c7;
+  background: var(--color-warning-soft);
   padding: 1px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-size: 9.5px;
 }
 
 @keyframes ft-dot-pulse {
   0%, 100% { opacity: 1; transform: scale(1); }
-  50%      { opacity: 0.4; transform: scale(0.7); }
+  50%      { opacity: 0.4; transform: scale(0.75); }
 }
 
-/* combination batch 标签 */
+/* combination batch 文字标签 — fill 用 accent-text 而非 hardcode */
 .ft-batch-label {
   font-size: 11px;
-  fill: #8b5cf6;
+  fill: var(--color-accent-text);
   font-weight: 500;
+  letter-spacing: 0.04em;
+  font-family: var(--font-sans);
 }
 
-/* ===== drawer ===== */
+/* ===== drawer — 全 tokens 化,宽度从 440 固定 → clamp 自适应 ===== */
 .ft-drawer {
   position: fixed;
   top: 0;
   right: 0;
   bottom: 0;
-  width: 440px;
-  max-width: 92vw;
-  background: var(--color-surface, #fff);
-  box-shadow: -8px 0 32px rgba(0, 0, 0, 0.12);
-  z-index: 60;
+  width: clamp(440px, 36vw, 560px);
+  max-width: 95vw;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-lg);
+  z-index: var(--z-modal);
   display: flex;
   flex-direction: column;
 }
@@ -767,149 +888,177 @@ function backToProject() {
   inset: 0;
   background: rgba(0, 0, 0, 0.18);
   backdrop-filter: blur(2px);
-  z-index: 55;
+  z-index: var(--z-modal-backdrop);
 }
 
 .dr-hdr {
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--color-border, #ece8de);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--color-border);
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
 }
 .dr-title {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   flex: 1;
 }
 .dr-depth {
   font-weight: 600;
-  font-size: 14px;
-  color: #1f1f1e;
+  font-size: var(--text-base);
+  color: var(--color-text);
+  font-family: var(--font-mono);
 }
 .dr-state {
-  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--text-xs);
   font-weight: 500;
+  letter-spacing: 0.04em;
+}
+.dr-state-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
 }
 .dr-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
   background: transparent;
   border: none;
-  font-size: 22px;
-  color: #9a968d;
+  color: var(--color-text-subtle);
   cursor: pointer;
-  line-height: 1;
-  padding: 4px 8px;
+  border-radius: var(--radius-full);
+  transition: all var(--duration-fast) var(--ease-out);
 }
 .dr-close:hover {
-  color: #1f1f1e;
+  color: var(--color-text);
+  background: var(--color-surface-hover);
 }
 
 .dr-body {
   flex: 1;
   overflow-y: auto;
-  padding: 16px 20px;
+  padding: var(--space-5);
 }
 .dr-label {
-  color: #6a665e;
+  color: var(--color-text-muted);
   font-weight: 500;
   margin-right: 4px;
+  font-size: var(--text-xs);
+  letter-spacing: 0.04em;
 }
 .dr-divergence,
 .dr-tree-path {
-  font-size: 13px;
-  line-height: 1.6;
-  color: #2a2724;
-  margin: 0 0 10px;
+  font-size: var(--text-sm);
+  line-height: 1.7;
+  color: var(--color-text);
+  margin: 0 0 var(--space-3);
 }
 .dr-tree-path {
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  color: #6d28d9;
+  font-family: var(--font-mono);
+  color: var(--color-accent-text);
 }
 .dr-meta {
-  font-size: 12px;
-  color: #6a665e;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1);
   flex-wrap: wrap;
-  margin: 0 0 16px;
+  margin: 0 0 var(--space-4);
+  letter-spacing: 0.04em;
 }
 .dr-meta-sep {
-  color: #c4bfb3;
+  color: var(--color-text-subtle);
+  opacity: 0.5;
 }
 .dr-finale {
-  color: #d97706;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--color-warning);
   font-weight: 500;
 }
 
 .dr-section {
-  margin-top: 12px;
+  margin-top: var(--space-3);
 }
 .dr-section-hdr {
-  font-size: 11.5px;
+  font-size: 10.5px;
   font-weight: 600;
-  color: #6a665e;
-  letter-spacing: 0.04em;
-  margin-bottom: 8px;
+  color: var(--color-text-subtle);
+  letter-spacing: 0.08em;
+  margin-bottom: var(--space-2);
   text-transform: uppercase;
 }
 .dr-preview {
-  background: #faf7f2;
-  border-radius: 8px;
-  padding: 12px 14px;
-  font-size: 13px;
-  line-height: 1.75;
-  color: #2a2724;
+  background: var(--color-bg-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--text-sm);
+  line-height: 1.8;
+  color: var(--color-text);
   margin: 0;
   white-space: pre-wrap;
   word-break: break-word;
-  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-family: var(--font-serif);   /* 衬线给"小说预览"文学质感 */
   max-height: 320px;
   overflow-y: auto;
 }
 .dr-more {
-  color: #9a968d;
+  color: var(--color-text-subtle);
 }
 .dr-preview-loading,
 .dr-preview-empty {
   text-align: center;
-  padding: 20px 0;
-  font-size: 12px;
-  color: #9a968d;
+  padding: var(--space-5) 0;
+  font-size: var(--text-xs);
+  color: var(--color-text-subtle);
 }
 
 .dr-footer {
-  padding: 14px 20px;
-  border-top: 1px solid var(--color-border, #ece8de);
+  padding: var(--space-3) var(--space-5);
+  border-top: 1px solid var(--color-border);
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   justify-content: flex-end;
 }
 .dr-btn {
-  padding: 8px 16px;
-  border-radius: 7px;
-  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 14px;
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
   cursor: pointer;
-  border: 1px solid var(--color-border, #ece8de);
-  transition: background 150ms, border-color 150ms;
+  border: 1px solid var(--color-border);
+  transition: all var(--duration-fast) var(--ease-out);
 }
 .dr-btn--ghost {
   background: transparent;
-  color: #6a665e;
+  color: var(--color-text-muted);
 }
 .dr-btn--ghost:hover {
-  background: #f7f5f0;
-  border-color: #c4bfb3;
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+  border-color: var(--color-border-strong);
 }
 .dr-btn--primary {
-  background: #8b5cf6;
-  color: white;
-  border-color: #8b5cf6;
+  background: var(--color-accent);
+  color: var(--color-text-on-accent);
+  border-color: var(--color-accent);
   font-weight: 500;
 }
 .dr-btn--primary:hover {
-  background: #7c3aed;
+  background: var(--color-accent-hover);
+  border-color: var(--color-accent-hover);
 }
 
 /* ===== 动画 ===== */
