@@ -146,48 +146,58 @@
   --z-hover-tooltip:            600;
 
   /* ============================================================
-   * 旧 --hj-* token —— 仅 CrystalGraph 3D 场景使用
-   * 不要在新视图中引用
+   * 3D 图谱 (--hj-*) — 浑晶水墨质感(2026-06-08 大改)
+   *
+   * 原配色:S=80-90% / L=50-65%(游戏霓虹感,用户反馈"幼稚")
+   * 新配色:S=30-45% / L=55-72%(水墨克制感,与剧创态质感统一)
+   *
+   * 改动幅度:
+   *   - 背景:从 #05080F 几乎纯黑 → #11101A 暖紫黑(留一点品牌色温)
+   *   - 节点 tone(6 色):全降饱和到雾色调
+   *   - 关系类型(11 色):全降饱和,深色背景上仍可分辨但不"霓虹刺眼"
+   *
+   * 与浑晶紫主色 #7C3AED 系统一:calm tone 直接用主色派生
+   * 不动 JS:CrystalGraph 仍走原 nodeColor/linkColor 逻辑,只是配色变温润
    * ============================================================ */
 
-  /* 3D 场景背景 */
-  --hj-deep-space:          #05080F;
-  --hj-deep-space-rgb:      5, 8, 15;
-  --hj-crystal-light:       #E8F4FF;
-  --hj-crystal-dim:         #8B9DC3;
-  --hj-crystal-dark:        #4A5577;
+  /* 3D 场景背景:从纯黑 → 暖紫黑(浑晶品牌色温) */
+  --hj-deep-space:          #11101A;
+  --hj-deep-space-rgb:      17, 16, 26;
+  --hj-crystal-light:       #E6E2F0;   /* 灯光柔光 */
+  --hj-crystal-dim:         #847FA0;
+  --hj-crystal-dark:        #3A3450;
 
-  /* 3D 节点关系连线色 */
-  --hj-rel-kin:             #FFD700;
-  --hj-rel-kin-end:         #F0C040;
-  --hj-rel-foe:             #FF4757;
-  --hj-rel-foe-end:         #C0392B;
-  --hj-rel-master:          #C0C5CE;
-  --hj-rel-master-end:      #8B95A1;
-  --hj-rel-lover:           #FF6B9D;
-  --hj-rel-lover-end:       #E91E63;
-  --hj-rel-friend:          #7BD8E8;
-  --hj-rel-friend-end:      #5BAEC0;
-  --hj-rel-coworker:        #A78BFA;
-  --hj-rel-coworker-end:    #8B6BD9;
-  --hj-rel-located:         #94D87A;
-  --hj-rel-located-end:     #7AB85F;
-  --hj-rel-mention:         #6B7280;
-  --hj-rel-mention-end:     #4B5563;
+  /* 3D 关系类型 11 色(降饱和)— 仍保留语义色相,但调成"水墨色调" */
+  --hj-rel-kin:             #C9A87B;   /* 沉金(亲属:温暖血缘)*/
+  --hj-rel-kin-end:         #A88858;
+  --hj-rel-foe:             #B86A6A;   /* 暮红(敌对:沉重不刺眼)*/
+  --hj-rel-foe-end:         #8F4F4F;
+  --hj-rel-master:          #9BA0AC;   /* 雾银(主仆:中性克制)*/
+  --hj-rel-master-end:      #777C88;
+  --hj-rel-lover:           #C18FA8;   /* 雾玫(情侣:温柔)*/
+  --hj-rel-lover-end:       #9F6F88;
+  --hj-rel-friend:          #88A8B8;   /* 雾青(朋友:理性)*/
+  --hj-rel-friend-end:      #6388A0;
+  --hj-rel-coworker:        #9686C2;   /* 沉紫(同事:与主色 #7C3AED 同色相系列)*/
+  --hj-rel-coworker-end:    #756A99;
+  --hj-rel-located:         #82A580;   /* 雾绿(位于:大地感)*/
+  --hj-rel-located-end:     #5F8062;
+  --hj-rel-mention:         #6F7280;   /* 中灰(提及:最弱关系)*/
+  --hj-rel-mention-end:     #50535C;
 
-  /* 3D 角色节点核心色 */
-  --hj-char-cold:           #7BD8E8;
-  --hj-char-cold-end:       #5BAEC0;
-  --hj-char-hot:            #FF8C42;
-  --hj-char-hot-end:        #E36F2D;
-  --hj-char-calm:           #A78BFA;
-  --hj-char-calm-end:       #7C6BD9;
-  --hj-char-tender:         #FF6B9D;
-  --hj-char-tender-end:     #E91E63;
-  --hj-char-shadow:         #5A7B6E;
-  --hj-char-shadow-end:     #3D5A4F;
-  --hj-char-honest:         #E8C99B;
-  --hj-char-honest-end:     #C9A86A;
+  /* 3D 角色节点 6 个 tone — 全降饱和,calm 与浑晶紫主色对齐 */
+  --hj-char-cold:           #8AA8B5;   /* 雾青(冷感)*/
+  --hj-char-cold-end:       #6385A0;
+  --hj-char-hot:            #C68258;   /* 暮琥珀(热感,从 #FF8C42 降饱和)*/
+  --hj-char-hot-end:        #9F6440;
+  --hj-char-calm:           #9182C4;   /* 沉紫(平静,与品牌主色同色相)*/
+  --hj-char-calm-end:       #6A5DA0;
+  --hj-char-tender:         #C77B95;   /* 雾玫(温柔)*/
+  --hj-char-tender-end:     #9F587A;
+  --hj-char-shadow:         #647A6F;   /* 雾墨绿(阴影感)*/
+  --hj-char-shadow-end:     #455A52;
+  --hj-char-honest:         #C9B287;   /* 沙金(诚朴)*/
+  --hj-char-honest-end:     #A89370;
 
   /* 3D 动效 */
   --hj-ease-out-expo:       cubic-bezier(0.16, 1, 0.3, 1);

@@ -124,10 +124,12 @@ const CF_HALO_OPACITY_ACTIVE = 0.95;
 // D.2.A polish 2 — 节点 core mesh 玻璃态(沙盘模式 baseline,用户拍板:
 //   "开启沙盘之后所有节点 + 线条切换成玻璃态,既不明显也不完全消失")
 // 让反事实光晕环成视觉主角,原节点 / 线条褪成磨砂玻璃感
-const NODE_OPACITY_DEFAULT = 0.92;
-const NODE_OPACITY_SANDBOX = 0.28;
-const NODE_EMISSIVE_DEFAULT = 0.5;
-const NODE_EMISSIVE_SANDBOX = 0.18;
+// 2026-06-08 UI 大升级:emissive 从 0.5 → 0.22(降"过曝发光",节点更克制
+// 配合 tokens.css 新降饱和的 --hj-* 色,整体观感从"游戏霓虹" → "水墨浑晶")
+const NODE_OPACITY_DEFAULT = 0.88;
+const NODE_OPACITY_SANDBOX = 0.26;
+const NODE_EMISSIVE_DEFAULT = 0.22;
+const NODE_EMISSIVE_SANDBOX = 0.10;
 
 // D.2.B — BFS 影响波纹动画
 const RIPPLE_MAX_HOPS = 4;              // BFS 跳数上限(对应 reshape 50% 中等扩散)
