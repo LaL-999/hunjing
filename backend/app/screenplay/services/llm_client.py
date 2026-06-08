@@ -1,55 +1,56 @@
-"""LLM 客户端 — 统一入口,封装 DeepSeek V3(OpenAI 兼容协议)。
+"""剧创态 LLM 客户端 — 阶段 8 P0(2026-06-08)改为父平台 LLM client 代理。
 
-设计原则:
-  - call_chat(system, user) → 纯文本
-  - call_json(system, user) → 强制 JSON 输出,自动解析
-  - 失败可重试(配额错 / JSON 解析失败 / 网络瞬断)
-  - 测试时 monkeypatch 此模块的函数,无需真调 API
+历史(2026-06-05 ~ 06):
+  比赛仓库直接实例化 openai.OpenAI(api_key=settings.deepseek_api_key, ...),
+  阶段 3 迁徙时连这套独立 client 一起搬进来了。
 
-使用:
-    from app.screenplay.services.llm_client import call_json
-    result = call_json(system_prompt, user_input, max_tokens=2000)
+问题(2026-06-08 P0 审计发现):
+  父平台 6/5 上线 BYOK + LLM routing:用户可以配自己的 API key(deepseek /
+  openai / anthropic / qwen),所有父平台 LLM 调用走
+  `app.services.llm_client.call_llm_json/text` → 自动用用户的 key。
+  但剧创态用本文件的独立 client → **完全绕过 BYOK**:
+    - 用户 BYOK 配置在剧创态不生效
+    - 多 user 共用 .env 的 server-side key
+    - 烧平台 token,商业模式漏
+
+修复:
+  本文件的 `call_chat` / `call_json` 保留原签名(8 个 agent 无需改动),
+  内部代理给父平台 `call_llm_text` / `call_llm_json` → 自动:
+    1. 从 ContextVar 拿 current_user_id(get_current_user 已 set)
+    2. 查 byok_configs 表 → 有则用用户的 vendor / key / base_url / model
+    3. 无则走父平台 llm_routing 默认 vendor
+    4. 异常类型保留为 LlmCallFailed / LlmJsonParseFailed(契约一致)
+
+兼容性:
+  - 测试 monkeypatch `app.screenplay.services.llm_client.call_json` 仍生效
+    (mocks_screenplay_llm fixture + 比赛迁入测试均 OK)
+  - 8 个 agent 的 import `from app.screenplay.services.llm_client import call_json`
+    一字不改,自动享受 BYOK
 """
 from __future__ import annotations
 
 import json
 import logging
-import re
-import time
 from typing import Any
 
-from openai import OpenAI
-
+# 直接复用父平台的异常类,保证 catch 兼容性
+from app.services.llm_client import (
+    LlmCallFailed,
+    LlmJsonParseFailed,
+    call_llm_json as _platform_call_json,
+    call_llm_text as _platform_call_text,
+)
 from app.screenplay.config import settings
 
 logger = logging.getLogger(__name__)
 
 
-class LlmCallFailed(Exception):
-    """LLM 调用底层失败 — 网络 / 限流 / 凭据无效。"""
-
-
-class LlmJsonParseFailed(Exception):
-    """LLM 返回了文本但不是合法 JSON。"""
-
-
-# 模块级 client(惰性初始化,避免测试 import 时崩溃)
-_client: OpenAI | None = None
-
-
-def _get_client() -> OpenAI:
-    global _client
-    if _client is None:
-        _client = OpenAI(
-            api_key=settings.deepseek_api_key,
-            base_url=settings.deepseek_api_base,
-            timeout=settings.llm_timeout_seconds,
-        )
-    return _client
+# 重新 export 让历史 `from app.screenplay.services.llm_client import LlmCallFailed` 不破
+__all__ = ["LlmCallFailed", "LlmJsonParseFailed", "call_chat", "call_json"]
 
 
 # ============================================================
-# 纯文本调用
+# 纯文本调用 — 代理给父平台
 # ============================================================
 
 def call_chat(
@@ -62,6 +63,8 @@ def call_chat(
 ) -> tuple[str, dict]:
     """调用 LLM,返回 (text, usage_dict)。
 
+    保留原签名,内部代理给父平台 call_llm_text(自动 BYOK 路由)。
+
     Args:
         user_input: 字符串直接传,dict 自动 json.dumps
         usage_dict: {input_tokens, output_tokens}
@@ -69,45 +72,29 @@ def call_chat(
     Raises:
         LlmCallFailed: 网络 / 限流 / 凭据错误
     """
-    temperature = (
-        temperature if temperature is not None else settings.llm_default_temperature
-    )
-    retries = retries if retries is not None else settings.llm_max_retries
+    if temperature is None:
+        temperature = settings.llm_default_temperature
+    if retries is None:
+        retries = settings.llm_max_retries
 
     if isinstance(user_input, dict):
         user_input = json.dumps(user_input, ensure_ascii=False)
 
-    last_err: Exception | None = None
-    for attempt in range(retries + 1):
-        try:
-            resp = _get_client().chat.completions.create(
-                model=settings.deepseek_model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_input},
-                ],
-                temperature=temperature,
-                max_tokens=max_tokens,
-            )
-            text = resp.choices[0].message.content or ""
-            usage = {
-                "input_tokens": resp.usage.prompt_tokens if resp.usage else 0,
-                "output_tokens": resp.usage.completion_tokens if resp.usage else 0,
-            }
-            return text, usage
-        except Exception as e:
-            last_err = e
-            logger.warning(
-                "LLM call failed (attempt %d/%d): %s", attempt + 1, retries + 1, e,
-            )
-            if attempt < retries:
-                time.sleep(2 ** attempt)   # 指数退避:1s, 2s, 4s
-
-    raise LlmCallFailed(f"LLM 调用失败(已重试 {retries} 次): {last_err}")
+    # 父平台 call_llm_text 签名:
+    #   (system_prompt, user_input, *, max_tokens, temperature, retries, timeout, ...)
+    #   → (text, usage_dict)
+    # user_id 不传 → 父平台从 ContextVar 读(get_current_user Depends 已设置)
+    return _platform_call_text(
+        system_prompt,
+        user_input,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        retries=retries,
+    )
 
 
 # ============================================================
-# JSON 调用(强制结构化输出)
+# JSON 调用 — 代理给父平台
 # ============================================================
 
 def call_json(
@@ -115,67 +102,25 @@ def call_json(
     user_input: str | dict,
     *,
     max_tokens: int = 4000,
-    temperature: float = 0.3,    # JSON 场景默认低温
+    temperature: float = 0.3,    # JSON 场景默认低温(剧创态 8 个 agent 共用此默认)
     retries: int | None = None,
 ) -> tuple[Any, dict]:
-    """调用 LLM 期望 JSON 输出,自动解析。
+    """调用 LLM 期望 JSON 输出,自动解析,返回 (parsed_json, usage_dict)。
 
-    会自动剥离 markdown ```json ... ``` fence。
-    解析失败时按 retries 重试(每次给 LLM 一个"再次尝试,只输出 JSON"提示)。
-
-    Returns:
-        (parsed_json, usage_dict)
+    保留原签名,内部代理给父平台 call_llm_json(自动 BYOK + 重试 + fence 剥离)。
 
     Raises:
         LlmJsonParseFailed: 重试后仍解析失败
         LlmCallFailed: 网络层失败
     """
-    retries = retries if retries is not None else settings.llm_max_retries
+    if retries is None:
+        retries = settings.llm_max_retries
 
-    last_text = ""
-    last_err: Exception | None = None
-    for attempt in range(retries + 1):
-        text, usage = call_chat(
-            system_prompt,
-            user_input,
-            max_tokens=max_tokens,
-            temperature=temperature,
-            retries=0,   # call_chat 已重试,这里不再重试
-        )
-        last_text = text
-        cleaned = _strip_json_fence(text)
-        try:
-            parsed = json.loads(cleaned)
-            return parsed, usage
-        except json.JSONDecodeError as e:
-            last_err = e
-            logger.warning(
-                "JSON parse failed (attempt %d/%d). First 200 chars: %s",
-                attempt + 1, retries + 1, cleaned[:200],
-            )
-            # 重试时把"上次输出"加进 user_input 强调"只输出 JSON"
-            if attempt < retries:
-                if isinstance(user_input, str):
-                    user_input = (
-                        f"{user_input}\n\n"
-                        f"⚠ 上次你的输出不是合法 JSON,请只输出 JSON,无任何 markdown / 注释 / 说明文字。"
-                    )
-
-    raise LlmJsonParseFailed(
-        f"LLM 输出 JSON 解析失败(重试 {retries} 次后)。最后输出前 500 字: {last_text[:500]}"
+    # 父平台 call_llm_json 已经处理 fence 剥离 / repair / 重试
+    return _platform_call_json(
+        system_prompt,
+        user_input,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        retries=retries,
     )
-
-
-# ============================================================
-# 辅助
-# ============================================================
-
-_JSON_FENCE_RE = re.compile(r"^\s*```(?:json)?\s*(.*?)\s*```\s*$", re.DOTALL)
-
-
-def _strip_json_fence(text: str) -> str:
-    """剥离 ```json ... ``` 包裹,只留 JSON body。"""
-    m = _JSON_FENCE_RE.match(text)
-    if m:
-        return m.group(1)
-    return text.strip()
