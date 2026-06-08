@@ -13,6 +13,7 @@ import { useRouter } from "vue-router";
 import AdaptationDecisionPanel from "../components/AdaptationDecisionPanel.vue";
 import BridgeGainBanner from "../components/BridgeGainBanner.vue";
 import CharacterProfilesPanel from "../components/CharacterProfilesPanel.vue";
+import ComparisonPanel from "../components/ComparisonPanel.vue";
 import ComposeDialog from "../components/ComposeDialog.vue";
 import EpisodePlanPanel from "../components/EpisodePlanPanel.vue";
 import ExportMenu from "../components/ExportMenu.vue";
@@ -65,6 +66,11 @@ function closeVersionDiff() { versionDiffVisible.value = false; }
 const episodePanelVisible = ref<boolean>(false);
 function openEpisodePanel() { episodePanelVisible.value = true; }
 function closeEpisodePanel() { episodePanelVisible.value = false; }
+
+// 阶段 8.5:多模型对比 modal
+const comparisonPanelVisible = ref<boolean>(false);
+function openComparisonPanel() { comparisonPanelVisible.value = true; }
+function closeComparisonPanel() { comparisonPanelVisible.value = false; }
 
 // AI 优化弹窗(A + B 入口共用)
 const optimizationModalVisible = ref<boolean>(false);
@@ -175,6 +181,24 @@ onMounted(() => {
           </svg>
           分集
         </button>
+        <!-- 阶段 8.5:多模型对比 入口 -->
+        <button
+          v-if="store.hasScreenplay"
+          class="secondary-btn"
+          @click="openComparisonPanel"
+          title="多 vendor 并行跑同一场,4 维可解释打分"
+        >
+          <svg
+            width="14" height="14" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
+          >
+            <path d="M12 2v6" />
+            <circle cx="12" cy="14" r="6" />
+            <path d="M9 14h6" />
+            <path d="M12 11v6" />
+          </svg>
+          对比
+        </button>
         <VersionSwitcher v-if="store.hasScreenplay" @open-diff="openVersionDiff" />
         <ExportMenu v-if="store.hasScreenplay" />
         <button
@@ -284,6 +308,12 @@ onMounted(() => {
       :novel-id="props.id"
       :visible="episodePanelVisible"
       @close="closeEpisodePanel"
+    />
+
+    <!-- ===== 阶段 8.5:多模型对比 ===== -->
+    <ComparisonPanel
+      :visible="comparisonPanelVisible"
+      @close="closeComparisonPanel"
     />
   </div>
 </template>

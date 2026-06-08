@@ -226,6 +226,64 @@ export async function planEpisodes(
 }
 
 // ============================================================
+// 阶段 8.5 — 多模型对比
+// ============================================================
+
+export interface ProviderConfigApi {
+  label: string;
+  api_key: string;
+  base_url: string;
+  model: string;
+}
+
+export interface CompareScoresApi {
+  overall: number;
+  action_density: number;
+  character_alignment: number;
+  dialogue_coverage: number;
+  decision_completeness: number;
+  elements_count: number;
+  dialogue_count: number;
+  voiceover_count: number;
+}
+
+export interface CompareElementApi {
+  type: string;
+  text: string;
+  character_name: string | null;
+  parenthetical: string | null;
+  is_inner_monologue: boolean;
+}
+
+export interface ModelCandidateApi {
+  provider_label: string;
+  model: string;
+  success: boolean;
+  elements: CompareElementApi[];
+  scores: CompareScoresApi | null;
+  error_message: string;
+  usage: Record<string, number>;
+  duration_ms: number;
+}
+
+export interface ComparisonResultApi {
+  scene_id: string;
+  candidates: ModelCandidateApi[];
+  recommended_label: string | null;
+}
+
+export async function compareModels(
+  screenplayId: string,
+  sceneId: string,
+  providers: ProviderConfigApi[],
+): Promise<ComparisonResultApi> {
+  return api.post(
+    `/screenplay/screenplays/${encodeURIComponent(screenplayId)}/compare`,
+    { scene_id: sceneId, providers },
+  );
+}
+
+// ============================================================
 // Screenplay
 // ============================================================
 
