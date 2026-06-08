@@ -196,13 +196,11 @@ onMounted(() => {
     <div class="home-scroll">
       <div class="home-inner">
         <header class="hdr">
-      <div class="brand">浑晶</div>
+      <!-- 2026-06-08 用户精修:删 .brand 小字 + .sub-tagline,
+           hero 区只留大标题 + tagline 主轴线 + moat-hint 浅灰提示 -->
       <h1 class="title literary-heading">剧创态</h1>
       <p class="tagline">小说 <span class="arrow">→</span> 剧本</p>
-      <p class="sub-tagline">浑晶平台 · 第五创作态</p>
 
-      <!-- 2026-06-08 用户精修 v2:moat-banner 从紫框+chip 改为衬线斜体小字,
-           跟周围 hero 区同视觉层级,不再喧宾夺主 -->
       <p class="moat-hint">
         绑定项目可接通 角色 · 知识 · 状态 · 关系
       </p>

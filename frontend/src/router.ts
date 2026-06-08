@@ -107,6 +107,14 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: false, depth: 1 },
   },
   {
+    // 2026-06-08:「我的剧本」专属书架页(跟我的漫画平级)
+    // 跟 /my-comics 同样设计:requiresAuth false,view 自管未登录态
+    path: "/my-screenplays",
+    name: "my-screenplays",
+    component: () => import("./views/MyScreenplaysView.vue"),
+    meta: { requiresAuth: false, depth: 1 },
+  },
+  {
     // D.9 Sprint 2.B 漫画态项目详情(独立 view,不复用 ProjectView)
     path: "/comics/:id",
     name: "comic-project",

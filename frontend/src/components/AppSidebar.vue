@@ -188,6 +188,17 @@ function gotoMyComics() {
 
 const isMyComicsActive = computed(() => route.name === "my-comics");
 
+// 2026-06-08:「我的剧本」入口(跟我的漫画平级)
+function gotoMyScreenplays() {
+  if (!auth.isAuthed) {
+    loginModal.open("/my-screenplays");
+    return;
+  }
+  router.push("/my-screenplays");
+}
+
+const isMyScreenplaysActive = computed(() => route.name === "my-screenplays");
+
 function handleLogin() {
   activeMenu.value = null;
   loginModal.open();
@@ -469,6 +480,7 @@ onUnmounted(() => {
       不应混在项目列表中误导用户。分隔线 + 间距明确两区切割。
     -->
     <div class="sidebar-bottom-nav">
+      <!-- 我的漫画 — 用户拍板放上方 -->
       <button
         class="nav-btn"
         :class="{ 'is-active': isMyComicsActive }"
@@ -481,6 +493,24 @@ onUnmounted(() => {
         <span class="nav-chip">内测</span>
       </button>
 
+      <!-- 2026-06-08:我的剧本 — 跟我的漫画平级,放下方 -->
+      <button
+        class="nav-btn"
+        :class="{ 'is-active': isMyScreenplaysActive }"
+        :aria-label="auth.isAuthed ? '前往我的剧本' : '登录后前往我的剧本'"
+        :aria-current="isMyScreenplaysActive ? 'page' : undefined"
+        @click="gotoMyScreenplays"
+      >
+        <span class="nav-icon" aria-hidden="true">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="4" y="3" width="14" height="18" rx="1" />
+            <path d="M18 3l3 3-3 3" />
+            <path d="M8 8h6 M8 12h6 M8 16h4" />
+          </svg>
+        </span>
+        <span class="nav-label">我的剧本</span>
+      </button>
     </div>
 
     <!-- 底部用户区(游客/已登录都用同一个 btn 弹菜单,菜单内容因登录态而异) -->
