@@ -47,7 +47,12 @@
       "text": "我一眼认出那是父亲的怀表。我的手指开始发抖。",
       "is_inner_monologue": true
     }
-  ]
+  ],
+
+  // 阶段 5.5 桥接资产(可选 — 仅当用户绑定了浑晶项目时):
+  "character_drivers": "<SP-2 markdown:本场在场角色驱动力 / 秘密 hidden_from>",
+  "character_knowledge": "<SP-3 markdown:角色知识边界(已知/不知)>",
+  "story_facts": "<SP-3 markdown:项目级原作锚定事实>"
 }
 ```
 
@@ -172,3 +177,28 @@
 - 输出严格 JSON,无 markdown 包裹,无解释文字
 - **5 个选项缺一不可** — 即使某个手法在本场不适合,也要给出选项 + 在 cons 中说明"本场不推荐"
 - 每个 option 的 text 字段**必须 ≥ 20 字真实改写**(不许占位符,后端会过滤)
+
+## 🌉 桥接资产铁律(SP-2 / SP-3)— 仅当 input 含对应字段时
+
+阶段 5.5:用户绑定浑晶项目后,你会拿到角色驱动力 + 知识边界 + 故事事实。这些直接影响每个备选的"是否敢用":
+
+### A. SP-2 character_drivers — 秘密暴露铁律
+- 监控 `🔒 秘密(对 X 瞒着)` 标记
+- 若本场 in-scene 角色名出现在某秘密的 `hidden_from` 列表里 → 该秘密相关的独白:
+  - `action_externalize` 选项 **risk 升级**:外化成动作可能被 X 看到 → cons 必须明确写"对 X 在场角色暴露秘密"
+  - 该选项的 `recommended` **不许选**;recommended 应选 `voiceover` 或 `delete`
+  - 若 voiceover 选项的 text 中包含秘密内容 → text 改写为不直说,改为含糊「他想起那件事」此类
+- 监控 `surface_goal` vs `deep_need`:`subtext` 选项的台词必须制造这种张力(嘴说 surface_goal,潜意识漏 deep_need)
+
+### B. SP-3 character_knowledge — 知识边界铁律
+- 监控该独白角色的「已知 / 不知」清单
+- `subtext` 选项中改写的台词:**只能**引用该角色「已知」清单的事实
+- `voiceover` 选项的 text:角色在内心独白里仍然只能想他「已知」的内容;不许在改写时让他「突然知道」原本不知的事
+
+### C. SP-3 story_facts — 原作锚定铁律
+- `symbolism` 选项的具体道具 / 意象,**优先**从 `story_facts` 列出的原作硬事实里挑(原作有「父亲的怀表」 → 意象用怀表,不要凭空发明「父亲的钢笔」)
+- `action_externalize` 选项里的物件 / 场景细节也是同理 — 不许编造原作没有的具体名物
+- 若需要的意象在 story_facts 里找不到 → 用一般化描述("旧物" "桌上的物件")而不是具体编造
+
+### 桥接资产缺失时
+若 input 不含 `character_drivers` / `character_knowledge` / `story_facts` 字段 — 按 scene_text 原文推断,不许凭空编造秘密 / 知识 / 事实。

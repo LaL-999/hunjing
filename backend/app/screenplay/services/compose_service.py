@@ -216,6 +216,8 @@ def orchestrate_full_pipeline(
     # 阶段 5.2:桥接预计算 — SP-7 关系正负极。bible 范围内的角色 + aka 共用,
     # 不必每章重查。挂了就返空块,scene_splitter 退化到无桥接模式。
     splitter_bridge_block = _build_polarity_bridge_block(novel_id, user_id, bible_for_composer)
+    # 阶段 5.5:项目级故事事实块(全 compose 共用,decision 用)
+    facts_bridge_block = _build_story_facts_bridge_block(novel_id, user_id)
 
     for ch in chapters:
         ch_num = ch["number"]
@@ -306,10 +308,14 @@ def orchestrate_full_pipeline(
                     elements = refined
 
             # 3b3. propose_decisions(可选,失败降级)
+            # 阶段 5.5:接通 SP-2 drivers / SP-3 knowledge / SP-3 facts
             decisions = []
             if opts.propose_decisions and elements:
                 decisions = _run_adaptation_decision(
                     scene_text, sp, chars_in_scene, elements, warnings, scene_path,
+                    bridge_drivers_block=extractor_bridge["drivers"],
+                    bridge_knowledge_block=extractor_bridge["knowledge"],
+                    bridge_facts_block=facts_bridge_block,
                 )
                 stats_counter["decision_calls"] += 1
 
@@ -529,8 +535,15 @@ def _run_adaptation_decision(
     elements: list[ScreenplayElement],
     warnings: list[dict],
     path: str,
+    *,
+    bridge_drivers_block: str = "",
+    bridge_knowledge_block: str = "",
+    bridge_facts_block: str = "",
 ) -> list:
-    """propose_decisions,失败返空数组(decisions 是可选段)。"""
+    """propose_decisions,失败返空数组(decisions 是可选段)。
+
+    阶段 5.5:接通 SP-2 drivers / SP-3 knowledge / SP-3 facts。
+    """
     try:
         result = propose_decisions(
             scene_text=scene_text,
@@ -542,6 +555,9 @@ def _run_adaptation_decision(
             },
             characters_in_scene=characters_in_scene,
             elements=elements,
+            bridge_drivers_block=bridge_drivers_block,
+            bridge_knowledge_block=bridge_knowledge_block,
+            bridge_facts_block=bridge_facts_block,
         )
         return list(result.decisions)
     except AdaptationDecisionError as e:
@@ -689,12 +705,33 @@ def _build_per_scene_bridge(
     return out
 
 
+def _build_story_facts_bridge_block(novel_id: str, user_id: str) -> str:
+    """阶段 5.5 桥接预计算 — 项目级故事事实块。
+
+    一次 compose 共用(项目维度,不按场变),给 adaptation_decision 用。
+    任何失败返 "" — 不阻断主流程。
+    """
+    try:
+        from app.screenplay.db.connection import get_connection
+        from app.screenplay.services import huimeng_bridge
+        conn = get_connection()
+        try:
+            return huimeng_bridge.get_story_facts_block(
+                conn, user_id=user_id, novel_id=novel_id,
+            )
+        finally:
+            conn.close()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("story_facts bridge failed: %s", e)
+        return ""
+
+
 def _build_polarity_bridge_block(
     novel_id: str, user_id: str, bible_for_composer: dict,
 ) -> str:
     """阶段 5.2 桥接预计算 — bible 范围内全部角色名 → SP-7 关系正负极块。
 
-    一次 compose 全章共用,不重查。任何失败返 "" — 不阻断主流程。
+    一次 compose 全章共用,不必每章重查。挂了就返空块,scene_splitter 退化到无桥接模式。
     """
     char_names: list[str] = []
     for c in bible_for_composer.get("characters") or []:

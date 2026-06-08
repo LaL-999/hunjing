@@ -116,8 +116,12 @@ def propose_decisions(
     scene_heading: dict,
     characters_in_scene: list[CharacterRef],
     elements: list[ScreenplayElement],
+    *,
+    bridge_drivers_block: str = "",
+    bridge_knowledge_block: str = "",
+    bridge_facts_block: str = "",
 ) -> DecisionResult:
-    """对场景中的内心独白生成 3 备选。
+    """对场景中的内心独白生成 5 备选(V.O./action_externalize/subtext/symbolism/delete)。
 
     Args:
         scene_text: 完整场景原文(给 LLM 上下文)
@@ -125,9 +129,19 @@ def propose_decisions(
         scene_heading: {int_ext, location_name, time_of_day}
         characters_in_scene: 角色清单
         elements: 已抽元素列表(只抽 is_inner_monologue=True 的处理)
+        bridge_drivers_block: 阶段 5.5 — SP-2 角色驱动力(秘密 hidden_from 在场时改编要小心)
+        bridge_knowledge_block: 阶段 5.5 — SP-3 知识边界(externalize 前必看)
+        bridge_facts_block: 阶段 5.5 — SP-3 项目级故事事实(不许编造细节)
+
+    桥接用法:
+      - 决定"externalize 成动作 / 道具"时,**必须**用 SP-2 secrets 检查
+        当前在场角色里有没有 hidden_from 标记的人 — 有 → externalize 风险变大,
+        delete 或保持 V.O. 更安全
+      - 决定"对白潜台词改写"时,**必须**只引用 SP-3 该角色「已知」清单的事实
+      - **绝不许**在 5 备选 text 字段里编造 SP-3 facts 没有的细节(原作锚定)
 
     Returns:
-        DecisionResult — 每条内心独白的 3 备选 + 推荐
+        DecisionResult — 每条内心独白的 5 备选 + 推荐
 
     Raises:
         AdaptationDecisionError: LLM 失败 / 输出格式错乱
@@ -154,7 +168,7 @@ def propose_decisions(
         for idx, el in monologue_pairs
     ]
 
-    user_input = {
+    user_input: dict = {
         "scene_summary": scene_summary,
         "scene_heading": scene_heading,
         "scene_text": scene_text,
@@ -164,6 +178,13 @@ def propose_decisions(
         ],
         "monologue_elements": monologue_payload,
     }
+    # 阶段 5.5 桥接 — 三块都是可选(非空才加)
+    if bridge_drivers_block:
+        user_input["character_drivers"] = bridge_drivers_block
+    if bridge_knowledge_block:
+        user_input["character_knowledge"] = bridge_knowledge_block
+    if bridge_facts_block:
+        user_input["story_facts"] = bridge_facts_block
 
     try:
         parsed, usage = call_json(_get_system_prompt(), user_input, max_tokens=4000)
