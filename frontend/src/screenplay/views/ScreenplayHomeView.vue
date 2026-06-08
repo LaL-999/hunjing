@@ -201,16 +201,11 @@ onMounted(() => {
       <p class="tagline">小说 <span class="arrow">→</span> 剧本</p>
       <p class="sub-tagline">浑晶平台 · 第五创作态</p>
 
-      <!-- 阶段 6 差异化卖点 — 接通父平台 4 大资产 -->
-      <div class="moat-banner">
-        <span class="moat-label">绑定浑晶项目后,AI 同时读取你已建的</span>
-        <span class="moat-chips">
-          <span class="moat-chip">角色驱动力</span>
-          <span class="moat-chip">知识边界</span>
-          <span class="moat-chip">状态时间线</span>
-          <span class="moat-chip">关系正负极</span>
-        </span>
-      </div>
+      <!-- 2026-06-08 用户精修 v2:moat-banner 从紫框+chip 改为衬线斜体小字,
+           跟周围 hero 区同视觉层级,不再喧宾夺主 -->
+      <p class="moat-hint">
+        绑定项目可接通 角色 · 知识 · 状态 · 关系
+      </p>
     </header>
 
     <!-- 上传卡 — 直接醒目放最上 -->
@@ -501,34 +496,16 @@ onMounted(() => {
 }
 
 /* === 阶段 6 桥接差异化卖点 banner === */
-.moat-banner {
-  margin-top: var(--space-5);
-  padding: var(--space-4) var(--space-5);
-  background: var(--accent-soft);
-  border-radius: var(--radius-lg);
-  text-align: left;
-}
-.moat-label {
-  display: block;
+/* 2026-06-08 用户精修 v2:moat-hint — 跟 tagline / sub-tagline 同视觉层级
+ * 衬线斜体浅灰小字,inline 跟随 hero 区,不再框 + chip 抢焦点 */
+.moat-hint {
+  margin: var(--space-3) 0 0;
   font-size: 12px;
-  color: var(--accent-text);
+  color: var(--text-subtle, var(--text-muted));
+  font-family: var(--font-serif);
+  font-style: italic;
   letter-spacing: 0.04em;
-  margin-bottom: var(--space-3);
-}
-.moat-chips {
-  display: flex;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-}
-.moat-chip {
-  font-size: 11.5px;
-  padding: 3px 10px;
-  background: var(--card-bg);
-  color: var(--accent-text);
-  border: 1px solid var(--accent);
-  border-radius: var(--radius-md);
-  font-weight: 500;
-  letter-spacing: 0.04em;
+  opacity: 0.75;
 }
 
 /* === 书架 — 2026-06-08 用户精修 v2:

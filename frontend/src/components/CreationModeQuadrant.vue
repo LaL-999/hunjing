@@ -147,8 +147,8 @@ const MODE_CARDS: ModeCard[] = [
       "M7 14h10",                             // 内文 line 1
       "M7 17h7",                              // 内文 line 2
     ],
-    // 阶段 6:差异化卖点 — 仅剧创态接通父平台 SP-2/3/4/7 资产
-    diffTag: "可接通 浑晶角色驱动力 · 知识边界 · 状态时间线 · 关系正负极",
+    // 2026-06-08 用户精修:删 diffTag — 在 Dashboard 卡内显得多余,
+    // 桥接增益在剧创态内部场景(BridgeGainBanner / 分集面板)展示更合适
   },
   {
     // Sprint SP-S 占位卡 — 给未来的第 6/7 态留个 hint,UI 上的"我们还没停下来"承诺
