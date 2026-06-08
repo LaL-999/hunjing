@@ -306,6 +306,7 @@ def create_app() -> FastAPI:
         from app.screenplay.routers import (
             attributions as sp_attributions,
             character_profiles as sp_character_profiles,
+            compare as sp_compare,
             compose as sp_compose,
             decisions as sp_decisions,
             elements as sp_elements,
@@ -329,6 +330,8 @@ def create_app() -> FastAPI:
         app.include_router(sp_character_profiles.router, prefix="/api/screenplay", tags=["screenplay"])
         # 阶段 8.4:分集规划 MVP
         app.include_router(sp_episodes.router, prefix="/api/screenplay", tags=["screenplay"])
+        # 阶段 8.5:多模型对比(基于 BYOK)
+        app.include_router(sp_compare.router, prefix="/api/screenplay", tags=["screenplay"])
     except Exception as e:  # noqa: BLE001
         import logging
         logging.warning("剧创态 router 注册失败(不阻塞父平台): %s", e)
