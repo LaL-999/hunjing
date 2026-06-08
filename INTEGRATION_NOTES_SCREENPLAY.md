@@ -723,3 +723,75 @@ LLM 失败(arc)→ 自动回退 rhythm 算法,标 `llm_failed=true`。
 - **导出分集大纲 PDF / MD** — 平台审稿场景,等用户提需求
 - **章节级 arc 编辑** — 用户拿到分集后回头改的能力,Phase 10 候选
 
+
+---
+
+## 平台 UI 大升级(2026-06-08 末 — 对齐剧创态质感)
+
+### 用户原话定锚
+
+  - "剧创态 UI 很干净也很高级"
+  - "图二图三图四 AI 味很重"(项目内 view)
+  - "3D 图谱太幼稚了"
+  - "右侧展开的详细信息全部挤在一个小窗口里很拥挤"
+  - "怎么改,你决定,以你专业的 UI 设计师身份"
+
+### ADR 决策(用户拍板 A+B+C+D 全做)
+
+  - **A** emoji → SVG line icon 大清扫
+  - **B** CSS 令牌体系扩展
+  - **C** 3D 图谱重设计(画风 + 抽屉 layout)
+  - **D** view 精修(折叠 chevron + banner)
+
+### 8 commit 完工清单
+
+| Phase | commit | 范围 |
+|---|---|---|
+| T1+T2 | `545b9dd` | tokens.css 加 2 字体令牌 + Icon.vue 扩 30 SVG |
+| T3 | `8c997c0` | ProjectView 顶栏按钮 emoji 清扫 |
+| T4 | `7ef825b` | SimulationsListPanel 6 处(图二) |
+| T5 | `865c4d8` | ProtagonistWall + ProjectUploadsPanel(图四) |
+| T6 | `f7bc7e7` | 3D 图谱 --hj-* 全降饱和 + emissive 弱化 |
+| T7 | `231621a` | NodeEditDrawer 抽屉 clamp 宽度 |
+| T8 | `406c3bd` | 折叠 chevron 3 处 + banner emoji 收尾 |
+| T9 | (本 commit) | MEMORY + INTEGRATION_NOTES 收尾 |
+
+### 关键改造数字
+
+| 维度 | before | after |
+|---|---|---|
+| Icon.vue SVG | 30 个 | 60 个 |
+| emoji 替换 | 5 文件 / ~16 处 | 全部 SVG |
+| 3D 节点 emissive | 0.5(过曝)| 0.22(克制)|
+| 3D 关系色饱和 | S=80-90% | S=30-45% |
+| 抽屉宽度 | 380px 固定 | clamp(420, 38vw, 560) |
+| tokens.css | 249 行 | 257 行(+2 字体令牌)|
+
+### 视觉前后对比
+
+**3D 图谱**:
+  - before: 鲜红 / 金黄 / 玫红 / 鲜紫 高饱和霓虹色 + 节点过曝发光 → "游戏角色卡 / 全息投影"
+  - after: 沉金 / 暮红 / 雾青 / 沉紫 水墨色调 + 微微发光 → "墨点 / 摆件"
+
+**项目内 view**:
+  - before: ✦ ✓ → ⇆ ○ 📖 ▸ ▾ 散落 unicode 字符,渲染不一致
+  - after: 全部 Lucide outline SVG,1.5px stroke,跨系统一致
+
+**右侧抽屉**:
+  - before: 380px 固定,1920 宽屏看起来挤
+  - after: clamp(420, 38vw, 560) 自适应,1440-1920 全覆盖
+
+### 设计纪律
+
+  - 不引图标库依赖(0.5MB + 供应链 → Icon.vue 60 SVG 自实现)
+  - 不换 3D 库(ForceGraph3D + Three.js 保留,只改色彩 + 材质)
+  - tokens 增量扩(向后兼容,旧 view 不动也能工作)
+  - 每 Task 独立 commit + push(出问题单回滚)
+  - vue-tsc 0 + vite build 通过 双闸门
+
+### 推迟到下次的散落 chevron
+
+CounterfactualWorkbench / CanonicalGuardianPanel / ExportSimulationDialog /
+AppSidebar / QuotaIndicator / CharacterRelationshipGraph 内还各有 1-2 处
+unicode ▸ ▾,均为次级面板,按用户实测反馈再清。
+
