@@ -29,7 +29,9 @@ const props = defineProps<{
   /** M7.I(2026-05-20):是否允许创作 — false 时禁 CTA(角色未抽完 / 数量不足等);
    *  父按 readyToSimulate 注入,避免在用户准备好之前误导点击 */
   canCreate?: boolean;
-  /** M7.I:按 project.mode 派生的按钮文案(同顶栏:AI 续写 / AI 重塑 / AI 长篇)*/
+  /** M7.I:按 project.mode 派生的按钮文案(同顶栏:AI 续写 / AI 重塑 / AI 长篇)
+   *  2026-06-08 UI 大升级:ctaIcon 改为 Icon 组件 name(如 "spark" / "compass"),
+   *  默认 "spark"。原字符串 emoji "✦" 形式已废弃 */
   ctaIcon?: string;
   ctaText?: string;
 }>();
@@ -42,7 +44,8 @@ const emit = defineEmits<{
 const router = useRouter();
 
 const allowCreate = computed(() => props.canCreate !== false);
-const ctaIcon = computed(() => props.ctaIcon || "✦");
+// 2026-06-08 UI 升级:ctaIcon 改 SVG icon name(默认 "spark"),旧 emoji "✦" 废弃
+const ctaIcon = computed(() => props.ctaIcon || "spark");
 const ctaText = computed(() => props.ctaText || "AI 推演");
 
 const simulations = ref<SimulationSummary[]>([]);
@@ -274,9 +277,10 @@ function depthSymbol(n: number): string {
 
     <!-- 空态:M7.I(2026-05-20)显眼 CTA,而非引导用户找右上角小按钮
          UI 优化(2026-05-21):删除冗余引导文案"AI 已读完原作 / 基于原作生成..." —
-         "还没有推演产物" + CTA 按钮已自足,中间两行属废话填充 -->
+         "还没有推演产物" + CTA 按钮已自足,中间两行属废话填充
+         2026-06-08 UI 大升级:○ ✦ → SVG icon,质感统一剧创态 -->
     <div v-else-if="simulations.length === 0" class="sims-empty">
-      <div class="empty-icon">○</div>
+      <Icon name="circle" :size="44" class="empty-icon-svg" />
       <h2 class="empty-title">还没有推演产物</h2>
       <button
         v-if="allowCreate"
@@ -284,9 +288,9 @@ function depthSymbol(n: number): string {
         class="empty-cta"
         @click="emit('start-create')"
       >
-        <span class="cta-icon">{{ ctaIcon }}</span>
+        <Icon :name="ctaIcon" :size="14" />
         <span>{{ ctaText }}</span>
-        <span class="cta-arrow">→</span>
+        <Icon name="arrow_right" :size="14" />
       </button>
       <p v-else class="empty-block-hint">
         请先上传作品并抽取角色 / 关系 / 事件图谱
@@ -309,7 +313,8 @@ function depthSymbol(n: number): string {
             :title="simulations.filter(isComparable).length < 2 ? `需要至少 2 篇已完成推演才能对比` : `开启对比模式后,勾选 2 篇查看分支差异`"
             @click="toggleCompareMode"
           >
-            ⇆ 对比分支
+            <Icon name="swap" :size="14" />
+            对比分支
           </button>
           <template v-else>
             <span class="compare-hint mono">
@@ -354,7 +359,9 @@ function depthSymbol(n: number): string {
           class="compare-checkbox"
           :class="{ checked: isSelected(sim.id), disabled: !isComparable(sim) }"
           aria-hidden="true"
-        >{{ isSelected(sim.id) ? "✓" : "" }}</span>
+        >
+          <Icon v-if="isSelected(sim.id)" name="check" :size="12" />
+        </span>
         <!-- 2026-06-01 v2:独立合并最终作品卡片(amber 精简版,不显示重塑/轮/¥)-->
         <template v-if="sim.is_final_compilation">
           <div class="sim-card-head">
@@ -390,12 +397,16 @@ function depthSymbol(n: number): string {
               <span class="meta-label">¥</span>
               <span class="meta-num mono">{{ sim.cost_yuan.toFixed(4) }}</span>
             </span>
-            <!-- M7.D 第 N 代接续 badge + tooltip 完整链 -->
+            <!-- M7.D 第 N 代接续 badge + tooltip 完整链
+                 2026-06-08 UI 升级:📖 emoji → Icon book line svg -->
             <span
               v-if="sim.inheritance_depth > 0"
               class="inheritance-chip"
               :title="inheritanceTooltip(sim)"
-            >📖 第 {{ sim.inheritance_depth }} 代接续</span>
+            >
+              <Icon name="book" :size="12" />
+              第 {{ sim.inheritance_depth }} 代接续
+            </span>
             <!-- hotfix(2026-06-01):续写模式 chip — 不显眼区分 3 种模式 -->
             <span class="mode-chip" :title="modeTitle(sim)">{{ modeLabel(sim) }}</span>
             <span class="state-chip" :class="stateChipClass(sim.state)">
@@ -437,10 +448,11 @@ function depthSymbol(n: number): string {
   border: 1px dashed var(--color-border);
   border-radius: var(--radius-lg);
 }
-.empty-icon {
-  font-size: 2.5rem;
+/* 2026-06-08 UI 升级:旧 .empty-icon(unicode ○ 字符大字号)废弃 */
+.empty-icon-svg {
   color: var(--color-text-subtle);
-  line-height: 1;
+  opacity: 0.5;
+  stroke-width: 1.2 !important;  /* 空态图标用更细的描边,更克制 */
 }
 .empty-title {
   font-size: var(--text-lg);
@@ -470,14 +482,8 @@ function depthSymbol(n: number): string {
   transform: translateY(-1px);
   box-shadow: 0 2px 8px rgba(124, 58, 237, 0.24);
 }
-.cta-icon {
-  font-size: var(--text-lg);
-  line-height: 1;
-}
-.cta-arrow {
-  font-size: var(--text-sm);
-  opacity: 0.8;
-}
+/* 2026-06-08 UI 升级:cta-icon / cta-arrow 由 Icon 组件接管,样式留作微调
+ * Icon 组件 .huimeng-icon 已自带 flex-shrink + vertical-align */
 .empty-block-hint {
   font-size: var(--text-xs);
   color: var(--color-text-subtle);
