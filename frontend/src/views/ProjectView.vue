@@ -596,12 +596,16 @@ const projectModeLabel = computed(() => MODE_LABEL_MAP[projectMode.value] ?? "�
  *   end     → → AI 续写
  *   cycle   → ∞ AI 长篇
  */
+/**
+ * 2026-06-08 UI 大升级:icon 从 unicode 字符 → SVG icon name(Icon.vue 名)。
+ * middle/end/cycle/initial 各自一个语义 icon,模板里用 <Icon :name="..." />。
+ */
 const simulateButtonLabel = computed(() => {
   const m = projectMode.value;
-  if (m === "middle") return { icon: "⟲", text: "AI 重塑" };
-  if (m === "end") return { icon: "→", text: "AI 续写" };
-  if (m === "cycle") return { icon: "∞", text: "AI 长篇" };
-  return { icon: "✦", text: "AI 推演" };
+  if (m === "middle") return { icon: "rotate_ccw", text: "AI 重塑" };
+  if (m === "end") return { icon: "arrow_right", text: "AI 续写" };
+  if (m === "cycle") return { icon: "refresh", text: "AI 长篇" };
+  return { icon: "spark", text: "AI 推演" };
 });
 
 const simulateButtonTitle = computed(() => {
@@ -633,7 +637,8 @@ const aiActionsDisabledReason = computed<string | null>(() => {
   if (!project.value) return null;
   if (isInitialMode.value) return null;
   if (hasGraphData.value) return null;
-  return `先在「作品文件」上传 + 点「✦ AI 抽图谱」`;
+  // 2026-06-08 UI 升级:文案里 ✦ emoji 字符废弃(按钮已改 SVG icon,文案不再引用 emoji)
+  return `先在「作品文件」上传 + 点「AI 抽图谱」`;
 });
 
 /** 抽图谱完成回调:reload 项目数据(characters / relationships / events 已落库)*/
@@ -2486,7 +2491,8 @@ watch(activeTab, (newTab) => {
           :title="aiActionsDisabledReason || simulateButtonTitle"
           @click="openSimulate"
         >
-          {{ simulateButtonLabel.icon }} {{ simulateButtonLabel.text }}
+          <Icon :name="simulateButtonLabel.icon" :size="14" />
+          {{ simulateButtonLabel.text }}
         </button>
         <button
           class="primary-btn"
@@ -2494,7 +2500,8 @@ watch(activeTab, (newTab) => {
           :title="aiActionsDisabledReason || '查看 3D 关系图谱'"
           @click="viewGraph"
         >
-          {{ goingToGraph ? "保存中…" : "查看 3D 图谱 →" }}
+          {{ goingToGraph ? "保存中…" : "查看 3D 图谱" }}
+          <Icon v-if="!goingToGraph" name="arrow_right" :size="14" />
         </button>
       </div>
     </header>
