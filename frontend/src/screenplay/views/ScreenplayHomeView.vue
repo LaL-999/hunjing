@@ -172,23 +172,28 @@ onMounted(() => {
 
 <template>
   <main class="home screenplay-module">
-    <!-- 2026-06-08 用户精修:左上返回浑晶主页按钮(独立 absolute,不挤标题) -->
-    <button
-      type="button"
-      class="home-back-btn"
-      @click="backToDashboard"
-      title="返回浑晶主页"
-    >
-      <svg
-        width="14" height="14" viewBox="0 0 24 24" fill="none"
-        stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
+    <!-- 2026-06-08 用户精修 v2:返回按钮提到全宽 toolbar,不再嵌在居中 720px 内 -->
+    <div class="home-toolbar">
+      <button
+        type="button"
+        class="home-back-btn"
+        @click="backToDashboard"
+        title="返回浑晶主页"
       >
-        <path d="M19 12H5M12 19l-7-7 7-7" />
-      </svg>
-      <span>浑晶主页</span>
-    </button>
+        <svg
+          width="14" height="14" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
+        >
+          <path d="M19 12H5M12 19l-7-7 7-7" />
+        </svg>
+        <span>浑晶主页</span>
+      </button>
+    </div>
 
-    <header class="hdr">
+    <!-- 居中内容区,可滚 -->
+    <div class="home-scroll">
+      <div class="home-inner">
+        <header class="hdr">
       <div class="brand">浑晶</div>
       <h1 class="title literary-heading">剧创态</h1>
       <p class="tagline">小说 <span class="arrow">→</span> 剧本</p>
@@ -303,21 +308,23 @@ onMounted(() => {
       书架尚空 — 拖一份小说试试。
     </p>
 
-    <!-- 系统状态:2026-06-08 用户精修 — 只在异常时显示(底部弹 toast 风格)
-         正常态隐藏,不再占据"父平台路由"占位行 -->
-    <section
-      v-if="backendStatus === 'error' || (backendStatus === 'ok' && backendInfo.llm_configured === false)"
-      class="status-line"
-    >
-      <template v-if="backendStatus === 'ok' && backendInfo.llm_configured === false">
-        <span class="dot dot--warn"></span>
-        <span class="status-text status-warn">LLM 未配置 — 请先去配置 BYOK</span>
-      </template>
-      <template v-else-if="backendStatus === 'error'">
-        <span class="dot dot--err"></span>
-        <span class="status-text status-err">服务未连接 · {{ errorMsg }}</span>
-      </template>
-    </section>
+        <!-- 系统状态:2026-06-08 用户精修 — 只在异常时显示
+             正常态隐藏,不再占据"父平台路由"占位行 -->
+        <section
+          v-if="backendStatus === 'error' || (backendStatus === 'ok' && backendInfo.llm_configured === false)"
+          class="status-line"
+        >
+          <template v-if="backendStatus === 'ok' && backendInfo.llm_configured === false">
+            <span class="dot dot--warn"></span>
+            <span class="status-text status-warn">LLM 未配置 — 请先去配置 BYOK</span>
+          </template>
+          <template v-else-if="backendStatus === 'error'">
+            <span class="dot dot--err"></span>
+            <span class="status-text status-err">服务未连接 · {{ errorMsg }}</span>
+          </template>
+        </section>
+      </div>
+    </div>
 
     <!-- 阶段 5.1 link 抽屉 — 中央卡片,backdrop 虚化 -->
     <Teleport to="body">
@@ -386,27 +393,30 @@ onMounted(() => {
 </template>
 
 <style scoped>
-/* 2026-06-08 用户精修:锁滚动 — 整个 home 占满可见区域不溢出,
- * 中间 shelf 内部滚动(超出时)。
- * 父平台 main 容器是 flex 子项,我们用 height: 100% 撑满 → 不再产生外层滚动条
+/* 2026-06-08 用户精修 v2:三层布局
+ *   .home          全宽 flex column,锁高 + overflow hidden
+ *     .home-toolbar  全宽 toolbar,返回按钮挂真正左上角(不嵌在 720 内)
+ *     .home-scroll   flex 1 + 内部滚(剩余空间全占,撑开舒展感)
+ *       .home-inner    max-width 720 居中,padding 控制呼吸
  */
 .home {
-  max-width: 720px;
-  margin: 0 auto;
-  padding: var(--space-6) var(--space-5) var(--space-5);
-  color: var(--text);
   height: 100%;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  position: relative;   /* 给 .home-back-btn 做 absolute 锚 */
+  color: var(--text);
+  background: var(--bg);
 }
 
-/* 返回按钮 — 左上角 ghost 风格,与剧创态质感一致 */
+.home-toolbar {
+  flex-shrink: 0;
+  padding: var(--space-4) var(--space-5);
+  display: flex;
+  align-items: center;
+}
+
+/* 返回按钮 — ghost 风格,贴在真正的左上角(全宽 toolbar 内) */
 .home-back-btn {
-  position: absolute;
-  top: var(--space-4);
-  left: var(--space-5);
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -418,7 +428,6 @@ onMounted(() => {
   color: var(--text-muted);
   cursor: pointer;
   transition: all var(--transition-fast);
-  z-index: 5;
 }
 .home-back-btn:hover {
   background: var(--hover-bg);
@@ -426,10 +435,28 @@ onMounted(() => {
   border-color: var(--border);
 }
 
+/* 中央可滚区 — flex 1 占满 toolbar 之外的高度 */
+.home-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  /* 顶部留出空气,让 toolbar 和 hdr 之间不挤,但比之前 space-8 收紧 */
+  padding: var(--space-5) var(--space-5) var(--space-7);
+}
+
+/* 居中容器 720px,负责 max-width + 视觉呼吸 */
+.home-inner {
+  max-width: 720px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
 .hdr {
   text-align: center;
-  margin-bottom: var(--space-6);
-  padding: var(--space-4) 0 var(--space-2);
+  margin: 0;
+  padding: var(--space-3) 0 0;
   flex-shrink: 0;
 }
 .brand {
@@ -502,13 +529,13 @@ onMounted(() => {
   letter-spacing: 0.04em;
 }
 
-/* === 书架 — 2026-06-08 用户精修:flex 1 + 内部滚,主页不再外溢 === */
+/* === 书架 — 2026-06-08 用户精修 v2:
+ * 不再 flex 1 + overflow auto(滚动已上提到 .home-scroll)
+ * 让 shelf 自然撑开,父 .home-inner 的 gap 控制与上方间距
+ */
 .shelf {
-  flex: 1;
-  min-height: 0;
-  margin-top: var(--space-5);
-  padding: var(--space-4) 0;
-  overflow-y: auto;
+  padding: 0;
+  margin: 0;
 }
 .shelf-title {
   font-size: 12px;
