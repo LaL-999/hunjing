@@ -173,20 +173,25 @@ function handleProjectCreated(p: Project, mode: ProjectMode) {
   flex-direction: column;
 }
 
-/* 2026-06-08 用户精修 v2:贴边浮动 toggle 按钮(Notion 风格)
- *   - 固定在屏幕垂直 50% 位置
- *   - 默认贴在 sidebar 右沿(left = sidebar-width)
- *   - 折叠后贴在屏幕最左(left = 0)
- *   - 与 sidebar 同 duration 同 ease,完全同步滑动
- *   - 半圆视觉(右侧圆角):像把手,语义清楚
- *   - hover 才显出底色,默认浅
+/* 2026-06-08 用户精修 v3:bug 修复 + 重新定位
+ *
+ *   bug:v2 按钮中心在 left: var(--sidebar-width) + translate(-50%),
+ *   按钮左半 [231, 240] 重叠在 sidebar 的 .project-list 上。
+ *   z-index 99 vs sidebar 内 .project-item (z-index auto, position static),
+ *   理论 toggle 该在上,但 will-change: transform 让 sidebar 创建独立
+ *   stacking context + composite layer,某些浏览器实现下事件被 sidebar
+ *   内子元素抢走 → 折叠点击无响应。
+ *
+ *   治理:按钮**完全在主区**,左边缘紧贴 sidebar 右沿,不重叠 sidebar。
+ *   折叠时按钮 left: 0,sidebar 已 translateX(-100%) 滑出,也不冲突。
  */
 .sidebar-toggle-edge {
   position: fixed;
   top: 50%;
   left: var(--sidebar-width);
-  transform: translate(-50%, -50%);
-  z-index: calc(var(--z-modal-backdrop) - 1);   /* sidebar 之上 / modal 之下 */
+  /* 只动 Y 居中,X 不偏移 — 按钮完全在 sidebar 之外 */
+  transform: translateY(-50%);
+  z-index: 100;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -194,10 +199,12 @@ function handleProjectCreated(p: Project, mode: ProjectMode) {
   height: 56px;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: 4px;
+  border-left: none;          /* 跟 sidebar 右边沿贴齐,视觉融合 */
+  border-radius: 0 6px 6px 0;  /* 仅右圆角,像突出的把手 */
   color: var(--color-text-subtle);
   cursor: pointer;
-  opacity: 0.5;
+  opacity: 0.55;
+  box-shadow: 2px 0 6px rgba(0, 0, 0, 0.04);
   transition:
     left var(--duration-base) var(--ease-out-soft),
     opacity var(--duration-fast) var(--ease-out),
@@ -206,7 +213,6 @@ function handleProjectCreated(p: Project, mode: ProjectMode) {
 }
 .sidebar-toggle-edge.is-collapsed {
   left: 0;
-  transform: translate(0, -50%);
 }
 .sidebar-toggle-edge:hover {
   opacity: 1;
