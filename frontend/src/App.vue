@@ -173,30 +173,28 @@ function handleProjectCreated(p: Project, mode: ProjectMode) {
   flex-direction: column;
 }
 
-/* 2026-06-08 用户精修 v3:bug 修复 + 重新定位
+/* 2026-06-08 用户精修 v4:bug 修复 — 去 transform 治"点击后弹一下"
  *
- *   bug:v2 按钮中心在 left: var(--sidebar-width) + translate(-50%),
- *   按钮左半 [231, 240] 重叠在 sidebar 的 .project-list 上。
- *   z-index 99 vs sidebar 内 .project-item (z-index auto, position static),
- *   理论 toggle 该在上,但 will-change: transform 让 sidebar 创建独立
- *   stacking context + composite layer,某些浏览器实现下事件被 sidebar
- *   内子元素抢走 → 折叠点击无响应。
+ *   v3 bug:用 transform: translateY(-50%) 做垂直居中,click 时浏览器
+ *   对 button 的 :active 默认行为短暂影响 transform layer 合成,
+ *   按钮视觉上"往下偏一下又弹回" — Chrome / Edge 都复现。
  *
- *   治理:按钮**完全在主区**,左边缘紧贴 sidebar 右沿,不重叠 sidebar。
- *   折叠时按钮 left: 0,sidebar 已 translateX(-100%) 滑出,也不冲突。
+ *   治理:用 top: calc(50% - height/2) 静态居中,彻底去掉 transform。
+ *   按钮位置稳定不依赖 GPU 合成层,click 时绝对不会偏移。
  */
 .sidebar-toggle-edge {
   position: fixed;
-  top: 50%;
+  /* 56 / 2 = 28px,精准垂直居中,不靠 transform */
+  top: calc(50% - 28px);
   left: var(--sidebar-width);
-  /* 只动 Y 居中,X 不偏移 — 按钮完全在 sidebar 之外 */
-  transform: translateY(-50%);
   z-index: 100;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 18px;
   height: 56px;
+  margin: 0;
+  padding: 0;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-left: none;          /* 跟 sidebar 右边沿贴齐,视觉融合 */
@@ -219,6 +217,10 @@ function handleProjectCreated(p: Project, mode: ProjectMode) {
   background: var(--color-accent-soft);
   color: var(--color-accent);
   border-color: var(--color-accent-border);
+}
+/* 显式锁 active 态 — 按下不要任何位置变化,只允许微弱 scale 给反馈 */
+.sidebar-toggle-edge:active {
+  background: var(--color-accent-soft);
 }
 
 .app-main-content {
