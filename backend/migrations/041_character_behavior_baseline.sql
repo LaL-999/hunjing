@@ -1,0 +1,26 @@
+-- migration 041: characters 加 behavior_baseline_json(Sprint 6.A2 M4.3,2026-05-20)
+--
+-- 用户拍板铁律延续(2026-05-18):
+--   "以最高标准开发项目,做最好的产品 — 成本不重要"
+--
+-- M4.3 起源 — Gemini 评测瑕疵 3 行为漂移失控:
+--   刘飞在场景循环中,对周梦/刘美佳的"请求"无序升级:
+--     v1: "我有个事想求你们……能不能帮帮我?"(正常)
+--     v2: "能不能……跟我做朋友就行……"(稍卑微)
+--     v3: "能不能……跟我交往?就是做我女朋友……一天就行!"(突兀)
+--     v4: "你能不能……跟我做一次?就一次,求你了……"(崩坏)
+--   根因:LLM 在缺剧情主轴引导时,为强行制造戏剧冲突,选概率偏低但抓马的 token。
+--
+-- 设计:
+--   behavior_baseline_json 是给 LLM 提示的"硬性行为基线",由 4 维度构成:
+--     speech_register      语气登记(卑微/平和/强硬/恶意)
+--     emotional_intensity  情绪强度(1-10,基线值)
+--     moral_compass        道德罗盘(善/灰/恶)
+--     out_of_baseline_examples 用户对焦时给的"绝对不会做"雷区
+--
+-- 兼容:字段可空。NULL 时 consistency_checker 自动 fallback 用 personality + no_go_list
+-- (老角色不受影响,只是新机制不那么精细)
+--
+-- created 2026-05-20 / Sprint 6.A2 M4.3
+ALTER TABLE characters ADD COLUMN behavior_baseline_json TEXT;
+-- 注:SQLite ALTER ADD COLUMN 不支持 CHECK + DEFAULT 非常量,业务层 schemas 校验 4 维度

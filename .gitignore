@@ -1,0 +1,69 @@
+# 凭证与本地配置
+.env
+.env.local
+.env.*.local
+backend/.env
+insights-backend/.env
+
+# Python 虚拟环境与缓存
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# 后端数据库文件(SQLite)
+backend/data/
+insights-backend/data/
+data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# uv 锁文件(MVP 阶段 1 暂不入 git;团队多人时再 commit)
+backend/uv.lock
+
+# 前端依赖与构建产物
+node_modules/
+dist/
+.vite/
+frontend/node_modules/
+frontend/dist/
+insights-frontend/node_modules/
+insights-frontend/dist/
+
+# 大文件 / 衍生数据
+*.epub
+*.docx
+*.pdf
+_epub_temp/
+
+# 上传 / 推演输出
+uploads/
+backend/uploads/
+backend/app/extracted/
+
+# Claude / 跨会话临时
+.claude/
+SESSION_MEMORY.md
+
+# IDE / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# 日志
+*.log
+logs/
+
+# 大型衍生数据(如有需要可按需放开)
+# data/extracted/红楼梦_full.txt
+# data/graphs/*.json

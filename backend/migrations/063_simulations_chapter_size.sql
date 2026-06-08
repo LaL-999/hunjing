@@ -1,0 +1,21 @@
+-- migration 063: simulations 加 chapter_size_chars(P0H.2 章节系统统一)
+--
+-- 起源:用户反馈 — 快速模式有 LLM 生成的 ## 小标题,灵魂续写没有,体验不一致。
+--      希望统一为"章节"概念(不是"标题"),用户可自定义每章字数。
+--      例:chapter_size_chars=2000,创作 4500 字续作 → 自动切 3 章。
+--
+-- 设计:
+--   - 后端不再让 LLM 生成 ## 小标题(composer.md 删 ## 要求)
+--   - 后端 narrative 字段保持纯 markdown(无章节标题)
+--   - 前端 SimulationReadView 渲染时按 chapter_size_chars 自动切分,加 ## 章节 N
+--   - 切分规则:累积字数达到 chapter_size 时,找最近的段落分界(\n\n)插入章节标题
+--
+-- 字段:
+--   chapter_size_chars INT NOT NULL DEFAULT 2000
+--   合理范围:1000-10000(< 1000 章节太碎,> 10000 章节太长)
+--
+-- 普适性:两种模式都适用 — quick / evolution 用同一套切分逻辑
+--
+-- created 2026-05-24 / P0H.2
+
+ALTER TABLE simulations ADD COLUMN chapter_size_chars INTEGER NOT NULL DEFAULT 2000;

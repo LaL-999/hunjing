@@ -1,0 +1,38 @@
+-- migration 057: simulations 加 pending_scene_hint
+-- Sprint 6.A2 路线图 #5(per-scene hint 边写边干预,2026-05-23)—
+-- 用户在 AI 续写过程中,给"下一幕"塞一条即时 hint(比如"让主角这里要爆发")
+--
+-- 起因:
+--   AI 续写一旦 kick_off 就一气呵成 — 用户看 SSE 进度只能干瞪眼,
+--   想干预只能等跑完(可能跑偏方向)再点"重新推演"。重新推演 = 新 sim = 浪费 token。
+--   #5 让用户在续写过程中也能"插话",AI 下一幕生成时纳入考虑。
+--
+-- 方案:
+--   用户从前端 SceneHintInput 输入 → POST /api/simulations/{id}/inject_scene_hint
+--   → 写入 simulations.pending_scene_hint。
+--   续写主循环每幕开始前读此字段:
+--     - 非空:加入 director system prompt 的 "## 用户即时干预" 段落,
+--             然后立即 UPDATE 设回 NULL(消耗式,只影响下一幕)
+--     - 空:跳过,prompt 正常
+--   设计为单次消耗 + 只影响下一幕 — 避免 hint 滚雪球越积越多让 AI 跑偏。
+--
+-- 字段语义:
+--   pending_scene_hint:
+--     - TEXT,NULL = 没有待生效 hint(默认)
+--     - 非空 = 用户已提交,等下一幕开始时读取并清空
+--     - 长度上限由 API 层验证(< 300 字,防 prompt 撑爆)
+--
+-- 触发清空时机:
+--   - 续写主循环每幕开始前,如非空则 SELECT + 立即 UPDATE 设回 NULL(同一个 transaction 内)
+--   - sim 状态变为 done / failed / cancelled 时,后续不再消耗(字段保留但不影响)
+--
+-- 并发安全:
+--   - SELECT + UPDATE 在同 transaction 内,避免"读到 hint → 后端清空 → 用户新 hint 写入 → 后端覆盖丢失"
+--   - 同时刻只有一个续写主循环在跑(sim 串行),不存在多读者并发
+--
+-- 老 sim 兼容:
+--   - NULL 字段不影响现有 sim;新功能纯增量
+--
+-- created 2026-05-23 / Sprint 6.A2 #5
+
+ALTER TABLE simulations ADD COLUMN pending_scene_hint TEXT;

@@ -1,0 +1,85 @@
+{
+  "_doc": {
+    "title": "红旗词典初始 seed — Sprint 2.A(M6-fix7-post 降门槛 2026-05-20)",
+    "philosophy": "宽松文学优先 — 误杀文学用户的成本远高于漏放某个边缘词。本次进一步降门槛(用户拍板):创作平台只对'非常敏感的国家政治问题 + 真实可执行的爆炸物/枪支制造教程 + CSAM(未成年色情)+ 兽交极端类'保留 block;允许隐晦成人内容(迷奸 / 轮奸 / 性奴 等黑暗题材在悬疑 / 罪案 / 黑暗 言情 中常见,降为 warn 不阻断);恐怖组织名(ISIS 等)在国际题材小说常用,降为 warn;自杀方法 4 字 substring 太宽,降为 warn 防误杀'考虑自杀方法'这类正常剧情。",
+    "lenient_should_pass": [
+      "武侠流血:'剑光过处,鲜血飞溅' — 不拦",
+      "战争描写:'刀剑相击,死伤无数' — 不拦",
+      "言情亲密:'他们紧紧拥抱,亲吻' — 不拦",
+      "悬疑死亡:'尸体已经冷透' — 不拦",
+      "历史提及:'这让人想起文革时期的批斗' — 不拦",
+      "情绪抒发:'我恨透了这个世界' — 不拦",
+      "成年情爱:'两人相拥而眠' — 不拦",
+      "普通脏话:'他妈的' — 不拦",
+      "黑暗剧情:'反派准备迷奸她' — 不拦(降为 warn,允许隐晦成人题材)",
+      "黑暗剧情:'轮奸的暴行被记录下来' — 不拦(降为 warn)",
+      "黑暗剧情:'她被当成性奴禁锢了三年' — 不拦(降为 warn)",
+      "罪案小说:'凶手是 ISIS 成员' — 不拦(降为 warn,国际题材常用)",
+      "心理悬疑:'她开始考虑自杀方法' — 不拦(降为 warn,文学常见)",
+      "历史小说:'六四屠杀那年的回忆' — 不拦(降为 warn,作为历史指涉)"
+    ],
+    "strict_should_block": [
+      "政治极端:'颠覆国家政权' — 拦(明确刑事用语)",
+      "分裂主义:'藏独 / 疆独 / 台独 / 港独' — 拦(完整分裂主义口号)",
+      "邪教组织:'法轮功' — 拦(中国大陆禁)",
+      "恐怖技术:'自制炸药配方教程' — 拦(真实危险)",
+      "未成年色情:'幼女性 / 萝莉色情 / 童交 / 儿童色情 / 强奸幼女' — 拦(CSAM,法律刚性要求)",
+      "极端兽交:'兽交 / 人兽性交' — 拦",
+      "PII:身份证号格式 — 拦"
+    ],
+    "maintenance": "运营手动 SQL 增删 red_flag_dictionary 行;enabled=0 软禁用;误杀报告多 → severity 改 'warn' 暂留观察。本次降门槛已通过 migration 044 同步到现存 DB。",
+    "total_entries": "约 40 条(其中 ~23 条 block,~14 条 warn,~3 条 PII warn)",
+    "source": "开源 sensitive-words 项目清洗 + 中国刑法 105/120/125/128/236 条相关用语 + 通用 PII 正则",
+    "policy_change_history": [
+      "2026-05-11 Sprint 2.A 初版:40 条 block",
+      "2026-05-20 M6-fix7-post 降门槛:六四屠杀 / ISIS 系恐怖组织 / 迷奸-轮奸-性奴 / 自杀方法 / 人体炸弹 全部 block→warn,减少 ~13 条 block,降低用户流失"
+    ]
+  },
+
+  "entries": [
+    {"category": "political", "pattern": "颠覆国家政权",       "is_regex": false, "severity": "block", "note": "敏感政治 — 刑法 105 条直接用语;不拦'颠覆'单字"},
+    {"category": "political", "pattern": "煽动颠覆",             "is_regex": false, "severity": "block", "note": "敏感政治 — 完整动宾,文学讨论几乎不用"},
+    {"category": "political", "pattern": "推翻共产党",          "is_regex": false, "severity": "block", "note": "敏感政治 — 完整反动口号"},
+    {"category": "political", "pattern": "反共复辟",             "is_regex": false, "severity": "block", "note": "敏感政治 — 明确反动口号"},
+    {"category": "political", "pattern": "藏独",                 "is_regex": false, "severity": "block", "note": "敏感政治 — 分裂主义口号简称"},
+    {"category": "political", "pattern": "疆独",                 "is_regex": false, "severity": "block", "note": "敏感政治 — 分裂主义口号简称"},
+    {"category": "political", "pattern": "台独",                 "is_regex": false, "severity": "block", "note": "敏感政治 — 分裂主义口号简称(注:'台湾'本身不拦)"},
+    {"category": "political", "pattern": "港独",                 "is_regex": false, "severity": "block", "note": "敏感政治 — 分裂主义口号简称"},
+    {"category": "political", "pattern": "法轮功",               "is_regex": false, "severity": "block", "note": "敏感政治 — 邪教组织名,中国大陆禁"},
+    {"category": "political", "pattern": "六四屠杀",            "is_regex": false, "severity": "warn",  "note": "敏感政治 — 历史指涉,文学常作背景提及;M6-fix7-post 降 block→warn 防误杀"},
+
+    {"category": "violence", "pattern": "自制炸药",              "is_regex": false, "severity": "block", "note": "恐怖暴力 — 提供爆炸物制造方法,刑法 125 条"},
+    {"category": "violence", "pattern": "炸药配方",              "is_regex": false, "severity": "block", "note": "恐怖暴力 — 同上"},
+    {"category": "violence", "pattern": "TATP",                   "is_regex": false, "severity": "block", "note": "恐怖暴力 — 三过氧化丙酮,恐怖袭击常用爆炸物"},
+    {"category": "violence", "pattern": "ANFO",                   "is_regex": false, "severity": "block", "note": "恐怖暴力 — 硝酸铵燃料油,恐怖袭击爆炸物"},
+    {"category": "violence", "pattern": "ISIS",                   "is_regex": false, "severity": "warn",  "note": "恐怖暴力 — 恐怖组织名;国际题材 / 罪案小说常用,M6-fix7-post 降 block→warn"},
+    {"category": "violence", "pattern": "伊斯兰国",              "is_regex": false, "severity": "warn",  "note": "恐怖暴力 — ISIS 中文名;同上,降 warn"},
+    {"category": "violence", "pattern": "基地组织",              "is_regex": false, "severity": "warn",  "note": "恐怖暴力 — 恐怖组织名;国际题材常用,降 warn"},
+    {"category": "violence", "pattern": "东伊运",                "is_regex": false, "severity": "warn",  "note": "恐怖暴力 — 东突厥斯坦伊斯兰运动;降 warn"},
+    {"category": "violence", "pattern": "圣战分子",              "is_regex": false, "severity": "warn",  "note": "恐怖暴力 — 恐怖主义自称;文学常用反派身份,降 warn"},
+    {"category": "violence", "pattern": "人体炸弹",              "is_regex": false, "severity": "warn",  "note": "恐怖暴力 — 完整术语;惊悚 / 战争小说常见,降 warn"},
+    {"category": "violence", "pattern": "如何制造炸弹",         "is_regex": false, "severity": "block", "note": "恐怖暴力 — 教程式表述"},
+    {"category": "violence", "pattern": "如何制作枪支",         "is_regex": false, "severity": "block", "note": "恐怖暴力 — 教程式表述,刑法 128 条"},
+    {"category": "violence", "pattern": "自杀方法",              "is_regex": false, "severity": "warn",  "note": "恐怖暴力 — 4 字 substring 过宽,常误杀'考虑自杀方法'类正常剧情;降 warn,严教程留'怎么自杀最快'/'上吊教程'"},
+    {"category": "violence", "pattern": "怎么自杀最快",         "is_regex": false, "severity": "block", "note": "恐怖暴力 — 明确求助/教程语言"},
+    {"category": "violence", "pattern": "上吊教程",              "is_regex": false, "severity": "block", "note": "恐怖暴力 — 教程式自杀引导"},
+
+    {"category": "sexual", "pattern": "幼女性",                  "is_regex": false, "severity": "block", "note": "CSAM — 未成年色情组合;不拦'幼女'单独 / 不拦'女性'"},
+    {"category": "sexual", "pattern": "萝莉色情",                "is_regex": false, "severity": "block", "note": "CSAM — 未成年色情明确组合"},
+    {"category": "sexual", "pattern": "童交",                    "is_regex": false, "severity": "block", "note": "CSAM — 未成年性行为术语"},
+    {"category": "sexual", "pattern": "儿童色情",                "is_regex": false, "severity": "block", "note": "CSAM — 明确未成年色情"},
+    {"category": "sexual", "pattern": "未成年性交",              "is_regex": false, "severity": "block", "note": "CSAM — 完整未成年色情表述"},
+    {"category": "sexual", "pattern": "兽交",                    "is_regex": false, "severity": "block", "note": "极端色情 — 兽交类目,法律刚性"},
+    {"category": "sexual", "pattern": "人兽性交",                "is_regex": false, "severity": "block", "note": "极端色情 — 同上"},
+    {"category": "sexual", "pattern": "强奸幼女",                "is_regex": false, "severity": "block", "note": "CSAM — 刑法 236 条,明确刑事"},
+    {"category": "sexual", "pattern": "迷奸",                    "is_regex": false, "severity": "warn",  "note": "成人题材 — 悬疑 / 罪案 / 黑暗言情常见情节;M6-fix7-post 降 block→warn 允许隐晦成人内容"},
+    {"category": "sexual", "pattern": "轮奸",                    "is_regex": false, "severity": "warn",  "note": "成人题材 — 同上,降 warn"},
+    {"category": "sexual", "pattern": "性奴",                    "is_regex": false, "severity": "warn",  "note": "成人题材 — 黑暗设定常见,降 warn"},
+    {"category": "sexual", "pattern": "禽兽",                    "is_regex": false, "severity": "warn",  "note": "可能误杀(常用骂人语),默认 warn 不阻断"},
+
+    {"category": "privacy", "pattern": "[1-9][0-9]{16}[0-9X]",   "is_regex": true,  "severity": "block", "note": "隐私 PII — 中国大陆 18 位身份证号格式"},
+    {"category": "privacy", "pattern": "1[3-9][0-9]{9}",          "is_regex": true,  "severity": "warn",  "note": "隐私 PII — 中国大陆手机号格式;默认 warn(小说人物联系方式可能误杀)"},
+    {"category": "privacy", "pattern": "[1-9][0-9]{15}",          "is_regex": true,  "severity": "warn",  "note": "隐私 PII — 16 位银行卡号格式;默认 warn(可能误杀身份证前缀)"},
+    {"category": "privacy", "pattern": "[1-9][0-9]{18}",          "is_regex": true,  "severity": "warn",  "note": "隐私 PII — 19 位银行卡号格式;默认 warn"}
+  ]
+}

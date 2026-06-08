@@ -1,0 +1,365 @@
+/* ============================================================
+ * 浑晶 全局样式重置 + 基础类型设定 v2(2026-05-09 重构 · 2026-05-12 加 a11y)
+ *
+ * 设计原则:朴素 + Claude 风。无玻璃 / 无渐变 / 无装饰字体。
+ *
+ * Sprint D.5 a11y polish:
+ *   - 全局 `:focus-visible` 统一 outline(浑晶紫 + offset 2px,亮暗主题都对比清晰)
+ *   - `:focus:not(:focus-visible)` 移除鼠标点击后的难看默认 outline
+ *   - `prefers-reduced-motion` 媒体查询 → 关闭非必要动画(用户系统级偏好)
+ *   - `.sr-only` 屏幕阅读器 only 类(给视觉隐藏但语义保留的内容用)
+ *   - `[hidden]` 兜底
+ * ============================================================ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  width: 100%;
+}
+
+/* 2026-05-27 视觉密度方案 B(VD sprint)— 全局缩 10% 启用:
+ *
+ * 改动链:
+ *   1. tokens.css 间距 / 圆角 / 布局 px → rem(全部跟随 root 缩放)
+ *   2. 163 处组件 inline font-size px → var(--text-*)(12-22px 范围)
+ *   3. 启用 html { font-size: 90% } → 所有 rem 单位 ×0.9
+ *
+ * 保留 inline px(故意不改):
+ *   - 8-11px 极小字号(chip / hint,缩 10% 后不可读)
+ *   - 24-48px 大标题(语义独特,沿用 inline)
+ *   - width / height / padding 等(下次会话再批量改,本次只动字号)
+ *
+ * 优势 vs zoom:真实改 layout,无渲染层缩放偏差,第三方库 hit-test 正常
+ * 优势 vs transform: scale:不留空白,无鼠标事件错位
+ * 90% 而非 14.4px 固定值:尊重浏览器默认字号偏好(辅助功能友好)
+ */
+html {
+  font-size: 90%;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: var(--line-normal);
+  color: var(--color-text);
+  background: var(--color-bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "kern" 1;
+}
+
+/* 表单元素继承字体 */
+button,
+input,
+textarea,
+select {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+button {
+  border: none;
+  background: none;
+  padding: 0;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+/* Sprint 6.A2 polish(2026-05-22):全局按钮按下微缩 — 治"点了像没点"
+ * 60ms 极快回弹(对齐 Linear / Vercel 按钮压感);Material 标准 ease。
+ * 已有 :hover transform 的卡片(如 .card:hover translateY)会被 :active 替换为按下感:
+ *   rest → hover lift → click flat+scale → release lift again
+ * prefers-reduced-motion 媒体查询(本文件下方)会自动把 transition 压到 0.01ms。 */
+button:not(:disabled):active {
+  transform: scale(0.97);
+  transition: transform 60ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+a {
+  color: var(--color-accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* 滚动条:细 + 浅 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.12);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.24);
+}
+
+/* ===== 通用 surface 类 ===== */
+.surface {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.surface-subtle {
+  background: var(--color-bg-subtle);
+}
+
+/* 等宽数字(timestamp / id 显示) */
+.mono {
+  font-family: var(--font-mono);
+  font-feature-settings: "tnum" 1;
+}
+
+/* 屏幕阅读 only(隐藏 label,保留 a11y) */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ============================================================
+ * Sprint D.5 — 全局 a11y polish
+ * ============================================================ */
+
+/* 统一 :focus-visible 焦点环 — 浑晶紫主色,亮 / 暗主题对比都够
+ * Sprint 6.A2 polish(2026-05-22):outline → box-shadow 三明治
+ *   - 旧版用 outline + outline-offset + 写死 border-radius,在圆角元素上(如 8px 的 .nav-btn / 卡片)
+ *     第三行 border-radius: var(--radius-sm)(4px)**会覆盖**元素自己的圆角,导致 focus 时视觉断角
+ *   - 新版三明治法:内圈与背景同色(2px)模拟 offset,外圈紫色环(2px)— box-shadow 自动跟随元素 border-radius
+ *   - :focus-visible 只在键盘 focus 时触发(鼠标点击不触发,a11y 黄金标准) */
+:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--color-bg),
+    0 0 0 4px var(--color-accent);
+}
+
+/* 移除鼠标点击后默认的难看 outline(:focus 但非 :focus-visible)*/
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* 用户系统偏好"减少动画"(macOS 辅助功能 / Win 系统设置 / iOS 减弱动效)
+ * → 关闭所有非必要 transition / animation
+ * 注意:不要全局禁用,会破坏功能性动画(modal 进入 / loading);
+ * 这里只关 transition,保留 RAF 动画(那些是产品核心 — pulse / ripple) */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* HTML5 hidden 兜底 — 老浏览器有时不识别(虽然现在都识别)*/
+[hidden] {
+  display: none !important;
+}
+
+/* ============================================================
+ * Sprint D.6 — loading 骨架屏
+ *
+ * 用法:任何要做骨架占位的 div / span 加 class="skeleton"
+ *   <div class="skeleton" style="height: 24px; width: 60%"></div>
+ *
+ * 设计:
+ *   - 基础灰底(`--color-bg-subtle`)+ 微 shimmer 渐变扫光(1.4s 周期)
+ *   - 圆角 4px 跟产品 token 一致
+ *   - prefers-reduced-motion 下停止 shimmer,只保留静态灰底
+ *   - 亮 / 暗主题自动切换(token 驱动)
+ * ============================================================ */
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: var(--color-bg-subtle);
+  border-radius: var(--radius-sm);
+}
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.06) 30%,
+    rgba(255, 255, 255, 0.10) 50%,
+    rgba(255, 255, 255, 0.06) 70%,
+    transparent 100%
+  );
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+}
+/* 亮色下 shimmer 用更亮的白 + 更可见的 alpha;暗色用上面的低 alpha 即可 */
+:root:not([data-theme="dark"]) .skeleton::after {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.4) 30%,
+    rgba(255, 255, 255, 0.7) 50%,
+    rgba(255, 255, 255, 0.4) 70%,
+    transparent 100%
+  );
+}
+
+@keyframes skeleton-shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton::after {
+    animation: none;
+    display: none;
+  }
+}
+
+/* ============================================================
+ * Sprint 6.A2 polish(2026-05-22):全局 modal/drawer 进出动画 + spin 旋转
+ *
+ * 历史问题:15+ modal 各自 scoped 重写 `.modal-fade-*`(150+ 行重复);
+ *           5 个文件各自定义 `@keyframes spin`,转速 0.8s-1s 不一致 → 站点丝山。
+ * 现:在此抽全局,Vue `<transition name="modal-fade">` 直接命中,各 modal 删 scoped 副本。
+ *
+ * 黄金标准范本(对齐):ConfirmDialog.vue 的 scale(0.96) + translateY(-4px) + opacity 节奏。
+ * 时长:--duration-base(200ms)。modal 偏大想要 320ms 的,P1-4 会引入 --duration-slow 后统一升级。
+ * ============================================================ */
+
+/* modal-fade — 中央 modal 进出(backdrop fade + 卡片 scale+lift)
+ * 用法:
+ *   <transition name="modal-fade"><div class="modal-backdrop"><div class="modal-card">...</div></div></transition>
+ * 要求 modal-card 是 modal-backdrop 的子元素(嵌套选择器才能 hit) */
+.modal-fade-enter-active,
+.modal-fade-leave-active {
+  transition: opacity var(--duration-base) var(--ease-out);
+}
+.modal-fade-enter-active .modal-card,
+.modal-fade-leave-active .modal-card {
+  transition: transform var(--duration-base) var(--ease-out),
+              opacity var(--duration-base) var(--ease-out);
+}
+.modal-fade-enter-from,
+.modal-fade-leave-to {
+  opacity: 0;
+}
+.modal-fade-enter-from .modal-card,
+.modal-fade-leave-to .modal-card {
+  transform: scale(0.96) translateY(-4px);
+  opacity: 0;
+}
+
+/* drawer-slide — 右侧抽屉进出(translateX + opacity)
+ * 用法:<transition name="drawer-slide"><aside class="drawer">...</aside></transition>
+ * 64px + --duration-slow + --ease-out-soft → "从右边柔推进来"的真实质感 */
+.drawer-slide-enter-active,
+.drawer-slide-leave-active {
+  transition: transform var(--duration-slow) var(--ease-out-soft),
+              opacity var(--duration-slow) var(--ease-out-soft);
+}
+.drawer-slide-enter-from,
+.drawer-slide-leave-to {
+  transform: translateX(64px);
+  opacity: 0;
+}
+
+/* spin — 通用旋转动画(spinner / loader 用)
+ * 用法:.my-spinner { animation: spin var(--duration-spin) linear infinite; }
+ * --duration-spin 在 tokens.css 定义,默认 0.8s 对齐 Linear / Vercel */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* list-stagger — 列表增删丝滑(配合 TransitionGroup)
+ * 用法:
+ *   <TransitionGroup tag="ul" name="list-stagger" class="my-list">
+ *     <li v-for="item in items" :key="item.id">...</li>
+ *   </TransitionGroup>
+ *
+ * 设计:
+ *   - enter:从下淡入(translateY 8px)
+ *   - leave:position absolute 脱离文档流 + 向上淡出 → 不引发后续元素瞬变 reflow
+ *   - move:Vue TransitionGroup 自动 FLIP,后续元素平滑上移
+ *   - --ease-out-soft + --duration-base 节奏一致 modal */
+.list-stagger-enter-active,
+.list-stagger-leave-active {
+  transition: transform var(--duration-base) var(--ease-out-soft),
+              opacity var(--duration-base) var(--ease-out-soft);
+}
+.list-stagger-enter-from {
+  opacity: 0;
+  transform: translateY(8px);
+}
+.list-stagger-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
+}
+.list-stagger-leave-active {
+  position: absolute;
+}
+.list-stagger-move {
+  transition: transform var(--duration-base) var(--ease-out-soft);
+}
+
+/* ============================================================
+ * 用户偏好(2026-05-22):全平台禁用鼠标 hover 变手掌
+ *
+ * 用户明确要求"鼠标就不变" — 任何可交互元素 hover 时鼠标保持系统默认箭头,不变 pointer。
+ * !important 用于穿透 40+ 文件 scoped css 里散落的 164 处 `cursor: pointer` 设置。
+ *
+ * 不受影响:
+ *   - input / textarea / [contenteditable]:浏览器默认 text cursor 保留(打字体验)
+ *   - [disabled]:not-allowed 保留(禁用反馈)
+ *   - resize / col-resize 等系统功能 cursor 保留
+ *
+ * 覆盖范围:button / a / [role=button|link|tab|menuitem] / 常见容器 class(card / chip / btn /
+ *   item / row / option / nav-* / menu-*)— 用属性选择器 [class*=...] 广扫,无需枚举每个 class
+ * ============================================================ */
+button:not(:disabled),
+a,
+[role="button"]:not([disabled]),
+[role="link"],
+[role="tab"],
+[role="menuitem"],
+[role="checkbox"],
+[role="radio"],
+[class*="card"]:not(input):not(textarea),
+[class*="chip"],
+[class*="btn"]:not(:disabled),
+[class*="-item"],
+[class*="-option"],
+[class*="-row"],
+[class*="nav-"],
+[class*="menu-"] {
+  cursor: default !important;
+}

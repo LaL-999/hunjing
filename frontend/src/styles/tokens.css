@@ -1,0 +1,249 @@
+/* ============================================================
+ * 浑晶 设计令牌 v2(2026-05-09 重构 · 2026-05-12 加暗色)
+ *
+ * 设计语言:对齐 Claude / ChatGPT 客户端
+ *   - 双主题:亮(默认)/ 暗(Sprint D.4)
+ *   - 系统字体栈,无衬线/无装饰字体
+ *   - 单一主色(浑晶紫 #7C3AED),双主题保留主色 DNA 不变
+ *   - 简洁边框 + 微圆角
+ *   - 大量留白
+ *
+ * 命名规范:--color-* / --font-* / --space-* / --radius-* / --shadow-*
+ *
+ * 主题切换:`<html data-theme="dark">` 触发 dark 覆盖。
+ *   useTheme composable 负责读 localStorage / prefers-color-scheme + 应用 DOM 属性。
+ *   main.ts 在 createApp 前调用 applyInitialTheme() 防 FOUC 闪烁。
+ *
+ * ⚠ 旧 --hj-* token 保留段(底部):仅供 CrystalGraph 3D 场景使用,
+ *    不要在新视图中引用(其它 demo 时代组件已删,见 Sprint 2.B 清理)。
+ *    3D 场景**本就深空底**(--hj-deep-space=#05080F),暗色主题无需另动 hj token。
+ * ============================================================ */
+
+:root {
+  /* ===== 色板:浅色主题(默认) ===== */
+
+  /* 背景层级 */
+  --color-bg:               #FAF7F2;        /* 全站米白底,Claude 风暖调 */
+  --color-bg-subtle:        #F4F0E8;        /* 次级:sidebar / 卡片底 */
+  --color-surface:          #FFFFFF;        /* 主区/卡片/输入框背景 */
+  --color-surface-hover:    #F7F5F0;        /* hover 微变 */
+
+  /* 边框 */
+  --color-border:           #E5E1D8;        /* 默认 1px */
+  --color-border-strong:    #D6D1C4;        /* 输入框 / 强调 */
+
+  /* 文字 */
+  --color-text:             #1F1F1E;        /* 主文字 */
+  --color-text-muted:       #6B6862;        /* 次文字 / hint */
+  --color-text-subtle:      #9A968D;        /* 占位 / disabled */
+  --color-text-on-accent:   #FFFFFF;
+
+  /* 主色:浑晶紫 */
+  --color-accent:           #7C3AED;
+  --color-accent-hover:     #6D28D9;
+  --color-accent-soft:      #F3EFFE;        /* 主色背景:tag/highlight */
+  --color-accent-text:      #5B21B6;        /* 在 accent-soft 上 */
+  --color-accent-border:    #C4B5FD;
+
+  /* 状态色 */
+  --color-danger:           #DC2626;
+  --color-danger-soft:      #FEE2E2;
+  --color-success:          #16A34A;
+  --color-success-soft:     #DCFCE7;
+  --color-warning:          #D97706;
+  --color-warning-soft:     #FEF3C7;
+
+  /* ===== 字体栈(系统字体 + 中文回退) ===== */
+  --font-sans:              -apple-system, BlinkMacSystemFont,
+                            "Segoe UI", Roboto, "Helvetica Neue", Arial,
+                            "PingFang SC", "Hiragino Sans GB",
+                            "Microsoft YaHei", sans-serif;
+  --font-mono:              "SF Mono", "JetBrains Mono", Menlo, Consolas,
+                            "Liberation Mono", monospace;
+
+  /* ===== 字号(rem 基线 16px) ===== */
+  --text-xs:                0.75rem;        /* 12 */
+  --text-sm:                0.8125rem;      /* 13 */
+  --text-base:              0.9375rem;      /* 15 — Claude 偏 14-15 */
+  --text-md:                1rem;           /* 16 */
+  --text-lg:                1.125rem;       /* 18 */
+  --text-xl:                1.375rem;       /* 22 */
+  --text-2xl:               1.75rem;        /* 28 */
+
+  /* ===== 行高 ===== */
+  --line-tight:             1.3;
+  --line-normal:            1.55;
+  --line-relaxed:           1.75;
+
+  /* ===== 间距(8 px 基线 — 2026-05-27 VD sprint 改 rem)=====
+   * 注释里的 px 数值是浏览器默认 16px root 下的等价值。
+   * VD sprint 后 root font-size=90%(global.css)→ 实际渲染 = 数值 × 0.9
+   * 例:--space-4 = 1rem = 14.4px(90% 模式)/ 16px(无 90% 模式)
+   */
+  --space-1:                0.25rem;        /* 4px (90%: 3.6px) */
+  --space-2:                0.5rem;         /* 8px (90%: 7.2px) */
+  --space-3:                0.75rem;        /* 12px (90%: 10.8px) */
+  --space-4:                1rem;           /* 16px (90%: 14.4px) */
+  --space-5:                1.25rem;        /* 20px (90%: 18px) */
+  --space-6:                1.5rem;         /* 24px (90%: 21.6px) */
+  --space-8:                2rem;           /* 32px (90%: 28.8px) */
+  --space-10:               2.5rem;         /* 40px (90%: 36px) */
+  --space-12:               3rem;           /* 48px (90%: 43.2px) */
+  --space-16:               4rem;           /* 64px (90%: 57.6px) */
+
+  /* ===== 圆角(VD:px → rem 跟随 root 缩放)===== */
+  --radius-sm:              0.25rem;        /* 4px (90%: 3.6px) */
+  --radius-md:              0.375rem;       /* 6px (90%: 5.4px) */
+  --radius-lg:              0.5rem;         /* 8px (90%: 7.2px) */
+  --radius-xl:              0.75rem;        /* 12px (90%: 10.8px) */
+  --radius-full:            9999px;
+
+  /* ===== 阴影(克制,默认 none) ===== */
+  --shadow-sm:              0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-md:              0 4px 12px rgba(0, 0, 0, 0.08);
+  --shadow-lg:              0 8px 24px rgba(0, 0, 0, 0.12);
+
+  /* ===== 动效(Sprint 6.A2 polish 2026-05-22 扩 token 系统) ===== */
+  --duration-fast:          120ms;        /* hover 微变 / chip / button 颜色 */
+  --duration-base:          200ms;        /* 默认值,弹出体 / drawer / 多数 transition */
+  --duration-slow:          320ms;        /* modal / drawer 大幅进出,给"柔感" */
+  --duration-page:          240ms;        /* router-view 切换 */
+  --duration-spin:          0.8s;         /* spinner / loader 旋转一周(对齐 Linear / Vercel) */
+  --ease-out:               cubic-bezier(0.16, 1, 0.3, 1);    /* 默认强出感(快收尾)*/
+  --ease-out-soft:          cubic-bezier(0.25, 0.46, 0.45, 0.94);   /* modal / drawer 柔进出 */
+  --ease-spring:            cubic-bezier(0.34, 1.56, 0.64, 1);     /* 按钮按下回弹(微弹) */
+
+  /* ===== 布局常量(VD:px → rem 跟随 root 缩放)===== */
+  --sidebar-width:          15rem;          /* 240px (90%: 216px) */
+  --topbar-height:          3.25rem;        /* 52px (90%: 46.8px) */
+
+  /* ===== Z 轴(2.C+ polish 重整 — 层级清晰避免 modal 互压)=====
+   * 设计原则:
+   *   ① 业务 modal 层(SimulationDock / Workbench / NodeEditDrawer / ChooseModeModal / ...)
+   *   ② 嵌套 modal 层(打开在业务 modal 之上,如反事实工作台的"使用指南")
+   *   ③ ConfirmDialog 决策层 — 永远在所有业务 modal 之上拦截用户决策
+   *   ④ Toast — 视觉永远在最上方,但 pointer-events: none 不阻塞操作
+   *   ⑤ Hover 浮窗 — 纯展示,pointer-events: none
+   */
+  --z-sidebar:                  10;
+  --z-sticky:                   20;
+  --z-modal-backdrop:           100;
+  --z-modal:                    101;
+  --z-modal-nested-backdrop:    200;   /* 嵌套于业务 modal 之上 */
+  --z-modal-nested:             201;
+  --z-confirm-backdrop:         300;   /* ConfirmDialog 永远高于业务 modal */
+  --z-confirm:                  301;
+  --z-toast:                    500;
+  --z-hover-tooltip:            600;
+
+  /* ============================================================
+   * 旧 --hj-* token —— 仅 CrystalGraph 3D 场景使用
+   * 不要在新视图中引用
+   * ============================================================ */
+
+  /* 3D 场景背景 */
+  --hj-deep-space:          #05080F;
+  --hj-deep-space-rgb:      5, 8, 15;
+  --hj-crystal-light:       #E8F4FF;
+  --hj-crystal-dim:         #8B9DC3;
+  --hj-crystal-dark:        #4A5577;
+
+  /* 3D 节点关系连线色 */
+  --hj-rel-kin:             #FFD700;
+  --hj-rel-kin-end:         #F0C040;
+  --hj-rel-foe:             #FF4757;
+  --hj-rel-foe-end:         #C0392B;
+  --hj-rel-master:          #C0C5CE;
+  --hj-rel-master-end:      #8B95A1;
+  --hj-rel-lover:           #FF6B9D;
+  --hj-rel-lover-end:       #E91E63;
+  --hj-rel-friend:          #7BD8E8;
+  --hj-rel-friend-end:      #5BAEC0;
+  --hj-rel-coworker:        #A78BFA;
+  --hj-rel-coworker-end:    #8B6BD9;
+  --hj-rel-located:         #94D87A;
+  --hj-rel-located-end:     #7AB85F;
+  --hj-rel-mention:         #6B7280;
+  --hj-rel-mention-end:     #4B5563;
+
+  /* 3D 角色节点核心色 */
+  --hj-char-cold:           #7BD8E8;
+  --hj-char-cold-end:       #5BAEC0;
+  --hj-char-hot:            #FF8C42;
+  --hj-char-hot-end:        #E36F2D;
+  --hj-char-calm:           #A78BFA;
+  --hj-char-calm-end:       #7C6BD9;
+  --hj-char-tender:         #FF6B9D;
+  --hj-char-tender-end:     #E91E63;
+  --hj-char-shadow:         #5A7B6E;
+  --hj-char-shadow-end:     #3D5A4F;
+  --hj-char-honest:         #E8C99B;
+  --hj-char-honest-end:     #C9A86A;
+
+  /* 3D 动效 */
+  --hj-ease-out-expo:       cubic-bezier(0.16, 1, 0.3, 1);
+  --hj-ease-in-out-sine:    cubic-bezier(0.45, 0.05, 0.55, 0.95);
+  --hj-duration-pulse:      1600ms;
+}
+
+
+/* ============================================================
+ * Sprint D.4 — 暗色主题(`<html data-theme="dark">`)
+ *
+ * 策略:**只覆盖颜色 token**,字体 / 间距 / 圆角 / z-index / 动效全沿用浅色定义。
+ *
+ * 设计原则:
+ *   1. **主色保留** — accent #7C3AED 是浑晶 DNA,亮暗主题都不变;只调 accent-soft / accent-text
+ *      让它在暗背景上仍清晰
+ *   2. **不纯黑** — bg 用 #1A1A19(暖灰)不用 #000,跟亮色暖米调一致(品牌温度感)
+ *   3. **层级反转** — 亮色 surface(白) > bg(米) > sidebar(深米);暗色反过来
+ *      sidebar(深暗) < bg(中暗) < surface(亮暗,卡片站出来)
+ *   4. **阴影减弱** — 暗背景上阴影几乎不可见,但 modal 保留极淡阴影增强层次感
+ *
+ * 3D 图谱(CrystalGraph)的 --hj-* token **不变** — 3D 场景本就深空底,暗色主题下
+ * 跟界面背景反而协调;亮色主题下 3D 是"潜入深空"的对比,暗色下是"延续场景",都成立。
+ * ============================================================ */
+:root[data-theme="dark"] {
+  /* 背景层级 v2(2026-05-12 用户反馈"不够黑还有点泛白",整体加深 + 修正层级)
+   *
+   * **核心修复**:亮色 sidebar(#F4F0E8)比 bg(#FAF7F2)略深 → 暗色镜像应该
+   * sidebar 比 bg 更**深**;之前我把 bg-subtle 设得比 bg 亮,反了。
+   *
+   * 顺序(由暗到亮):sidebar(bg-subtle) < bg < surface < surface-hover
+   * 整体压暗约 30%,接近"真黑暖调"(R/G/B 仍微差 1-2 保留暖意,不纯灰)
+   */
+  --color-bg:               #121110;        /* 全站底,几乎黑(luma 17) */
+  --color-bg-subtle:        #08070A;        /* sidebar 最暗(luma 8,接近纯黑) */
+  --color-surface:          #1C1B19;        /* 卡片底,略浮起(luma 27) */
+  --color-surface-hover:    #26241F;        /* hover 微亮(luma 36) */
+
+  /* 边框(暗背景上要可见 + 不抢眼) */
+  --color-border:           #2D2B27;        /* luma 43,卡片边可见 */
+  --color-border-strong:    #3F3D38;        /* luma 60,输入框 / 强调 */
+
+  /* 文字(米白系,跟暖背景协调) */
+  --color-text:             #F0EDE5;        /* 主文字(luma 237,对 surface 27 → 对比 8.7 AAA ✓) */
+  --color-text-muted:       #B5B0A5;        /* 次文字(luma 175,对 surface → 6.5 AA ✓) */
+  --color-text-subtle:      #807B72;        /* 占位(luma 124,对 surface → 4.6 AA ✓ 大字 / borderline 普通字)*/
+  --color-text-on-accent:   #FFFFFF;        /* 主色按钮文字 */
+
+  /* 主色:**保留** #7C3AED,只调辅助色 */
+  --color-accent:           #7C3AED;
+  --color-accent-hover:     #8B4CF0;        /* 暗下 hover 要稍亮 */
+  --color-accent-soft:      #1F1437;        /* 更暗的紫底(贴近 surface,不突出)*/
+  --color-accent-text:      #C4B5FD;        /* accent-soft / 暗背景上的紫文字(luma 200)*/
+  --color-accent-border:    #4C3B8A;
+
+  /* 状态色:饱和度降低,soft 用暗版 */
+  --color-danger:           #F87171;
+  --color-danger-soft:      #3A1717;        /* 更暗 */
+  --color-success:          #4ADE80;
+  --color-success-soft:     #142F1B;        /* 更暗 */
+  --color-warning:          #FBBF24;
+  --color-warning-soft:     #2F2308;        /* 更暗 */
+
+  /* 阴影:暗色下减弱,但 modal 仍存一点拉层次感 */
+  --shadow-sm:              0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-md:              0 4px 12px rgba(0, 0, 0, 0.45);
+  --shadow-lg:              0 8px 24px rgba(0, 0, 0, 0.65);
+}

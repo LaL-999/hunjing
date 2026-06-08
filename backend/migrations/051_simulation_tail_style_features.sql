@@ -1,0 +1,37 @@
+-- migration 051: simulations 加 tail_style_features_json + tail_style_analyzed_at
+-- Sprint 6.A2 TS(Tail Style,2026-05-21)— 末尾态笔法 Reflexion 自检
+--
+-- 起因:
+--   末尾态项目(project.mode='end')续写时,LLM 已被告知"严格继承原作末段笔法",
+--   但只是宽泛指令,没有"产物 vs 原作 5 维 diff"的客观对照 → 笔法漂移用户感受明显
+--
+-- 方案:
+--   sim 创建时(末尾态首次续写),一次性分析 original_tail_excerpt 的 5 维笔法特征 →
+--   缓存到 simulations.tail_style_features_json(JSON)+ tail_style_analyzed_at(时间戳)
+--   后续每幕 narrator multi-sample 投票时,每个候选过笔法检测拿综合分(0-100)→
+--   作为 voting tiebreaker(critical → warning → -style_score → char_deviation)
+--
+-- 字段语义:
+--   tail_style_features_json:
+--     {
+--       "vocab_set": ["词1", "词2", ...],          // 核心词汇 5-10 个(LLM 提取)
+--       "sentence_length_avg": 28.5,               // 平均句长(客观)
+--       "short_sentence_ratio": 0.35,              // 短句(≤15 字)占比
+--       "long_sentence_ratio": 0.15,               // 长句(>40 字)占比
+--       "perspective": "third_limited",            // first | third_omniscient | third_limited | second
+--       "tone_baseline": "悲凉沉郁"                 // 5 字内基调描述
+--     }
+--   tail_style_analyzed_at: ISO 时间戳,NULL 表示尚未分析
+--
+-- 触发条件:
+--   - simulation.original_tail_excerpt 非空(末尾态首次续写时已缓存)
+--   - tail_style_analyzed_at 为 NULL(首次分析)
+--   - 主循环开始时调用 tail_style_analyzer.analyze_tail() 写入
+--
+-- 老 sim 兼容:
+--   - NULL 字段不影响现有 sim;末尾态分支只在 original_tail_excerpt 非空时启动
+--
+-- created 2026-05-21 / Sprint 6.A2 TS
+
+ALTER TABLE simulations ADD COLUMN tail_style_features_json TEXT;
+ALTER TABLE simulations ADD COLUMN tail_style_analyzed_at TEXT;

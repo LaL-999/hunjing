@@ -1,0 +1,30 @@
+-- migration 071: outline_scenes 加宏观结构标记
+-- SP-6(2026-05-28)— 剧情结构 + 张力曲线 UI(后端基础)
+--
+-- 起因:
+--   outline_scenes 已有 tension_percent(场景级张力 0-100,migration 049)和
+--   pacing_tempo(场景级节奏 fast/normal/slow),但**缺宏观结构标记** ——
+--   AI 写长篇容易"前 5 幕铺垫到 25 幕才打高潮",根因之一是 LLM 没有
+--   "本幕属于第一幕设置 / 第二幕冲突 / 第三幕收束"的整体定位.
+--
+-- 设计:
+--   加 structure_act TEXT 字段(三幕枚举,允许 NULL = 未规划)
+--   - 'act1_setup'        建置:介绍世界 / 人物 / 主问题(约前 25%)
+--   - 'act2_confrontation' 冲突:主问题展开 / 张力升级(约 50%)
+--   - 'act3_resolution'   收束:高潮 + 解决 + 余韵(约 25%)
+--
+-- 用户/Planner 填法:
+--   - 中段态 outline 创建时,LLM 按 scene_index / 总幕数自动推测填入
+--   - 用户可手动修正(前端 SP-6.1 张力曲线图上能拖动分界)
+--
+-- 消费:
+--   - hard_constraints 注入"本幕属于 act2 冲突期 → 不许写解决式桥段"
+--   - 前端张力曲线图(SP-6.1)用三幕分区背景色
+--
+-- 与已有字段正交:
+--   tension_percent  = 场景级张力数值(微观)
+--   pacing_tempo     = 场景级节奏(微观)
+--   structure_act    = 宏观结构定位(本 sprint,中观)
+--   inferred_pacing  = 全篇节奏档(macros)
+
+ALTER TABLE outline_scenes ADD COLUMN structure_act TEXT;

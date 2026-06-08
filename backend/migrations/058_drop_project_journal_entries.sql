@@ -1,0 +1,21 @@
+-- migration 058: 清理初心日志(#4 路线图)回退后残留的独立表
+-- 注意:原 058_project_journal.sql(初心日志建表)已在 #4 回退时被删除,
+--      本 058 用同编号但作用相反 — 清掉残留的 project_journal_entries 表。
+--
+-- 背景:
+--   2026-05-23 完成初心日志全栈实现后,用户决定不要这功能。回退了所有代码引用,
+--   但 SQLite 不支持优雅 DROP COLUMN(本项目用的 3.50.4 支持,但 projects 上有
+--   15 个表外键引用,重建 projects 表风险大,留作 future)。
+--
+--   本 migration 只清独立的 project_journal_entries 表 — 它是叶子表,无外键被引用,
+--   `DROP TABLE IF EXISTS` 完美幂等(重跑无害)。
+--
+-- 残留(刻意保留):
+--   - projects.founding_intent           列(无代码读 → 无害)
+--   - projects.journal_last_review_at    列(同上)
+--   留作未来某次完整 DB 重建时自然消失;若用户日后真要清,需做"重建 projects 表"sprint
+--   (涉及 PRAGMA foreign_keys OFF + 临时表 + 数据搬迁,中等风险)
+--
+-- created 2026-05-24 / B5 清单收尾
+
+DROP TABLE IF EXISTS project_journal_entries;

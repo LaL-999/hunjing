@@ -1,0 +1,21 @@
+-- migration 039: extract_chunk_results 加 chunk_text 字段 (Sprint 6.A2 M3.C, 2026-05-18)
+--
+-- 产品意图(M3.C RAG 召回):
+--   灵魂续写 mode='evolution' 时,每幕 agent 对话需要"读到相关原文片段"才能符合
+--   "agent 像真人读过原著"的产品愿景。
+--   原 extract_chunk_results 只存 sha256 hash + LLM graph 输出,**没存原文** →
+--   RAG 召回时拉不到 chunk 原文。
+--
+-- 设计权衡:
+--   - 存原文:占空间(50 chunks × 25K = 1.25MB/项目)— 可接受
+--   - 不存原文:每次 RAG 都要 re-parse upload + re-split — 慢(IO + 解析)
+--   → 选存(优先用户体验,IO 不增加冗余,split 确定性所以重建也可,但缓存便利)
+--
+-- 老数据兼容:
+--   - chunk_text NULL = 老数据(migration 前抽的)
+--   - rag_retrieval.py 检测 NULL → lazy backfill(re-parse upload + UPDATE 填充)
+--
+-- created 2026-05-18 / Sprint 6.A2 M3.C
+
+ALTER TABLE extract_chunk_results ADD COLUMN chunk_text TEXT;
+-- 不加 NOT NULL CHECK,允许 NULL 表示"未填,首次 RAG 时 lazy 回填"

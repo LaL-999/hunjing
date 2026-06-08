@@ -1,0 +1,21 @@
+-- migration 016: projects.world_baseline_json — Sprint 2.C+ polish
+--
+-- 为反事实工作台「世界观」tab 提供 6 维度的"原作 baseline":
+--   genre / setting / magic_system / time_axis / tone / free_form
+--
+-- 数据流:
+--   1. 中间态项目跑 extract,阶段 3 infer_meta 升级版输出 world_baseline 6 字段
+--   2. 落 projects.world_baseline_json(JSON dict)
+--   3. 老项目(extract 完成时还没 baseline) → POST /api/projects/{id}/infer_world_baseline
+--      即时拉一次 LLM 补识别
+--   4. 前端 CounterfactualWorkbench 世界观 tab 用此预填 6 个"原"输入框
+--
+-- 设计:用 JSON dict 而非 6 个独立字段 — 6 维度可能后续扩展(7/8 维),JSON 加新 key
+-- 不需要再加 migration;dict 缺 key 前端兜底空字符串。
+--
+-- ALTER 是 SQLite 支持的 ADD COLUMN(幂等问题:重复跑会报"duplicate column",但
+-- init_db 用 executescript 跑遇错会停 — 用 hack 加 try/sentinel)。
+-- 折中:**接受重跑 init_db 时 016 报一次错**(migration 设计为 single-shot 升级)。
+-- created 2026-05-11 / Sprint 2.C+ polish
+
+ALTER TABLE projects ADD COLUMN world_baseline_json TEXT;

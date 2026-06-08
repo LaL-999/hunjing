@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="232" height="48" viewBox="0 0 232 48" role="img" aria-label="由浑晶 AI 协助创作">
+  <title>由浑晶 AI 协助创作</title>
+  <desc>浑晶 HunJing — AI co-creation badge (dark variant). 用户在浑晶平台借助 AI 协作创作此叙事产物。https://huimeng.example</desc>
+
+  <!-- 卡片底(深色) -->
+  <rect x="0.75" y="0.75" width="230.5" height="46.5" rx="8" fill="#1F1F1E" stroke="#3A3A38" stroke-width="1.5"/>
+
+  <!-- 左侧 logo 区(深紫底) -->
+  <rect x="0.75" y="0.75" width="46" height="46.5" rx="8" fill="#2D1B69"/>
+  <rect x="40" y="0.75" width="6.75" height="46.5" fill="#2D1B69"/>
+
+  <!-- 浑晶◆ 主标 -->
+  <g transform="translate(13, 14)">
+    <path d="M 10 0 L 20 10 L 10 20 L 0 10 Z" fill="#A78BFA" stroke="#C4B5FD" stroke-width="0.5"/>
+    <path d="M 10 4 L 16 10 L 10 16 L 4 10 Z" fill="#7C3AED" opacity="0.55"/>
+  </g>
+
+  <!-- 文案区 -->
+  <text x="58" y="20" fill="#E5DCC8" font-family="-apple-system, BlinkMacSystemFont, 'PingFang SC', 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="600">浑晶 · 由 AI 协助创作</text>
+  <text x="58" y="35" fill="#9CA3AF" font-family="-apple-system, BlinkMacSystemFont, 'PingFang SC', 'Helvetica Neue', Arial, sans-serif" font-size="10" letter-spacing="0.02em">透明创作 · 版权归我</text>
+</svg>
