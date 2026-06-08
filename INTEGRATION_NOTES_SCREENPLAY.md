@@ -27,7 +27,13 @@
 | **4** | DB schema 进 migration runner(quota 后期五态统一)| ✅ 完工(2026-06-08 夜)|
 | **4.5** | sp_novels.user_id INTEGER→TEXT 类型对齐(阶段 3 留 bug)| ✅ 完工(2026-06-08 夜)|
 | **5.1** | huimeng_bridge 桥接层骨架 + linked_project_id + PATCH /link endpoint | ✅ 完工(2026-06-08 夜)|
-| **5.2-5.7** | 6 agent 逐个接通 SP-2/3/4/7 资产 | ⏳ 接力中 |
+| **5.2** | scene_splitter 接通 SP-7 polarity | ✅ 完工(2026-06-08 夜)|
+| **5.3** | element_extractor 接通 SP-2/3/7 三档(最重的一个)| ✅ 完工(2026-06-08 夜)|
+| **5.4** | dialogue_attributor 接通 SP-2 drivers(tiebreaker)| ✅ 完工(2026-06-08 夜)|
+| **5.5** | adaptation_decision 接通 SP-2 drivers + SP-3 facts/knowledge | ✅ 完工(2026-06-08 夜)|
+| **5.6** | screenplay_optimizer 接通 SP-4 状态快照(跨场一致性)| ✅ 完工(2026-06-08 夜)|
+| **5.7** | story_bible_extractor 复用 linked-project 角色档 | ✅ 完工(2026-06-08 夜)|
+| **5.8** | huimeng_bridge 单元测试 16 case | ✅ 完工(2026-06-08 夜)|
 | 6 | 视觉融合(精修)| ⏳ |
 | 7 | 测试 + 文档收尾 | ⏳ |
 
