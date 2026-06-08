@@ -120,9 +120,16 @@ def extract_bible_with_llm(novel_id: str, user_id: str, max_chapters: int = 3) -
 
     流程:
       1. 拉小说前 max_chapters 章原文(必须属于当前用户)
-      2. 拼 prompt,调 call_json
-      3. name → id 映射(确保 relationships / events 引用合法)
-      4. 落库
+      2. **桥接预填**(阶段 5.7):若该 novel 已 link 到父平台 project,
+         先拿浑晶已建的 characters 注入 prompt → LLM 优先复用,不要重抽
+         (避免:用户在浑晶给某角色填了精心的 surface_goal,剧创态又重抽
+          出一个空角色覆盖)
+      3. 拼 prompt,调 call_json
+      4. name → id 映射(确保 relationships / events 引用合法)
+      5. 落库
+
+    桥接的"预填"是软的 — LLM 仍要看小说原文,只是把"父平台已有的角色档"
+    作为 hint 注入。即使父平台没绑定,也能从 0 抽。
     """
     novel = ingest_service.get_novel(novel_id, user_id=user_id)
     if novel is None:
@@ -141,10 +148,14 @@ def extract_bible_with_llm(novel_id: str, user_id: str, max_chapters: int = 3) -
     if len(full_text) > MAX_INPUT_CHARS:
         full_text = full_text[:MAX_INPUT_CHARS] + "\n\n[...原文过长已截断]"
 
-    user_input = (
-        f"作品标题:《{novel['title']}》\n\n"
-        f"小说前 {max_chapters} 章原文:\n\n{full_text}"
-    )
+    # 阶段 5.7:桥接预填 — 拿浑晶已建的角色档(若 link 过)
+    bridge_block = _build_linked_characters_hint(novel_id, user_id)
+
+    user_input_parts = [f"作品标题:《{novel['title']}》"]
+    if bridge_block:
+        user_input_parts.append(bridge_block)
+    user_input_parts.append(f"小说前 {max_chapters} 章原文:\n\n{full_text}")
+    user_input = "\n\n".join(user_input_parts)
 
     try:
         parsed, usage = call_json(_EXTRACT_SYSTEM_PROMPT, user_input, max_tokens=4000)
@@ -161,7 +172,54 @@ def extract_bible_with_llm(novel_id: str, user_id: str, max_chapters: int = 3) -
         novel_id, characters, locations, relationships, events, source="llm_extracted",
     )
     result["llm_usage"] = usage
+    # 桥接信号 — 告诉前端是否复用了父平台资产(便于 UI 展示)
+    result["bridge_hint_used"] = bool(bridge_block)
     return result
+
+
+def _build_linked_characters_hint(novel_id: str, user_id: str) -> str:
+    """阶段 5.7 桥接 — 拿浑晶 linked project 的角色档,作为 LLM hint。
+
+    异常隔离铁律:bridge 抛任何错 → 返 "",不阻断抽取。
+    """
+    try:
+        from app.screenplay.db.connection import get_connection
+        from app.screenplay.services import huimeng_bridge
+        conn = get_connection()
+        try:
+            linked = huimeng_bridge.get_linked_characters(
+                conn, user_id=user_id, novel_id=novel_id,
+            )
+        finally:
+            conn.close()
+        if not linked:
+            return ""
+
+        lines = [
+            "【浑晶平台已建的角色档(参考)— 抽取时优先复用同名角色的描述】",
+            "  ⚠ 用法:",
+            "    - 同名角色直接用浑晶给的 identity / personality / aka,不要从 0 重抽,",
+            "    - 浑晶没建过的角色照常从原文抽",
+            "    - 抽出的 description 字段必须 ≤ 80 字,不能直接抄浑晶的 identity 全文",
+            "",
+        ]
+        for c in linked:
+            name = (c.get("name") or "").strip()
+            if not name:
+                continue
+            parts = [f"  · {name}"]
+            ident = (c.get("identity") or "").strip()
+            if ident:
+                parts.append(f"身份:{ident[:80]}")
+            pers = (c.get("personality") or "").strip()
+            if pers:
+                parts.append(f"性格:{pers[:80]}")
+            lines.append("  ".join(parts))
+
+        return "\n".join(lines)
+    except Exception:  # noqa: BLE001
+        # 静默兜底 — 桥接挂掉绝不阻断抽取
+        return ""
 
 
 # ============================================================
