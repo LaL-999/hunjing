@@ -29,12 +29,36 @@ const props = defineProps<{ id: string }>();
 const router = useRouter();
 const store = useScreenplayStore();
 
+/**
+ * 2026-06-08 UI 升级:status 优化
+ *
+ * 用户反馈:左上角"错误:该作品尚未生成剧本 — 先 POST /novels/{id}/compose-screenplay"
+ * 太"报错感",还带技术细节(POST 路径)。其实"尚未生成"是 expected initial state,
+ * 不是真错误 — 右边主视窗已显"剧本待生成"占位卡,这里不需要重复且显眼地报错。
+ *
+ * 治理:
+ *   1. 识别"尚未生成剧本"类错误 → 转 muted "待生成"提示(与初始 idle 态合并)
+ *   2. 真错误(网络 / LLM 失败 / yaml 解析)→ 显示但去掉技术细节后缀(`— 先 POST ...`)
+ */
+function _stripTechSuffix(msg: string): string {
+  // 去掉"—"或"-"之后的技术提示("先 POST /...")
+  const cut = msg.split(/\s+[—-]\s+/)[0];
+  return cut.trim();
+}
+
 const status = computed(() => {
   if (store.loadingState === "loading") return { label: "加载中...", tone: "muted" };
   if (store.loadingState === "composing")
     return { label: "AI 编排中(约 1-2 分钟)", tone: "muted" };
-  if (store.loadingState === "error")
-    return { label: `错误:${store.lastError}`, tone: "danger" };
+  if (store.loadingState === "error") {
+    const raw = store.lastError || "";
+    // "尚未生成"是 expected initial state,不是错误,合并到 idle 提示
+    if (raw.includes("尚未生成") || raw.includes("未生成剧本")) {
+      return { label: "待生成 — 点击右上「生成剧本」", tone: "muted" };
+    }
+    // 真错误:去技术细节后缀
+    return { label: _stripTechSuffix(raw) || "加载失败", tone: "danger" };
+  }
   if (store.loadingState === "ready") return { label: "已生成", tone: "success" };
   return { label: "待生成 — 点击右上「生成剧本」", tone: "muted" };
 });
