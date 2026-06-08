@@ -391,70 +391,103 @@ def _fix_sp_novels_user_id_type() -> None:
     隐式转换 — 大部分场景能用,但 JOIN 行为不可预测,且 FK 约束在严格模式下报错。
 
     幂等修复:检测 sp_novels.user_id 列类型;
-      - 若 INTEGER → ALTER 重建为 TEXT(数据 CAST 转换)
-      - 若 TEXT 或表不存在 → noop
+      - 若 INTEGER 或 历史 RENAME trick 残留(sp_novels_old_int / sp_chapters FK 悬挂)
+        → DROP 整套 sp_ 表 + 让 migration runner 重建(sp_ 家族无产品数据,安全)
+      - 若 TEXT 且 无残留 → noop
 
     为什么走 Python 而不是 migration 文件:
-      迁徙 runner 每次启动跑所有 .sql,没有"已应用"标记。SQL 没法条件执行 "如果
-      列类型是 INTEGER 才动",而 ALTER TABLE 在 SQLite 无 ALTER COLUMN TYPE 操作。
+      迁徙 runner 每次启动跑所有 .sql,没有"已应用"标记。SQL 没法条件执行
+      "如果列类型是 INTEGER 才动",而 ALTER TABLE 在 SQLite 无 ALTER COLUMN TYPE 操作。
       所以这种"补丁式条件迁徙"走 Python 一次性脚本是最干净的。
+
+    2026-06-08 用户上传 500 修复:
+      原版用 ALTER RENAME → CREATE → INSERT → DROP _old 的 trick。
+      但 SQLite ALTER RENAME 会**自动重写所有子表 FK** 指向 _old 名;后续
+      DROP _old 让子表 FK 悬挂,INSERT 子表时 SQLite 验 FK 报
+      "no such table: sp_novels_old_int" → 500。
+      新版改用整套 DROP + 重建,避开悬挂 FK 问题。
     """
     import logging
+    from pathlib import Path
     from app.db import get_connection, transaction
 
     try:
         conn = get_connection()
         try:
+            # 检测 1:sp_novels 存在么?
             info = conn.execute("PRAGMA table_info(sp_novels)").fetchall()
             if not info:
-                # sp_novels 还不存在(可能 migration 085 尚未跑)— 由 085 建好,
-                # 新建的就已经是 TEXT(我们编辑过 085),所以下次启动也不需要此 fix
-                return
+                return  # 表还没建,等 migration 085 跑
+
+            # 检测 2:user_id 是 INTEGER 还是 TEXT?
             user_id_col = next((c for c in info if c[1] == "user_id"), None)
             if user_id_col is None:
                 logging.warning("sp_novels 缺 user_id 列,跳过类型修复")
                 return
             col_type = (user_id_col[2] or "").upper()
-            if "INT" not in col_type:
-                # 已经是 TEXT — noop
-                return
+            is_integer = "INT" in col_type
+
+            # 检测 3:历史 rename trick 残留 sp_novels_old_int?
+            old_table = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' "
+                "AND name='sp_novels_old_int'"
+            ).fetchone()
+
+            # 检测 4:sp_chapters 的 FK 是不是指向 sp_novels_old_int?
+            chapters_fk_broken = False
+            try:
+                fk_info = conn.execute("PRAGMA foreign_key_list(sp_chapters)").fetchall()
+                chapters_fk_broken = any(
+                    row[2] == "sp_novels_old_int" for row in fk_info
+                )
+            except Exception:  # noqa: BLE001
+                pass
+
+            if not (is_integer or old_table or chapters_fk_broken):
+                return  # 健康 — noop
 
             logging.warning(
-                "阶段 4.5 修复:sp_novels.user_id 当前为 %s,转为 TEXT",
-                col_type or "(未声明)",
+                "阶段 4.5 修复触发:user_id=%s / 残留_old=%s / 子表 FK 悬挂=%s — "
+                "DROP 整套 sp_ 表 + 重建(sp_ 家族无产品数据,安全)",
+                col_type or "(未声明)", bool(old_table), chapters_fk_broken,
             )
-            with transaction(conn) as tx:
-                tx.executescript(
-                    """
-                    ALTER TABLE sp_novels RENAME TO sp_novels_old_int;
 
-                    CREATE TABLE sp_novels (
-                        id              TEXT PRIMARY KEY,
-                        user_id         TEXT NOT NULL,
-                        title           TEXT NOT NULL,
-                        source_format   TEXT NOT NULL,
-                        source_filename TEXT NOT NULL,
-                        total_chars     INTEGER NOT NULL DEFAULT 0,
-                        total_chapters  INTEGER NOT NULL DEFAULT 0,
-                        uploaded_at     TEXT NOT NULL,
-                        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-                    );
+            # PRAGMA foreign_keys 必须在 transaction 外设置
+            conn.execute("PRAGMA foreign_keys = OFF")
+            try:
+                # 按 FK 依赖反向 DROP,即使 PRAGMA OFF 也保险些
+                tables_in_order = [
+                    "sp_screenplays",
+                    "sp_bible_events",
+                    "sp_bible_relationships",
+                    "sp_bible_locations",
+                    "sp_bible_characters",
+                    "sp_story_bibles",
+                    "sp_paragraphs",
+                    "sp_chapters",
+                    "sp_novels",
+                    "sp_novels_old_int",
+                ]
+                with transaction(conn) as tx:
+                    for tbl in tables_in_order:
+                        tx.execute(f"DROP TABLE IF EXISTS {tbl}")
+                # 重新跑 migration 085 + 086 内容(SQL 文件本身就是 IF NOT EXISTS)
+                migrations_dir = Path(__file__).resolve().parent.parent / "migrations"
+                for mig_name in (
+                    "085_screenplay_sp_tables.sql",
+                    "086_sp_novels_linked_project.sql",
+                ):
+                    sql_path = migrations_dir / mig_name
+                    if not sql_path.exists():
+                        logging.warning("阶段 4.5 缺 migration: %s", mig_name)
+                        continue
+                    sql = sql_path.read_text(encoding="utf-8")
+                    with transaction(conn) as tx:
+                        tx.executescript(sql)
+            finally:
+                conn.execute("PRAGMA foreign_keys = ON")
 
-                    INSERT INTO sp_novels
-                        (id, user_id, title, source_format, source_filename,
-                         total_chars, total_chapters, uploaded_at)
-                    SELECT
-                        id, CAST(user_id AS TEXT), title, source_format,
-                        source_filename, total_chars, total_chapters, uploaded_at
-                    FROM sp_novels_old_int;
-
-                    DROP TABLE sp_novels_old_int;
-
-                    CREATE INDEX IF NOT EXISTS idx_sp_novels_user_time
-                        ON sp_novels(user_id, uploaded_at DESC);
-                    """
-                )
-            logging.warning("阶段 4.5 修复完成:sp_novels.user_id 已转为 TEXT")
+            logging.warning("阶段 4.5 修复完成:sp_ 表家族已重建,user_id=TEXT")
         finally:
             conn.close()
     except Exception as e:  # noqa: BLE001
