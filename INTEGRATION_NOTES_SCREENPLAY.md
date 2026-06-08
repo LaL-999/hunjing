@@ -1,7 +1,9 @@
 # 剧创态并入浑晶 · 迁徙工作笔记
 
-> Sprint SP-S(2026-06-07)— 把比赛仓库 `hunjing-screenplay` 整合为浑晶第 5 创作态。
-> 当前状态:**阶段 1/7 完成**(Dashboard 入口 + 路由占位)。
+> Sprint SP-S(2026-06-07 ~ 2026-06-08)— 把比赛仓库 `hunjing-screenplay`
+> 整合为浑晶第 5 创作态。
+> **当前状态:7 阶段大工程 + 5 项 Plan A 增强全工完工**(23 个独立 commit,
+> 从 `cd5cea1` 到 `0a100b8`,全部已 push 至 `github.com/LaL-999/hunjing`)。
 
 ---
 
@@ -36,8 +38,192 @@
 | **5.8** | huimeng_bridge 单元测试 16 case | ✅ 完工(2026-06-08 夜)|
 | **6** | 前端视觉融合 + API 复用父平台(critical JWT 修复)+ link UI + 入口卡差异化卖点 | ✅ 完工(2026-06-08 晚)|
 | **7** | 比赛 234 测试迁入 + JWT/bridge fixture + 222 全过 + 11 CLI 合理 skip | ✅ 完工(2026-06-08 深夜)|
-| 6 | 视觉融合(精修)| ⏳ |
-| 7 | 测试 + 文档收尾 | ⏳ |
+
+---
+
+## Plan A 5 项增强(2026-06-08,根据竞品对比规划文档)
+
+读了 `hunjing-screenplay/docs/浑晶平台-5项移植规划.md` 后,**叠加桥接层的差异化**,
+做出了一份升级版的 5 项规划。
+
+| 阶段 | 内容 | 状态 |
+|---|---|---|
+| **8 P0** | 🔥 BYOK 接通(文档遗漏,critical):剧创 llm_client 代理父平台 call_llm_*,8 agent 0 改动享受 BYOK | ✅ 完工 `84385e8`|
+| **8.1** | ② 自由文本改稿 + bridge 协同:user_instruction × SP-2/3/7 协同生效 | ✅ 完工 `506a113`|
+| **8.2** | ① 角色页 + SVG 力导向关系图 + 桥接资产 chips(SP-2/4 driver/snapshot 显形)| ✅ 完工 `f1dcad6`|
+| **8.3a** | ③ 第 4 张牌:桥接增益面板 + 张力曲线 draw-on 动画 + 关键节点脉冲 | ✅ 完工 `6df6ae6`|
+| **8.3b** | ③ 3b 版本树 diff + 一键回滚 | ✅ 完工 `2998138`|
+| **8.4** | ④ 分集 MVP 规则版(LLM 增强后期再加,短剧不是核心)| ✅ 完工 `233fb20`|
+| **8.5 后端** | ⑤ 多模型对比 backend + 7 测试(可解释 4 维评分反超竞品黑盒)| ✅ 完工 `3834002`|
+| **8.5 前端** | ⑤ ComparisonPanel.vue 完整 UI(配置/运行/结果三阶段 + JSON 导出)| ✅ 完工 `0a100b8`|
+
+### 推迟项(等用户实测决定)
+
+- **3c Fountain → Final Draft 兼容验证**:需 Final Draft / Highland 等付费软件实测
+- **8.5「采用此版」自动覆盖**:需新后端 endpoint + yaml_composer 重组,等 demo 看 workflow 后再决定是自动还是保持当前 JSON 导出 + OptimizationModal 引用路径
+
+### 阶段 8.5 完工摘要(item ⑤ 多模型对比 — Plan A 收官)
+
+**最大叠加**:文档预估 4d(含 LLM 客户端 ProviderConfig 重构),实际 ~1.5d
+后端 + ~2h 前端 完工 — 因为 **P0 BYOK 已经搞定了 LLM 客户端层基础设施**,
+`_openai_compat_call_json` 接 `(api_key, base_url, model)` 三件套已就位。
+
+**后端**(`3834002`):
+- `services/model_comparison_service.py` ~270 行:
+  - `ProviderConfig { label, api_key, base_url, model }`
+  - `compare_scene_extraction(screenplay_id, user_id, scene_id, providers)` async
+  - 用 `asyncio.gather` + `asyncio.to_thread` 真并行调多 vendor
+  - 直接 `_openai_compat_call_json`(绕过 llm_routing 的 deepseek-only 限制)
+  - 复用 `fidelity_scorer` 给 4 维评分(action_density / character_alignment /
+    dialogue_coverage / decision_completeness)+ overall 加权
+  - **graceful degradation**:某 provider 失败返 `ModelCandidate(success=False)`,
+    其他 provider 继续 — 铁律
+- `routers/compare.py`:POST `/api/screenplay/screenplays/{id}/compare`
+- `tests/test_screenplay_model_comparison.py` 7 case 全过(`asyncio.run` 模式,
+  父平台没 pytest-asyncio):
+  - <2 providers / 剧本不存在 / 跨用户 / 场景不存在 错误路径
+  - 两 provider 都成功 → recommended 是高分的(可解释:具体哪维分高)
+  - 1 失败 1 成功 → 都进 candidates,失败有 error_message,recommended=成功的
+  - 全失败 → recommended_label=None
+
+**前端**(`0a100b8`,~700 行 vue):
+- `frontend/src/screenplay/components/ComparisonPanel.vue` 3 阶段全屏 modal:
+  - CONFIG:目标 scene 选择 + provider 列表(2-5 个,每个 4 输入)+ 5 个 preset chip
+    (DeepSeek / OpenAI / Anthropic / Qwen / Moonshot)+ +增删
+  - RUNNING:spinner + 计时 + 进度文案按时长 rotate
+  - RESULT:candidate cards grid(auto-fill 360px),每张:
+    - 推荐金标 + provider name + model + 耗时 + tokens
+    - 4 维进度条(overall + 4 dimensions)
+    - elements 滚动列表 + type 色块
+    - 「导出此候选」按钮(JSON 下载,含 elements + scores + usage)
+- API 持久化:provider configs(含 api_key)存 localStorage 减少摩擦
+- EditorView 顶栏加「对比」按钮(只在 hasScreenplay 时)
+- vue-tsc 0 错 / vite build 2.11s
+
+**为什么没做「采用此版」自动覆盖**:需要新后端 endpoint 接 candidate.elements →
+yaml_composer 重组 scene → save_screenplay 新版本。是清晰的工作但需 100 行新代码 +
+测试。当前用「导出 JSON + OptimizationModal user_instruction 引用」workflow 兜底 —
+更灵活,所有候选可保留对比,而不是一旦点「采用」就破坏性写入。
+
+### 阶段 8.4 完工摘要(item ④ 分集 MVP)
+
+**战略缩减**:文档预估 4d(规则 + LLM 增强 + 前端 + 导出),我做 1d 纯规则版,
+因为短剧不是浑晶核心定位。架构留 LLM 增强口子(`mode='rule'|'llm'`)。
+
+**后端**(`233fb20`):
+- `services/episode_planner.py` ~280 行:贪心算法
+  - est_minutes = elements_count / 25(行业 1 页 ≈ 1 分钟 ≈ 25 elements)
+  - 70%-130% 目标时长窗口找好边界:chapter 切换 > 强转场 > 目标达标
+  - >130% 强切(防止某场过长压死单集)
+  - 标题:首场 summary 前 14 字
+- `routers/episodes.py`:POST `/api/screenplay/novels/{id}/plan-episodes`
+- `tests/test_screenplay_episode_planner.py` 8 case 全过:
+  - **铁律**:所有 scene_id 恰好出现一次(无漏 / 无重复)
+  - 章节边界优先 / 短目标多集 / 标题用 summary / 跨用户隔离
+
+**前端**:`EpisodePlanPanel.vue` 滑块 0.5-15 分钟 + 4 预设(短剧 1.5 / 短剧 3 /
+长剧 8 / 长剧 12)+ 集卡可展开看 scene_ids + 边界原因标签
+
+### 阶段 8.3 完工摘要(item ③ 三王牌 + 第 4 张桥接增益)
+
+**3a 张力曲线动画化**(`6df6ae6`,`StructureReportPanel.vue` 改动):
+- 曲线 `stroke-dasharray: 2000` + `stroke-dashoffset: 2000` + 1.8s 动画 → 进入时
+  从左到右"长"出来
+- 关键节点(inciting_incident / midpoint / climax)加脉冲外圈:opacity 0→0.6→0
+  + transform scale 0.6→1.8(避免 CSS-animated SVG `r` 跨浏览器坑)
+
+**3b 版本树 diff**(`2998138`,`VersionDiffPanel.vue` 新增 ~480 行):
+- 两栏版本选择器 + swap 按钮
+- 默认 left=当前 / right=parent
+- change_log 逐条:action 色块(modified 紫 / added 绿 / removed 红 / split & merged 黄)
+- 「回滚到左侧版本」走 `useConfirm` 弹确认
+- VersionSwitcher dropdown 顶部加「对比 / 回滚版本」入口 + emit `open-diff`
+
+**3c Fountain 校验** — **推迟**:需 Final Draft / Highland 等付费软件实测,
+backend 单元测试已确保 fountain 语法结构正确(`tests/screenplay/test_screenplay_exporter.py`),
+但「真的能在专业软件里打开」只能由用户实测验收。
+
+**第 4 张牌:桥接增益面板**(`6df6ae6`,新 `BridgeGainBanner.vue`):
+- compose_service.stats_counter 加 5 个 bridge 字段:
+  - bridge_drivers_injections / bridge_knowledge_injections /
+    bridge_polarity_injections / bridge_facts_used / bridge_was_linked
+- 每个 bridge 块产生非空时累加计数
+- 前端从 store.stats 读,3 模式显示:
+  - active(有注入):紫 banner + 数字 chip(SP-2 N 场 / SP-3 M 场 / SP-7 K 次 / SP-3 facts 已用)
+  - linked-empty(已 link 但父平台未填):amber 提示去浑晶填字段
+  - unlinked:灰色 tip 提示绑定后会显示
+- demo 命题:"绑定项目后,本次 compose 自动注入 28 driver / 73 knowledge /
+  19 polarity / 项目级 facts" — 桥接价值具体显形
+
+### 阶段 8.2 完工摘要(item ① 角色页 + 关系图 + 桥接资产可视化)
+
+**最大反超**:不只是出场章数 / 台词句数(竞品现状),还显示 SP-2/4/7 资产 — 这是
+有桥接才能做到的事。
+
+**后端**(`f1dcad6`):
+- `services/character_profile_service.py` ~430 行,三路 JOIN:
+  - 身份/关系/事件:sp_bible_characters / sp_bible_relationships / sp_bible_events
+  - 戏份统计派生:scene_count / chapter_count / dialogue_count / voiceover_count /
+    first_appearance_scene / role_tier(protagonist > supporting≥5dialogue >
+    bit_part > extra)
+  - 桥接资产(仅 linked):SP-2 driver(surface_goal/deep_need/fatal_blind_spot/
+    arc/secrets)+ SP-4 latest snapshot(position/emotion_top/hp/inventory)+
+    SP-7 polarity 用于边色
+- `routers/character_profiles.py`:GET `/novels/{id}/characters`
+- `tests/test_screenplay_character_profile.py` 7 case 全过
+
+**前端**:
+- `CharacterRelationshipGraph.vue` ~280 行,自己实现 2D SVG 力导向(不引 d3-force /
+  cytoscape):Fruchterman-Reingold 简化版 + 库仑斥力 + 胡克引力 + 80 帧迭代
+  - 节点色:role_tier(主角紫 / 配角钢蓝 / 龙套灰 / 群演淡)
+  - **桥接外圈**:has_bridge_assets 时脉冲虚线 accent — 视觉标记"已接通父平台"
+  - 边色:SP-7 polarity(positive 绿 / negative 红 / neutral 灰 / 未标淡虚线)
+  - hover 高亮 + 邻居淡化
+- `CharacterProfilesPanel.vue` ~580 行,全屏 modal:
+  - 左 540×440 关系图 + 右 滚动角色卡列表
+  - 卡片:tier badge / 戏份统计 / **桥接资产 chip 列**(driver/snapshots 字段)/
+    关系列表 / 事件列表
+  - 顶部 tabs:全部 / 主角 / 配角 / 龙套 / 群演 + 计数
+  - 头部桥接 chip:`✨ 已接通浑晶项目 · N/M 角色有 SP 资产`
+
+### 阶段 8.1 完工摘要(item ② 自由文本改稿 + bridge 协同)
+
+**杀手锏组合**:文档作者没意识到的差异化点。
+
+**后端**(`506a113`):
+- `OptimizeRequest` + `OptimizeRequestBody` 加 `user_instruction: str | None`
+- `_build_user_input` 非空时附加为 `user_instruction` 字段
+- `prompts/screenplay_optimizer.md` 加「优先级铁律」段:
+  - 作者指令优先级最高,必须执行
+  - 但 schema 合法性 + full_outline 一致性 + **bridge 资产铁律仍然生效**
+  - 例:用户说「让 X 更冷漠」+ bridge 知道 X 的 `fatal_blind_spot=「假装冷漠
+    掩盖自卑」` → AI 写"冷漠表象 + 渴望被认可的潜台词"双层立体,而非平面冷漠
+  - 例:用户说「加冲突」+ bridge 知道 A 对 B 瞒着秘密 → AI 制造「差点暴露」
+    的高级冲突
+
+**前端**:OptimizationModal config 阶段加 textarea(500 字限 + char counter)+
+非空时显示「指令将与诊断 + 桥接资产协同生效」accent 提示
+
+### 阶段 8 P0 完工摘要(BYOK critical 接通)
+
+**critical 潜伏 bug**:阶段 3 迁入时把比赛仓库的独立 `app.screenplay.services.
+llm_client.py` 也搬进来了 — 它直接 `openai.OpenAI(api_key=settings.deepseek_api_key)`
+读 .env,**完全绕过父平台 6/5 上线的 BYOK 体系**。
+
+后果:
+- 用户在浑晶配 BYOK key(自己的 deepseek/openai/anthropic),走中末漫态都用自己的 key
+- **唯独剧创态烧平台 token** → 商业模式漏
+- 不同用户跑剧创态共享 .env 的 server-side key,无法成本归属
+
+**修复**(`84385e8`):
+- 把 `app/screenplay/services/llm_client.py` 重写为父平台 `call_llm_text/json` 的代理
+- 签名完全保留(8 个 agent 0 改动 import)
+- 异常类直接 re-export 父平台的(契约一致)
+- 自动:从 ContextVar 读 user_id(`get_current_user` 设)→ 查 byok_configs → 有则用用户的
+- 238 测试 0 回归
+
+**lesson learned**:整合时不只是 import 路径 sed,**底层 service 调用链也要审一遍**
+— 上一个 dangling FK bug 是 schema 整合层的盲区,这个 BYOK 是依赖路径层的盲区。
 
 ### 阶段 3 完工摘要
 
