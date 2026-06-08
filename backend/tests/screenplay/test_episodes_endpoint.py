@@ -127,3 +127,61 @@ def test_plan_multi_explicit_preset(client):
         json={"preset": "long_drama", "with_llm_titles": False},
     )
     assert resp.status_code == 404  # service 层无剧本
+
+
+# ============================================================
+# 5. 跨用户隔离
+# ============================================================
+
+
+def test_plan_multi_cross_user_isolation(
+    client, screenplay_user, another_user_token,
+):
+    """user1 上传的 novel 用 user2 token 访问 → 404(SQL 层 JOIN sp_novels 拦截)。
+
+    场景:
+      - screenplay_user 创建 sp_novels 行(虚构 ID,不真上传文件)
+      - 用 another_user_token 的 client 调 plan-episodes-multi
+      - 应返 SCREENPLAY_NOT_FOUND(不应泄露 novel 存在的信息)
+    """
+    from app.db import get_connection
+    import uuid
+
+    fake_novel_id = f"test_isolation_{uuid.uuid4().hex[:8]}"
+    conn = get_connection()
+    try:
+        # screenplay_user 占有 sp_novels 行(schema 见 migration 085)
+        conn.execute(
+            "INSERT INTO sp_novels (id, user_id, title, source_format, "
+            "source_filename, total_chars, total_chapters, uploaded_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))",
+            (fake_novel_id, screenplay_user, "测试小说", "txt",
+             "test.txt", 100, 1),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    # 用 another_user_token 的 client 访问
+    from fastapi.testclient import TestClient
+    from app.main import app
+    other_client = TestClient(app)
+    other_client.headers["Authorization"] = f"Bearer {another_user_token}"
+
+    resp = other_client.post(
+        f"/api/screenplay/novels/{fake_novel_id}/plan-episodes-multi",
+        json={"preset": "short_drama"},
+    )
+    # 跨用户访问 → 404(隔离铁律:不区分"不存在"vs"无权限")
+    assert resp.status_code == 404
+    detail = resp.json()["detail"]
+    assert detail["code"] == "SCREENPLAY_NOT_FOUND"
+
+
+def test_get_presets_no_auth_returns_401():
+    """预设档查询也需要 JWT(全 router 级 Depends)。"""
+    from fastapi.testclient import TestClient
+    from app.main import app
+    bare = TestClient(app)
+    resp = bare.get("/api/screenplay/episodes/presets")
+    assert resp.status_code in (401, 403)
