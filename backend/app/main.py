@@ -378,20 +378,7 @@ def _auto_apply_migrations() -> None:
 
 _auto_apply_migrations()
 
-
-def _init_screenplay_schema() -> None:
-    """剧创态(第 5 创作态)初始化 — 在父平台 migration 后建 sp_* 表。
-
-    幂等可重跑(IF NOT EXISTS)。失败时只 log warning 不阻塞父平台启动。
-    """
-    import logging
-    try:
-        from app.screenplay.db.connection import init_db as init_screenplay_db
-        init_screenplay_db()
-    except Exception as e:  # noqa: BLE001
-        logging.warning("剧创态 schema 初始化失败(不阻塞父平台): %s", e)
-
-
-_init_screenplay_schema()
+# 阶段 4(2026-06-08):剧创态 schema 已规整进 migration 085,
+# 由 _auto_apply_migrations 统一接管 — 不再需要 _init_screenplay_schema 钩子。
 
 app = create_app()

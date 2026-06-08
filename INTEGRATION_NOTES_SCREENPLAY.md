@@ -24,7 +24,7 @@
 | **2** | 前端真实代码迁入(浑晶视觉适配)| ✅ 完工(2026-06-08 中午)|
 | **3** | 后端代码迁入 + 表名 sp_ 前缀 + router 鉴权挂载 | ✅ 完工(2026-06-08 下午)|
 | **3.5** | service 层 SQL user_id 过滤(数据用户级隔离) | ✅ 完工(2026-06-08 傍晚)|
-| 4 | DB 迁徙 + Quota 接入 | ⏳ |
+| **4** | DB schema 进 migration runner(quota 后期五态统一)| ✅ 完工(2026-06-08 夜)|
 | **5** | 故事圣经 A 隔离 + 角色 Agent 复用层(关键) | ⏳ |
 | 6 | 视觉融合(精修)| ⏳ |
 | 7 | 测试 + 文档收尾 | ⏳ |
@@ -45,6 +45,39 @@
   - `from app.main import app` 成功导入
   - 18 个 `/api/screenplay/*` 路由全部注册
   - `pytest --co` 962 测试收集成功(父平台测试无污染)
+
+### 阶段 4 完工摘要
+
+把阶段 3 的"启动钩子"过渡产物规整进父平台 migration runner。
+**用户拍板**:质量优先;quota 跳过 — 后期五态(初/中/末/漫/剧)统一计费。
+
+**关键决策**:
+- **D5 = B 方案**(规整进 migration 体系):长期统一性最高,后续 sp_ 字段变更
+  和父平台 4 个月迭代的 84 张 migration 走同一条 `_auto_apply_migrations` 路径
+- **D6 = 跳过**(quota 后期五态统一)
+
+**改动**:
+- 新增 `backend/migrations/085_screenplay_sp_tables.sql` — 把原阶段 3 的 3 个
+  schema.sql 合并 + 严格 `IF NOT EXISTS`,可幂等重跑
+- 删 `app/main.py:_init_screenplay_schema()` 启动钩子(及调用点)
+- 简化 `app/screenplay/db/connection.py` 为纯 `get_connection` 代理(删 init_db
+  / _run_in_place_migrations)
+- 删 3 个 .sql 文件(`schema.sql / story_bible_schema.sql / screenplay_schema.sql`)—
+  migration 085 是唯一权威源
+
+**特别注意**(`_auto_apply_migrations` 行为):
+- 一个 migration 文件走 `executescript`,包在 `with transaction(conn)` 里
+- 任何语句失败整脚本回滚 → 不能在 migration 末尾加 `ALTER ADD COLUMN` 兜底
+  (老库该列存在会 raise → 回滚整脚本 = 灾难)
+- 阶段 4 的 migration 严格只用 `CREATE TABLE IF NOT EXISTS` + `CREATE INDEX IF NOT EXISTS` —
+  fresh DB / 已建库均幂等
+- 阶段 3 的 schema 已经在 `CREATE TABLE sp_screenplays` 内联了 3 个版本树字段,
+  任何走过阶段 3 的库已经齐全 — 不需要 ALTER 补
+
+**验证**(3 场景):
+- ✓ 现有 DB(9 个 sp_ 表 + 3 版本列已建)再跑 migration 085 → noop 通过
+- ✓ Fresh DB(drop sp_ 后再建)→ 9 张表 + 3 列齐全
+- ✓ pytest --co 962 测试 collect(父平台无变化)
 
 ### 阶段 3.5 完工摘要
 
