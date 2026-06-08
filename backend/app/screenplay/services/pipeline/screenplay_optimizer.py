@@ -55,6 +55,9 @@ class OptimizeRequest:
     target_scene_id: str | None = None         # 只在 single_scene 时有
     # single_scene 用小预算(只输出 1 场,~2500 已经够);full_screenplay 仍 6000
     max_tokens: int = 6000
+    # 阶段 5.6 桥接:SP-4 角色状态时间线 markdown 块(可空)。
+    # 优化器跨场对比 emotion / position / inventory 检测人设漂移用。
+    bridge_snapshots_block: str = ""
 
     def effective_max_tokens(self) -> int:
         """根据 scope 自动调整 max_tokens(单场 3500 / 整本 6000)。"""
@@ -254,6 +257,9 @@ def _build_user_input(req: OptimizeRequest) -> dict:
         )
     else:
         payload["current_screenplay"] = req.screenplay
+    # 阶段 5.6 桥接:SP-4 状态快照非空才加(让 prompt 铁律生效)
+    if req.bridge_snapshots_block:
+        payload["character_snapshots"] = req.bridge_snapshots_block
     return payload
 
 

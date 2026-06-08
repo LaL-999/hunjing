@@ -130,6 +130,11 @@ def api_optimize_screenplay(
             body.user_decisions,
         )
 
+    # 阶段 5.6 桥接 — 拉 SP-4 角色状态时间线快照(若 link 过)
+    snapshots_bridge_block = _build_snapshots_bridge_block(
+        record["novel_id"], user.id, current_screenplay,
+    )
+
     # 3. 跑 LLM 优化
     try:
         result = optimize_screenplay(OptimizeRequest(
@@ -138,6 +143,7 @@ def api_optimize_screenplay(
             target_scene_id=body.target_scene_id,
             focus=body.focus,
             diagnostics=diagnostics,
+            bridge_snapshots_block=snapshots_bridge_block,
         ))
     except ScreenplayOptimizeError as e:
         raise HTTPException(
@@ -747,6 +753,38 @@ def _purge_orphan_decisions(screenplay: dict) -> None:
         # 否则丢弃 — 该 element 已被优化器删除或重写,decision 失效
 
     screenplay["adaptation_decisions"] = cleaned
+
+
+def _build_snapshots_bridge_block(
+    novel_id: str, user_id: str, screenplay: dict,
+) -> str:
+    """阶段 5.6 桥接 — 拉 SP-4 角色状态时间线快照,给 optimizer 跨场一致性检查。
+
+    收集 screenplay.characters 全部角色名 → bridge.get_character_snapshots_block。
+    任何失败返 "" — 不阻断优化。
+    """
+    try:
+        names: list[str] = []
+        for c in (screenplay.get("characters") or []):
+            if isinstance(c, dict):
+                nm = (c.get("name") or "").strip()
+                if nm:
+                    names.append(nm)
+        if not names:
+            return ""
+        from app.screenplay.db.connection import get_connection
+        from app.screenplay.services import huimeng_bridge
+        conn = get_connection()
+        try:
+            return huimeng_bridge.get_character_snapshots_block(
+                conn, user_id=user_id, novel_id=novel_id,
+                character_names=names,
+            )
+        finally:
+            conn.close()
+    except Exception:  # noqa: BLE001
+        # 静默兜底 — 桥接挂掉绝不阻断优化
+        return ""
 
 
 def _estimate_pages(scenes_section: list) -> int:

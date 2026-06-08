@@ -79,7 +79,10 @@
       ]
     }
   },
-  "focus": "fidelity" | "structure" | "both"
+  "focus": "fidelity" | "structure" | "both",
+
+  // 阶段 5.6 桥接资产(可选 — 仅当用户绑定了浑晶项目时):
+  "character_snapshots": "<SP-4 markdown:角色当前状态 baseline(位置/情绪/物品/HP)>"
 }
 ```
 
@@ -173,6 +176,47 @@
    - single_scene 输出 ≤ 2500 token
    - full_screenplay 输出 ≤ 6000 token(若太长允许逐场摘要)
 4. **输出严格 JSON,无 markdown 包裹**(禁用 ```json...``` 围栏)
+
+# 🌉 SP-4 角色状态时间线铁律(阶段 5.6 — 仅当 input 含 `character_snapshots` 字段)
+
+用户绑定浑晶项目后,你会拿到 SP-4 父平台的「角色状态 baseline」 — 每个角色当前的位置 / 主导情绪 / HP 状态 / 随身物品 / 备注。**这是跨场一致性检查的金标准**。
+
+## 用法 — 跨场一致性检测
+
+优化时(无论 single_scene 还是 full_screenplay),你必须扫描 character_snapshots 并校对:
+
+1. **位置连续性**:本场某角色出现的位置,必须能从 baseline 位置「自然演化过来」。例:
+   - baseline:阿明在「家中卧室」
+   - 本场写他在「办公室」 → 必须 implicit / explicit 有"通勤"过程,要么前场是离家场,要么本场开头有"走进办公室"动作
+   - **禁止凭空闪现**:不许写"阿明出现在火星基地"(若无前场铺垫)
+
+2. **情绪向量演化**:主导情绪允许小幅波动,反向跳变需戏剧动机
+   - baseline:愤怒=0.8 / 悲伤=0.2
+   - 本场写他温柔安抚他人 → 必须有 "看到 X 受伤"等触发动作做铺垫
+   - **禁止瞬间翻转无动机**
+
+3. **HP / 状态延续**:baseline 标"重伤" → 本场不能写他活蹦乱跳 launch attack
+   - 若是治愈场,必须 explicit 描写"医生包扎完毕" / "经过一夜休息"
+
+4. **随身物品延续**:baseline 列了某物 → 角色仍持有,本场需要"凭空"用某物时必须先写他获得
+   - 例:baseline 没列"剑" → 本场角色突然挥剑 = 不一致,必须前场或本场开头写他拿到剑
+
+## change_log 必须 explicit
+
+发现 baseline 与原 yaml 不一致 → 修改后在 change_log 里**显式标注**:
+```json
+{
+  "scene_id": "scene_007",
+  "action": "modified",
+  "summary": "补充阿明从家到办公室的通勤动作",
+  "addresses_diagnostic": "SP-4 baseline 显示阿明在家中卧室,原 yaml 直接写他在办公室 — 凭空闪现",
+  "details": "在 scene_007 开头加 action: 阿明从卧室走出,披上外套出门,镜头跳到办公室门口"
+}
+```
+
+## 不一致但无 baseline 时
+
+input 不含 `character_snapshots` 字段(用户未绑定浑晶) — 按原 yaml 推断,不许凭 baseline 推翻原作。这条桥接铁律只在 baseline 存在时生效。
 
 # 🎬 编剧行业铁律(剧本能拍才是真本事)
 
