@@ -223,43 +223,56 @@
  * 跟界面背景反而协调;亮色主题下 3D 是"潜入深空"的对比,暗色下是"延续场景",都成立。
  * ============================================================ */
 :root[data-theme="dark"] {
-  /* 背景层级 v2(2026-05-12 用户反馈"不够黑还有点泛白",整体加深 + 修正层级)
+  /* 背景层级 v3(2026-06-09 用户反馈"太黑了",整体提亮一档保暖调)
    *
-   * **核心修复**:亮色 sidebar(#F4F0E8)比 bg(#FAF7F2)略深 → 暗色镜像应该
-   * sidebar 比 bg 更**深**;之前我把 bg-subtle 设得比 bg 亮,反了。
+   * 旧 v2 问题:sidebar luma 8 比业界(GitHub luma 17 / VSCode 30 / Linear 26)都黑,
+   * 用户感知"深渊感",视野压抑。
+   *
+   * v3 治理:每层 +6 luma 单位,保持原层级反差 + 暖紫调:
+   *   - sidebar  luma  8 → 19  (#08070A → #15130F)
+   *   - bg       luma 17 → 25  (#121110 → #1B1916)
+   *   - surface  luma 27 → 36  (#1C1B19 → #28251F)
+   *   - hover    luma 36 → 48  (#26241F → #34302A)
+   *   - border   luma 43 → 58  (适应更亮 bg,区分度↑)
+   *
+   * 不仿 Claude 冷蓝调 — 跟浑晶亮色暖米 #FAF7F2 一脉相承,品牌温度感不断裂。
+   * R/G/B 仍保留 1-3 差(R>G>B)制造"暖紫"微调,接近 #1B1916 ≈ rgb(27,25,22)。
    *
    * 顺序(由暗到亮):sidebar(bg-subtle) < bg < surface < surface-hover
-   * 整体压暗约 30%,接近"真黑暖调"(R/G/B 仍微差 1-2 保留暖意,不纯灰)
    */
-  --color-bg:               #121110;        /* 全站底,几乎黑(luma 17) */
-  --color-bg-subtle:        #08070A;        /* sidebar 最暗(luma 8,接近纯黑) */
-  --color-surface:          #1C1B19;        /* 卡片底,略浮起(luma 27) */
-  --color-surface-hover:    #26241F;        /* hover 微亮(luma 36) */
+  --color-bg:               #1B1916;        /* 全站底,黑但有温度(luma 25) */
+  --color-bg-subtle:        #15130F;        /* sidebar(luma 19,比 bg 略深一档) */
+  --color-surface:          #28251F;        /* 卡片底,浮起明显(luma 36) */
+  --color-surface-hover:    #34302A;        /* hover 微亮(luma 48) */
 
-  /* 边框(暗背景上要可见 + 不抢眼) */
-  --color-border:           #2D2B27;        /* luma 43,卡片边可见 */
-  --color-border-strong:    #3F3D38;        /* luma 60,输入框 / 强调 */
+  /* 边框(适应提亮的 bg,需要稍微加深以保持区分度) */
+  --color-border:           #3D3833;        /* luma 56,卡片边可见 */
+  --color-border-strong:    #4F4942;        /* luma 72,输入框 / 强调 */
 
-  /* 文字(米白系,跟暖背景协调) */
-  --color-text:             #F0EDE5;        /* 主文字(luma 237,对 surface 27 → 对比 8.7 AAA ✓) */
-  --color-text-muted:       #B5B0A5;        /* 次文字(luma 175,对 surface → 6.5 AA ✓) */
-  --color-text-subtle:      #807B72;        /* 占位(luma 124,对 surface → 4.6 AA ✓ 大字 / borderline 普通字)*/
-  --color-text-on-accent:   #FFFFFF;        /* 主色按钮文字 */
+  /* 文字(米白系,跟暖背景协调)— v3 surface 提亮后对比度重算:
+   *   text     #F0EDE5 luma 237 对 surface 36 → 对比 7.8 AAA ✓
+   *   muted    #B5B0A5 luma 175 对 surface 36 → 对比 4.5 AA ✓
+   *   subtle   #95907F luma 144 对 surface 36 → 对比 3.4 AA(大字)
+   *   subtle 比 v2 提了 +20 luma,新 surface 下不再"灰糊一片" */
+  --color-text:             #F0EDE5;
+  --color-text-muted:       #B5B0A5;
+  --color-text-subtle:      #95907F;        /* +20 luma,适应新 surface */
+  --color-text-on-accent:   #FFFFFF;
 
-  /* 主色:**保留** #7C3AED,只调辅助色 */
+  /* 主色:**保留** #7C3AED,只调辅助色 — soft 跟新 surface 拉开 */
   --color-accent:           #7C3AED;
-  --color-accent-hover:     #8B4CF0;        /* 暗下 hover 要稍亮 */
-  --color-accent-soft:      #1F1437;        /* 更暗的紫底(贴近 surface,不突出)*/
-  --color-accent-text:      #C4B5FD;        /* accent-soft / 暗背景上的紫文字(luma 200)*/
-  --color-accent-border:    #4C3B8A;
+  --color-accent-hover:     #8B4CF0;
+  --color-accent-soft:      #2A1F4A;        /* +5 luma,新 surface 上仍可区分 */
+  --color-accent-text:      #C4B5FD;
+  --color-accent-border:    #5E4BA6;        /* 稍提亮,跟新 border 协调 */
 
-  /* 状态色:饱和度降低,soft 用暗版 */
+  /* 状态色:soft 提亮一档,跟新 surface 36 保持 ≥4 luma 区分 */
   --color-danger:           #F87171;
-  --color-danger-soft:      #3A1717;        /* 更暗 */
+  --color-danger-soft:      #4A1F1F;        /* +10 luma */
   --color-success:          #4ADE80;
-  --color-success-soft:     #142F1B;        /* 更暗 */
+  --color-success-soft:     #1F3F2A;        /* +12 luma */
   --color-warning:          #FBBF24;
-  --color-warning-soft:     #2F2308;        /* 更暗 */
+  --color-warning-soft:     #3F2F12;        /* +10 luma */
 
   /* 阴影:暗色下减弱,但 modal 仍存一点拉层次感 */
   --shadow-sm:              0 1px 2px rgba(0, 0, 0, 0.35);
