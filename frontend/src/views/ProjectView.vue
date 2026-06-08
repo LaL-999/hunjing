@@ -2748,7 +2748,7 @@ watch(activeTab, (newTab) => {
             @click="inferAllBoards"
           >
             <Icon name="sparkles" :size="14" />
-            <span>{{ allBoardsLoading ? "AI 推断中(可能 1-2 分钟)…" : "⚡ 一键灌满" }}</span>
+            <span>{{ allBoardsLoading ? "AI 推断中(可能 1-2 分钟)…" : "一键灌满" }}</span>
           </button>
         </div>
 

@@ -752,7 +752,9 @@ async function saveBaselineForChar(char: Character) {
                 :aria-expanded="expandedCardId === char.id"
                 :title="expandedCardId === char.id ? '折叠' : '展开详情'"
                 @click="toggleCardExpand(char.id)"
-              >{{ expandedCardId === char.id ? "▾" : "▸" }}</button>
+              >
+                <Icon :name="expandedCardId === char.id ? 'chevron_down' : 'chevron_right'" :size="14" />
+              </button>
             </div>
           </header>
 
@@ -849,7 +851,7 @@ async function saveBaselineForChar(char: Character) {
                         {{ phaseCounts.get(rel.id) ?? "?" }} 阶段
                       </span>
                       <span class="rel-expand-icon" aria-hidden="true">
-                        {{ expandedRelIds.has(rel.id) ? "▾" : "▸" }}
+                        <Icon :name="expandedRelIds.has(rel.id) ? 'chevron_down' : 'chevron_right'" :size="12" />
                       </span>
                     </button>
                     <div v-if="expandedRelIds.has(rel.id)" class="rel-timeline-wrap">
@@ -868,9 +870,10 @@ async function saveBaselineForChar(char: Character) {
                   class="rel-more-btn"
                   @click="toggleRelListExpand(char.id, $event)"
                 >
+                  <Icon :name="expandedRelLists.has(char.id) ? 'chevron_up' : 'chevron_down'" :size="12" />
                   {{ expandedRelLists.has(char.id)
-                    ? `▴ 收起(只看前 ${RELS_DEFAULT_LIMIT} 条)`
-                    : `▾ 展开剩余 ${relsForCharacterAll(char.id).length - RELS_DEFAULT_LIMIT} 条` }}
+                    ? `收起(只看前 ${RELS_DEFAULT_LIMIT} 条)`
+                    : `展开剩余 ${relsForCharacterAll(char.id).length - RELS_DEFAULT_LIMIT} 条` }}
                 </button>
               </template>
             </div>
