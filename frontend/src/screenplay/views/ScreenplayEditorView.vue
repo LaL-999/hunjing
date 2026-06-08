@@ -18,6 +18,7 @@ import ExportMenu from "../components/ExportMenu.vue";
 import NovelTextPanel from "../components/NovelTextPanel.vue";
 import OptimizationModal from "../components/OptimizationModal.vue";
 import ScreenplayPanel from "../components/ScreenplayPanel.vue";
+import VersionDiffPanel from "../components/VersionDiffPanel.vue";
 import VersionSwitcher from "../components/VersionSwitcher.vue";
 import { useScreenplayStore } from "../stores/screenplay";
 import type { OptimizeScope } from "../types/screenplay";
@@ -53,6 +54,11 @@ function closeComposeDialog() {
 const characterPanelVisible = ref<boolean>(false);
 function openCharacterPanel() { characterPanelVisible.value = true; }
 function closeCharacterPanel() { characterPanelVisible.value = false; }
+
+// 阶段 8.3 第 3b 张牌:版本树 diff modal
+const versionDiffVisible = ref<boolean>(false);
+function openVersionDiff() { versionDiffVisible.value = true; }
+function closeVersionDiff() { versionDiffVisible.value = false; }
 
 // AI 优化弹窗(A + B 入口共用)
 const optimizationModalVisible = ref<boolean>(false);
@@ -145,7 +151,7 @@ onMounted(() => {
           </svg>
           角色
         </button>
-        <VersionSwitcher v-if="store.hasScreenplay" />
+        <VersionSwitcher v-if="store.hasScreenplay" @open-diff="openVersionDiff" />
         <ExportMenu v-if="store.hasScreenplay" />
         <button
           class="primary-btn"
@@ -241,6 +247,12 @@ onMounted(() => {
       :novel-id="props.id"
       :visible="characterPanelVisible"
       @close="closeCharacterPanel"
+    />
+
+    <!-- ===== 阶段 8.3 第 3b:版本树 diff + 回滚 ===== -->
+    <VersionDiffPanel
+      :visible="versionDiffVisible"
+      @close="closeVersionDiff"
     />
   </div>
 </template>

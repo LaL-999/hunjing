@@ -12,6 +12,10 @@ import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useScreenplayStore } from "../stores/screenplay";
 import type { ScreenplayVersion } from "../types/screenplay";
 
+const emit = defineEmits<{
+  (e: "open-diff"): void;
+}>();
+
 const store = useScreenplayStore();
 
 const versions = computed<ScreenplayVersion[]>(() => store.versions);
@@ -117,6 +121,21 @@ onBeforeUnmount(() => {
     <transition name="vs-fade">
       <div v-if="isOpen" class="vs-menu">
         <div class="vs-menu-label">版本时间线</div>
+        <!-- 阶段 8.3 第 3b 张牌:对比 / 回滚入口 -->
+        <button
+          class="vs-diff-trigger"
+          @click="() => { isOpen = false; emit('open-diff'); }"
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M16 3h5v5" />
+            <path d="M4 20L21 3" />
+            <path d="M21 16v5h-5" />
+            <path d="M15 15l6 6" />
+            <path d="M4 4l5 5" />
+          </svg>
+          <span>对比 / 回滚版本</span>
+        </button>
         <ul class="vs-list">
           <li
             v-for="(v, idx) in orderedVersions"
@@ -246,6 +265,29 @@ onBeforeUnmount(() => {
   text-transform: uppercase;
   border-bottom: 1px solid var(--border-soft);
   margin-bottom: var(--space-2);
+}
+
+/* 阶段 8.3 第 3b 张牌:对比 / 回滚入口 */
+.vs-diff-trigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--accent-soft);
+  border: none;
+  border-bottom: 1px solid var(--border-soft);
+  color: var(--accent-text);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  letter-spacing: 0.04em;
+  font-family: inherit;
+  transition: background 150ms;
+}
+.vs-diff-trigger:hover {
+  background: var(--accent);
+  color: white;
 }
 
 .vs-list {
