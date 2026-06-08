@@ -63,6 +63,13 @@ const simNodes = ref<SimNode[]>([]);
 const hoverNodeId = ref<string>("");
 const hoverEdgeIdx = ref<number>(-1);
 
+// 2026-06-08 用户精修:拖拽支持
+const svgRef = ref<SVGSVGElement | null>(null);
+const draggingId = ref<string>("");          // 当前拖拽的节点 id
+let dragMoved = false;                       // 区分单击 vs 拖动(防 click 误触)
+let dragOffsetX = 0;                         // 鼠标按下时,鼠标 - 节点中心的偏移
+let dragOffsetY = 0;
+
 let rafId: number | null = null;
 let iter = 0;
 
@@ -235,7 +242,85 @@ function isEdgeFaded(e: GraphEdgeApi): boolean {
 }
 
 function handleNodeClick(node: SimNode) {
+  // 2026-06-08:拖完不触发 select(防"拖动一下就跳卡片"的烦感)
+  if (dragMoved) {
+    dragMoved = false;
+    return;
+  }
   emit("select-character", node.id);
+}
+
+// ============================================================
+// 2026-06-08 拖拽:气泡般滑溜的交互(用户原话)
+// ============================================================
+
+/** 把鼠标 client 坐标换算到 SVG viewBox 坐标系 */
+function svgFromClient(e: MouseEvent): { x: number; y: number } | null {
+  const svg = svgRef.value;
+  if (!svg) return null;
+  const pt = svg.createSVGPoint();
+  pt.x = e.clientX;
+  pt.y = e.clientY;
+  const ctm = svg.getScreenCTM();
+  if (!ctm) return null;
+  const t = pt.matrixTransform(ctm.inverse());
+  return { x: t.x, y: t.y };
+}
+
+function startDrag(node: SimNode, e: MouseEvent) {
+  e.preventDefault();
+  e.stopPropagation();
+  const p = svgFromClient(e);
+  if (!p) return;
+  draggingId.value = node.id;
+  dragMoved = false;
+  dragOffsetX = p.x - node.x;
+  dragOffsetY = p.y - node.y;
+
+  // 停掉力学迭代,拖拽时不抢主权
+  if (rafId !== null) {
+    cancelAnimationFrame(rafId);
+    rafId = null;
+  }
+  // 拖拽期间,该节点速度归零,免得 release 后被旧速度甩飞
+  const target = simNodes.value.find(n => n.id === node.id);
+  if (target) { target.vx = 0; target.vy = 0; }
+
+  window.addEventListener("mousemove", onDrag);
+  window.addEventListener("mouseup", endDrag);
+}
+
+function onDrag(e: MouseEvent) {
+  if (!draggingId.value) return;
+  const p = svgFromClient(e);
+  if (!p) return;
+  const node = simNodes.value.find(n => n.id === draggingId.value);
+  if (!node) return;
+  // 标记真发生了拖动(超过 3px 阈值)— 用于 click 判别
+  if (!dragMoved) {
+    const dx = (p.x - dragOffsetX) - node.x;
+    const dy = (p.y - dragOffsetY) - node.y;
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) dragMoved = true;
+  }
+  // 边界 clamp
+  const margin = 30;
+  node.x = Math.max(margin, Math.min(W.value - margin, p.x - dragOffsetX));
+  node.y = Math.max(margin, Math.min(H.value - margin, p.y - dragOffsetY));
+  node.vx = 0;
+  node.vy = 0;
+}
+
+function endDrag() {
+  if (!draggingId.value) return;
+  draggingId.value = "";
+  window.removeEventListener("mousemove", onDrag);
+  window.removeEventListener("mouseup", endDrag);
+
+  // 释放后重启力学几帧,让邻居"被拽"过去复位 — 气泡般滑溜的灵魂
+  iter = Math.max(0, iter - 30);   // 拨回 30 帧的活力度
+  if (rafId === null) {
+    rafId = requestAnimationFrame(step);
+  }
 }
 
 function handleEdgeHover(idx: number, edge: GraphEdgeApi | null) {
@@ -259,11 +344,13 @@ function edgeLabel(e: GraphEdgeApi): { x: number; y: number; text: string } | nu
 <template>
   <div class="relgraph-wrap">
     <svg
+      ref="svgRef"
       class="relgraph-svg"
       :viewBox="`0 0 ${W} ${H}`"
       :width="W"
       :height="H"
       preserveAspectRatio="xMidYMid meet"
+      :class="{ 'is-dragging': draggingId !== '' }"
       @mouseleave="hoverNodeId = ''"
     >
       <!-- 边 -->
@@ -308,8 +395,13 @@ function edgeLabel(e: GraphEdgeApi): { x: number; y: number; text: string } | nu
           v-for="node in simNodes"
           :key="node.id"
           class="node-group"
-          :class="{ faded: isFaded(node.id), selected: node.id === props.selectedId }"
+          :class="{
+            faded: isFaded(node.id),
+            selected: node.id === props.selectedId,
+            'is-dragged': draggingId === node.id,
+          }"
           @mouseenter="hoverNodeId = node.id"
+          @mousedown="startDrag(node, $event)"
           @click="handleNodeClick(node)"
         >
           <!-- 桥接外圈虚线(has_bridge_assets 时) -->
@@ -391,15 +483,30 @@ function edgeLabel(e: GraphEdgeApi): { x: number; y: number; text: string } | nu
   cursor: default;
   user-select: none;
 }
+/* 2026-06-08:拖拽中 — 全 SVG 光标变 grabbing,视觉反馈"我在抓气泡" */
+.relgraph-svg.is-dragging {
+  cursor: grabbing;
+}
 .node-group {
-  cursor: pointer;
+  cursor: grab;
   transition: opacity 200ms ease-out;
+}
+.node-group:active {
+  cursor: grabbing;
+}
+.relgraph-svg.is-dragging .node-group {
+  cursor: grabbing;
 }
 .node-group.faded {
   opacity: 0.18;
 }
+/* 被拖拽的节点 — 主圈变粗 + 微弱光晕,像"气泡被拽" */
+.node-group.is-dragged .node-circle {
+  filter: brightness(1.2) drop-shadow(0 0 6px var(--accent));
+  stroke-width: 3;
+}
 .node-circle {
-  transition: filter 150ms;
+  transition: filter 150ms, stroke-width 150ms;
 }
 .node-group:hover .node-circle {
   filter: brightness(1.15);

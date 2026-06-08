@@ -341,7 +341,7 @@ function toggle() {
           </g>
 
           <!-- 填充区域 -->
-          <path :d="areaPath" fill="rgba(139, 92, 246, 0.12)" />
+          <path :d="areaPath" fill="rgba(139, 92, 246, 0.12)" pointer-events="none" />
 
           <!-- 张力曲线 — 阶段 8.3:draw-on 动画(stroke-dasharray) -->
           <path
@@ -352,46 +352,12 @@ function toggle() {
             stroke-linejoin="round"
             stroke-linecap="round"
             class="tension-curve"
+            pointer-events="none"
           />
 
-          <!-- 数据点(hover 看数据 / 点击跳转 scene)
-               2026-06-08 用户精修:hit area 圆 fill=transparent 在部分浏览器
-               pointer-events 默认 visiblePainted = 不接收事件,导致鼠标
-               精准指向可见点反而命中不上(只在边缘命中)。
-               治理:显式 pointer-events="all" + cursor=pointer 在父 g。
-               同时把 hit area 加大到 r=16(原 14)+ 给整个 g 加 cursor。 -->
-          <g class="data-points">
-            <g
-              v-for="(p, i) in points"
-              :key="p.scene_id"
-              class="data-point-group"
-              @mouseenter="handleHover(i)"
-              @click="handleClick(i)"
-            >
-              <!-- 透明 hit area:r=16,pointer-events=all 强制接收 -->
-              <circle
-                :cx="xForIndex(i, points.length)"
-                :cy="yForTension(p.tension)"
-                r="16"
-                fill="white"
-                fill-opacity="0"
-                pointer-events="all"
-              />
-              <!-- 可见点 -->
-              <circle
-                :cx="xForIndex(i, points.length)"
-                :cy="yForTension(p.tension)"
-                :r="hoverIndex === i ? 5 : 3"
-                :fill="hoverIndex === i ? 'var(--accent)' : 'white'"
-                :stroke="hoverIndex === i ? 'white' : 'var(--accent)'"
-                stroke-width="2"
-                pointer-events="none"
-              />
-            </g>
-          </g>
-
-          <!-- 关键节点 — 阶段 8.3:脉冲高亮(beat-pulse 动画) -->
-          <g class="beat-markers">
+          <!-- 关键节点 — 阶段 8.3:脉冲高亮(beat-pulse 动画)
+               2026-06-08 修:整组加 pointer-events="none",装饰用,不抢点击 -->
+          <g class="beat-markers" pointer-events="none">
             <g v-for="(b, idx) in beatMarkers" :key="`beat-${idx}`">
               <!-- 脉冲外圈 -->
               <circle
@@ -434,7 +400,7 @@ function toggle() {
           </g>
 
           <!-- 三幕标签 -->
-          <g class="act-labels">
+          <g class="act-labels" pointer-events="none">
             <text
               v-for="band in actBands"
               :key="`acttxt-${band.act}`"
@@ -445,6 +411,39 @@ function toggle() {
             >
               {{ band.label }}
             </text>
+          </g>
+
+          <!-- 数据点(2026-06-08 用户精修 v3:挪到 SVG 最末渲染 = z-order 最顶,
+               不会被 beat-markers/act-labels 等装饰元素遮挡命中区。
+               这是修"鼠标精准指向波浪点没反应"的根因。 -->
+          <g class="data-points">
+            <g
+              v-for="(p, i) in points"
+              :key="p.scene_id"
+              class="data-point-group"
+              @mouseenter="handleHover(i)"
+              @click="handleClick(i)"
+            >
+              <!-- 透明 hit area:r=18 更宽,pointer-events=all 显式接收 -->
+              <circle
+                :cx="xForIndex(i, points.length)"
+                :cy="yForTension(p.tension)"
+                r="18"
+                fill="white"
+                fill-opacity="0"
+                pointer-events="all"
+              />
+              <!-- 可见点 — pointer-events none,事件穿透到 hit area -->
+              <circle
+                :cx="xForIndex(i, points.length)"
+                :cy="yForTension(p.tension)"
+                :r="hoverIndex === i ? 5 : 3"
+                :fill="hoverIndex === i ? 'var(--accent)' : 'white'"
+                :stroke="hoverIndex === i ? 'white' : 'var(--accent)'"
+                stroke-width="2"
+                pointer-events="none"
+              />
+            </g>
           </g>
         </svg>
 
