@@ -40,7 +40,7 @@ def _new_id() -> str:
 
 def save_screenplay(
     novel_id: str,
-    user_id: int,
+    user_id: str,
     yaml_text: str,
     stats: dict,
     warnings: list[dict],
@@ -135,7 +135,7 @@ def _row_to_dict(row) -> dict[str, Any]:
     }
 
 
-def get_latest_screenplay(novel_id: str, user_id: int) -> dict | None:
+def get_latest_screenplay(novel_id: str, user_id: str) -> dict | None:
     """返指定 novel 最新一次 compose 的剧本(按 created_at 倒序)。
 
     隔离:JOIN sp_novels 校验 user_id;novel 不属于该用户则返 None。
@@ -159,7 +159,7 @@ def get_latest_screenplay(novel_id: str, user_id: int) -> dict | None:
         conn.close()
 
 
-def get_screenplay_by_id(screenplay_id: str, user_id: int) -> dict | None:
+def get_screenplay_by_id(screenplay_id: str, user_id: str) -> dict | None:
     """按 id 取一条剧本(校验所属 novel 归属当前用户)。无则返 None。"""
     conn = get_connection()
     try:
@@ -178,7 +178,7 @@ def get_screenplay_by_id(screenplay_id: str, user_id: int) -> dict | None:
         conn.close()
 
 
-def list_versions_for_novel(novel_id: str, user_id: int) -> list[dict]:
+def list_versions_for_novel(novel_id: str, user_id: str) -> list[dict]:
     """返指定 novel 的所有版本(紧凑信息,不含 yaml_text 全文)— 给版本切换 UI 用。
 
     隔离:JOIN sp_novels 校验 user_id;novel 不属于该用户则返 []。
@@ -217,7 +217,7 @@ def list_versions_for_novel(novel_id: str, user_id: int) -> list[dict]:
         conn.close()
 
 
-def list_screenplays(novel_id: str, user_id: int) -> list[dict]:
+def list_screenplays(novel_id: str, user_id: str) -> list[dict]:
     """返指定 novel 的所有 compose 记录,按 created_at 倒序(最新在前)。
 
     隔离:JOIN sp_novels 校验 user_id;novel 不属于该用户则返 []。

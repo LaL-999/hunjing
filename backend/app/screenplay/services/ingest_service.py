@@ -28,7 +28,7 @@ def _new_id() -> str:
 def persist_novel(
     parsed: ParsedNovel,
     source_filename: str,
-    user_id: int,
+    user_id: str,
 ) -> dict:
     """把解析结果存进 SQLite,返摄入摘要 dict。
 
@@ -119,7 +119,7 @@ def persist_novel(
     }
 
 
-def delete_novel(novel_id: str, user_id: int) -> bool:
+def delete_novel(novel_id: str, user_id: str) -> bool:
     """删除小说(必须是当前用户拥有的)— chapters / paragraphs / story_bible /
     screenplays 走 ON DELETE CASCADE 自动清。
 
@@ -138,7 +138,7 @@ def delete_novel(novel_id: str, user_id: int) -> bool:
         conn.close()
 
 
-def list_novels(user_id: int) -> list[dict]:
+def list_novels(user_id: str) -> list[dict]:
     """当前用户上传过的所有小说(按上传时间倒序)。"""
     conn = get_connection()
     try:
@@ -155,7 +155,7 @@ def list_novels(user_id: int) -> list[dict]:
         conn.close()
 
 
-def get_novel(novel_id: str, user_id: int) -> dict | None:
+def get_novel(novel_id: str, user_id: str) -> dict | None:
     """单本详情 + 章节列表(不含段落正文)。
 
     返 None 当 novel 不存在 OR 不属于当前用户(隔离 = 无知,不是"403 forbidden")
@@ -184,7 +184,7 @@ def get_novel(novel_id: str, user_id: int) -> dict | None:
         conn.close()
 
 
-def get_chapter_paragraphs(chapter_id: str, user_id: int) -> list[dict] | None:
+def get_chapter_paragraphs(chapter_id: str, user_id: str) -> list[dict] | None:
     """单章全部段落正文(校验 chapter→novel→user 链)。
 
     返 None 当 chapter 不存在 OR 章节所属 novel 不属于当前用户。
@@ -212,7 +212,7 @@ def get_chapter_paragraphs(chapter_id: str, user_id: int) -> list[dict] | None:
         conn.close()
 
 
-def is_novel_owned_by_user(novel_id: str, user_id: int) -> bool:
+def is_novel_owned_by_user(novel_id: str, user_id: str) -> bool:
     """轻量级 helper:查 novel 是否属于该用户(给 service 层做权限校验用)。"""
     conn = get_connection()
     try:

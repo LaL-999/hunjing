@@ -19,7 +19,7 @@
 
 CREATE TABLE IF NOT EXISTS sp_novels (
     id              TEXT PRIMARY KEY,         -- UUID hex
-    user_id         INTEGER NOT NULL,          -- 父平台 users.id
+    user_id         TEXT NOT NULL,            -- 父平台 users.id(UUID 字符串)
     title           TEXT NOT NULL,
     source_format   TEXT NOT NULL,             -- 'txt' | 'epub' | 'docx'
     source_filename TEXT NOT NULL,

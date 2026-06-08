@@ -25,6 +25,7 @@
 | **3** | 后端代码迁入 + 表名 sp_ 前缀 + router 鉴权挂载 | ✅ 完工(2026-06-08 下午)|
 | **3.5** | service 层 SQL user_id 过滤(数据用户级隔离) | ✅ 完工(2026-06-08 傍晚)|
 | **4** | DB schema 进 migration runner(quota 后期五态统一)| ✅ 完工(2026-06-08 夜)|
+| **4.5** | sp_novels.user_id INTEGER→TEXT 类型对齐(阶段 3 留 bug)| ✅ 完工(2026-06-08 夜)|
 | **5** | 故事圣经 A 隔离 + 角色 Agent 复用层(关键) | ⏳ |
 | 6 | 视觉融合(精修)| ⏳ |
 | 7 | 测试 + 文档收尾 | ⏳ |
@@ -45,6 +46,25 @@
   - `from app.main import app` 成功导入
   - 18 个 `/api/screenplay/*` 路由全部注册
   - `pytest --co` 962 测试收集成功(父平台测试无污染)
+
+### 阶段 4.5 完工摘要
+
+阶段 3 的潜伏 bug:`sp_novels.user_id` 写成 `INTEGER`,但父平台 `users.id` 是
+`TEXT(UUID 字符串)`。阶段 5 huimeng_bridge 要 JOIN 父平台 `characters /
+projects` 时,INTEGER vs TEXT 走 SQLite 类型亲和隐式转换,行为不可预测。
+
+**改动**:
+- `migration 085`:`user_id INTEGER NOT NULL` → `user_id TEXT NOT NULL`
+- `app/main.py` 加 `_fix_sp_novels_user_id_type` 启动钩子:
+  - PRAGMA 检测列类型;若 INTEGER → ALTER 重建为 TEXT(数据 CAST 拷贝);若已是 TEXT → noop
+  - 为什么走 Python 而非 SQL migration:SQLite 无 ALTER COLUMN TYPE,migration
+    runner 没有"已应用"标记 — SQL 没法条件执行;Python 检测一次性补丁最干净
+- 所有 service / router 的 `user_id: int` → `user_id: str`(6 文件统一)
+
+**验证**:
+- ✓ 首次启动:WARNING 日志 + INTEGER → TEXT 重建
+- ✓ 二次启动:noop(无 WARNING)
+- ✓ pytest --co 962 测试
 
 ### 阶段 4 完工摘要
 

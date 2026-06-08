@@ -556,7 +556,7 @@ def _summarize_author_decisions(
 
 
 def _refresh_fidelity_in_screenplay(
-    screenplay: dict, novel_id: str, user_id: int,
+    screenplay: dict, novel_id: str, user_id: str,
 ) -> None:
     """对优化后的 yaml 逐场重算 fidelity,写回 scene.fidelity 字段(in-place)。
 

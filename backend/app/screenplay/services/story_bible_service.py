@@ -34,7 +34,7 @@ def _new_id() -> str:
 # 主入口 — JSON 导入
 # ============================================================
 
-def import_bible_from_json(novel_id: str, payload: dict, user_id: int) -> dict:
+def import_bible_from_json(novel_id: str, payload: dict, user_id: str) -> dict:
     """从用户提供的 JSON 导入故事圣经。
 
     payload 结构: ...(见 schema)
@@ -115,7 +115,7 @@ _EXTRACT_SYSTEM_PROMPT = """你是一个小说文本分析专家。从用户提�
 """
 
 
-def extract_bible_with_llm(novel_id: str, user_id: int, max_chapters: int = 3) -> dict:
+def extract_bible_with_llm(novel_id: str, user_id: str, max_chapters: int = 3) -> dict:
     """LLM 自动抽取故事圣经。
 
     流程:
@@ -303,7 +303,7 @@ def _persist_bible(
 # 查询
 # ============================================================
 
-def get_bible(novel_id: str, user_id: int) -> dict | None:
+def get_bible(novel_id: str, user_id: str) -> dict | None:
     """完整圣经 — 给前端显示用。
 
     隔离:走 JOIN sp_novels 校验 user_id,若 novel 不属于该用户返 None。

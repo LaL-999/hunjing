@@ -381,4 +381,86 @@ _auto_apply_migrations()
 # 阶段 4(2026-06-08):剧创态 schema 已规整进 migration 085,
 # 由 _auto_apply_migrations 统一接管 — 不再需要 _init_screenplay_schema 钩子。
 
+
+def _fix_sp_novels_user_id_type() -> None:
+    """阶段 4.5(2026-06-08)— 修阶段 3/4 留下的 sp_novels.user_id 类型 bug。
+
+    背景:阶段 3 在 schema.sql 里把 sp_novels.user_id 写成 INTEGER,
+    但父平台 users.id 是 TEXT(UUID 字符串)。阶段 5 huimeng_bridge 要 JOIN
+    父平台 characters / projects 时,INTEGER vs TEXT 比较走 SQLite 类型亲和
+    隐式转换 — 大部分场景能用,但 JOIN 行为不可预测,且 FK 约束在严格模式下报错。
+
+    幂等修复:检测 sp_novels.user_id 列类型;
+      - 若 INTEGER → ALTER 重建为 TEXT(数据 CAST 转换)
+      - 若 TEXT 或表不存在 → noop
+
+    为什么走 Python 而不是 migration 文件:
+      迁徙 runner 每次启动跑所有 .sql,没有"已应用"标记。SQL 没法条件执行 "如果
+      列类型是 INTEGER 才动",而 ALTER TABLE 在 SQLite 无 ALTER COLUMN TYPE 操作。
+      所以这种"补丁式条件迁徙"走 Python 一次性脚本是最干净的。
+    """
+    import logging
+    from app.db import get_connection, transaction
+
+    try:
+        conn = get_connection()
+        try:
+            info = conn.execute("PRAGMA table_info(sp_novels)").fetchall()
+            if not info:
+                # sp_novels 还不存在(可能 migration 085 尚未跑)— 由 085 建好,
+                # 新建的就已经是 TEXT(我们编辑过 085),所以下次启动也不需要此 fix
+                return
+            user_id_col = next((c for c in info if c[1] == "user_id"), None)
+            if user_id_col is None:
+                logging.warning("sp_novels 缺 user_id 列,跳过类型修复")
+                return
+            col_type = (user_id_col[2] or "").upper()
+            if "INT" not in col_type:
+                # 已经是 TEXT — noop
+                return
+
+            logging.warning(
+                "阶段 4.5 修复:sp_novels.user_id 当前为 %s,转为 TEXT",
+                col_type or "(未声明)",
+            )
+            with transaction(conn) as tx:
+                tx.executescript(
+                    """
+                    ALTER TABLE sp_novels RENAME TO sp_novels_old_int;
+
+                    CREATE TABLE sp_novels (
+                        id              TEXT PRIMARY KEY,
+                        user_id         TEXT NOT NULL,
+                        title           TEXT NOT NULL,
+                        source_format   TEXT NOT NULL,
+                        source_filename TEXT NOT NULL,
+                        total_chars     INTEGER NOT NULL DEFAULT 0,
+                        total_chapters  INTEGER NOT NULL DEFAULT 0,
+                        uploaded_at     TEXT NOT NULL,
+                        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                    );
+
+                    INSERT INTO sp_novels
+                        (id, user_id, title, source_format, source_filename,
+                         total_chars, total_chapters, uploaded_at)
+                    SELECT
+                        id, CAST(user_id AS TEXT), title, source_format,
+                        source_filename, total_chars, total_chapters, uploaded_at
+                    FROM sp_novels_old_int;
+
+                    DROP TABLE sp_novels_old_int;
+
+                    CREATE INDEX IF NOT EXISTS idx_sp_novels_user_time
+                        ON sp_novels(user_id, uploaded_at DESC);
+                    """
+                )
+            logging.warning("阶段 4.5 修复完成:sp_novels.user_id 已转为 TEXT")
+        finally:
+            conn.close()
+    except Exception as e:  # noqa: BLE001
+        logging.warning("sp_novels user_id 类型修复失败(不阻塞启动): %s", e)
+
+
+_fix_sp_novels_user_id_type()
+
 app = create_app()

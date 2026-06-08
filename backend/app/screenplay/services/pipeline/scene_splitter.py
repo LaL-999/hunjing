@@ -223,7 +223,7 @@ def _parse_and_validate_scenes(
 # ============================================================
 
 
-def split_chapter_from_db(novel_id: str, chapter_id: str, user_id: int) -> SplitResult:
+def split_chapter_from_db(novel_id: str, chapter_id: str, user_id: str) -> SplitResult:
     """便捷入口 — 拉 DB 数据 + 调切分器(必须传 user_id 校验归属)。
 
     Raises:

@@ -116,7 +116,7 @@ class ComposePipelineError(Exception):
 
 def orchestrate_full_pipeline(
     novel_id: str,
-    user_id: int,
+    user_id: str,
     options: ComposeOptions | None = None,
     progress_callback: Callable[[dict], None] | None = None,
 ) -> ComposePipelineResult:

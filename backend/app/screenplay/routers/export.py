@@ -30,7 +30,7 @@ router = APIRouter(tags=["export"], dependencies=[Depends(get_current_user)])
 
 
 def _load_parsed_screenplay(
-    screenplay_id: str, user_id: int,
+    screenplay_id: str, user_id: str,
 ) -> tuple[dict, dict]:
     """拉记录 + 解析 yaml,返 (parsed_dict, raw_record)。校验 user 归属。"""
     record = screenplay_store.get_screenplay_by_id(screenplay_id, user_id=user_id)
