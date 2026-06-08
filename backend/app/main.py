@@ -296,6 +296,37 @@ def create_app() -> FastAPI:
         name="comic-composed",
     )
 
+    # ============================================================
+    # 剧创态(第 5 创作态)— 阶段 3 后端代码迁入
+    # ============================================================
+    # 所有剧创态 router 统一挂在 /api/screenplay/* 前缀下,与父平台路由解耦
+    # 每个 endpoint 内部已加 Depends(get_current_user) JWT 鉴权
+    # 失败兜底:剧创态 import 失败不阻塞父平台启动(log warning 即可)
+    try:
+        from app.screenplay.routers import (
+            attributions as sp_attributions,
+            compose as sp_compose,
+            decisions as sp_decisions,
+            elements as sp_elements,
+            export as sp_export,
+            novels as sp_novels_router,
+            optimize as sp_optimize,
+            scenes as sp_scenes_router,
+            story_bibles as sp_story_bibles,
+        )
+        app.include_router(sp_novels_router.router, prefix="/api/screenplay", tags=["screenplay"])
+        app.include_router(sp_story_bibles.router, prefix="/api/screenplay", tags=["screenplay"])
+        app.include_router(sp_scenes_router.router, prefix="/api/screenplay", tags=["screenplay"])
+        app.include_router(sp_elements.router, prefix="/api/screenplay", tags=["screenplay"])
+        app.include_router(sp_attributions.router, prefix="/api/screenplay", tags=["screenplay"])
+        app.include_router(sp_decisions.router, prefix="/api/screenplay", tags=["screenplay"])
+        app.include_router(sp_compose.router, prefix="/api/screenplay", tags=["screenplay"])
+        app.include_router(sp_optimize.router, prefix="/api/screenplay", tags=["screenplay"])
+        app.include_router(sp_export.router, prefix="/api/screenplay", tags=["screenplay"])
+    except Exception as e:  # noqa: BLE001
+        import logging
+        logging.warning("剧创态 router 注册失败(不阻塞父平台): %s", e)
+
     return app
 
 
@@ -346,4 +377,21 @@ def _auto_apply_migrations() -> None:
 
 
 _auto_apply_migrations()
+
+
+def _init_screenplay_schema() -> None:
+    """剧创态(第 5 创作态)初始化 — 在父平台 migration 后建 sp_* 表。
+
+    幂等可重跑(IF NOT EXISTS)。失败时只 log warning 不阻塞父平台启动。
+    """
+    import logging
+    try:
+        from app.screenplay.db.connection import init_db as init_screenplay_db
+        init_screenplay_db()
+    except Exception as e:  # noqa: BLE001
+        logging.warning("剧创态 schema 初始化失败(不阻塞父平台): %s", e)
+
+
+_init_screenplay_schema()
+
 app = create_app()

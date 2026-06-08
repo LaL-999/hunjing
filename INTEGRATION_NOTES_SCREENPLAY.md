@@ -22,11 +22,36 @@
 |---|---|---|
 | **1** | Dashboard 加 5/6 卡 + 路由占位 | ✅ 完工(commit cd5cea1)|
 | **2** | 前端真实代码迁入(浑晶视觉适配)| ✅ 完工(2026-06-08 中午)|
-| 3 | 后端代码迁入(加 sp_ 前缀 + user_id) | ⏳ |
+| **3** | 后端代码迁入 + 表名 sp_ 前缀 + router 鉴权挂载 | ✅ 完工(2026-06-08 下午)|
+| 3.5 | service 层 SQL user_id 过滤(数据用户级隔离) | ⏳ 待做 |
 | 4 | DB 迁徙 + Quota 接入 | ⏳ |
 | **5** | 故事圣经 A 隔离 + 角色 Agent 复用层(关键) | ⏳ |
 | 6 | 视觉融合(精修)| ⏳ |
 | 7 | 测试 + 文档收尾 | ⏳ |
+
+### 阶段 3 完工摘要
+
+- 比赛仓库 `backend/app/` 全套复制进 `huimeng/backend/app/screenplay/`(routers/services/parsers/db/schemas/prompts/config)
+- 所有 `from app.*` → `from app.screenplay.*` 命名空间隔离(38 个 .py 文件)
+- 表名加 `sp_` 前缀:novels/chapters/paragraphs/story_bibles/bible_*/screenplays
+- `sp_novels` 加 `user_id INTEGER NOT NULL FK users(id) ON DELETE CASCADE`
+- `sp_screenplays` schema 直接包含版本树字段(parent_screenplay_id / optimization_origin / optimization_log_json)
+- `db/connection.py` 改走父平台 `app.db.get_connection`(同库 huimeng.db,共享 WAL+FK 配置)
+- `config.py` 改走父平台 `app.config.settings`(deepseek key / db path / upload dir 透传)
+- `main.py` 加 `_init_screenplay_schema()` 启动钩子 + create_app() 内注册 9 个 router 到 `/api/screenplay/*` 前缀
+- 9 个 router 全部加 `router-level dependencies=[Depends(get_current_user)]` 鉴权
+- 失败兜底:剧创态 import 失败 log warning 不阻塞父平台启动
+- **验证**:
+  - `from app.main import app` 成功导入
+  - 18 个 `/api/screenplay/*` 路由全部注册
+  - `pytest --co` 962 测试收集成功(父平台测试无污染)
+
+### 阶段 3.5 待办(SQL 用户隔离)
+
+- service 层(ingest_service / screenplay_store / story_bible_service / yaml_composer 桥)接收 user_id 参数
+- 写入时 INSERT 带 user_id 列
+- 读取时 WHERE user_id = ? 过滤
+- 防止用户 A 看到用户 B 的小说 / 剧本
 
 ### 阶段 2 完工摘要
 
