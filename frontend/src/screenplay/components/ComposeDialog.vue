@@ -89,11 +89,45 @@ watch(
   { immediate: true },
 );
 
+/**
+ * 2026-06-08 bug fix:
+ *   原 stage 把 store.loadingState=error + 任意 lastError 判成 "error" 阶段,
+ *   会把 mount 时 loadLatestForNovel 的"尚未生成剧本"残留错误误识别为"compose 失败",
+ *   用户一打开 dialog 就看到红色弹窗"生成失败 — 该作品尚未生成剧本 — 先 POST..."。
+ *   实际上"尚未生成"是 expected initial state,根本不是错误。
+ *
+ *   治理:exception list — 把"尚未生成"识别为 config 阶段。真错误才走 error。
+ */
+function _isExpectedNotComposed(err: string): boolean {
+  return err.includes("尚未生成") || err.includes("未生成剧本");
+}
+
 const stage = computed(() => {
   if (store.loadingState === "composing") return "composing";
-  if (store.loadingState === "error" && store.lastError) return "error";
+  if (
+    store.loadingState === "error" &&
+    store.lastError &&
+    !_isExpectedNotComposed(store.lastError)
+  ) {
+    return "error";
+  }
   return "config";
 });
+
+/**
+ * 打开 dialog 时清掉 stale "尚未生成" 错误(从 EditorView mount 时残留)。
+ * 真错误(用户上次点击生成失败的)如果 stage 不是 error 则不清,避免覆盖。
+ */
+watch(
+  () => props.visible,
+  (v) => {
+    if (v && store.lastError && _isExpectedNotComposed(store.lastError)) {
+      store.lastError = "";
+      // loadingState 不强动 — store 内部会按需更新
+    }
+  },
+  { immediate: true },
+);
 
 const elapsed = ref<number>(0);
 let timer: number | null = null;
