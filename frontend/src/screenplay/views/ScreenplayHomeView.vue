@@ -1,14 +1,29 @@
 <script setup lang="ts">
 /**
- * 主页 — 后端状态 + 小说列表入口 + 路线图。
- * PR#11 从 App.vue 抽离过来,App.vue 改为路由容器。
+ * 剧创态主页(阶段 6 重写,2026-06-08)。
+ *
+ * 改造:
+ *   - 用 useConfirm / useToast 替 window.confirm / alert(项目铁律)
+ *   - 删 hard-coded localhost:8003 链接
+ *   - 加每本小说的「绑定项目」状态指示 + 入口
+ *   - Header 增加"接通浑晶 4 大资产"差异化卖点
  */
 import { onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 
 import NovelUploadCard from "../components/NovelUploadCard.vue";
-import { deleteNovel, getHealth, listNovels } from "../api/screenplay-client";
+import {
+  deleteNovel,
+  getHealth,
+  getNovel,
+  listNovels,
+  linkNovelToProject,
+  listProjectsForLink,
+} from "../api/screenplay-client";
 import type { NovelInfo } from "../types/screenplay";
+import type { Project } from "../../api/types";
+import { confirm } from "../../composables/useConfirm";
+import { toast } from "../../composables/useToast";
 
 const router = useRouter();
 
@@ -22,6 +37,17 @@ const errorMsg = ref<string>("");
 
 const novels = ref<NovelInfo[]>([]);
 const novelsLoading = ref<boolean>(false);
+
+// 阶段 5.1:每本小说的 linked_project_id 缓存(取自 getNovel)
+const linkedProjectByNovel = ref<Record<string, string | null>>({});
+
+// 阶段 5.1:link 抽屉
+const linkDrawerOpen = ref(false);
+const linkTargetNovelId = ref<string>("");
+const linkTargetNovelTitle = ref<string>("");
+const projectsForLink = ref<Project[]>([]);
+const projectsLoading = ref(false);
+const linkSubmitting = ref(false);
 
 async function checkBackend() {
   try {
@@ -37,6 +63,19 @@ async function loadNovels() {
   novelsLoading.value = true;
   try {
     novels.value = await listNovels();
+    // 阶段 5.1:并行拉每本的 linked_project_id(getNovel 详情)
+    const linkMap: Record<string, string | null> = {};
+    await Promise.all(
+      novels.value.map(async (n) => {
+        try {
+          const detail = await getNovel(n.id);
+          linkMap[n.id] = detail.linked_project_id ?? null;
+        } catch {
+          linkMap[n.id] = null;
+        }
+      }),
+    );
+    linkedProjectByNovel.value = linkMap;
   } catch {
     novels.value = [];
   } finally {
@@ -49,23 +88,83 @@ function openEditor(novelId: string) {
 }
 
 async function handleUploaded(novelId: string) {
-  // 上传成功 → 刷新列表 + 直接跳编辑器
   await loadNovels();
   openEditor(novelId);
 }
 
 async function handleDelete(novelId: string, title: string, ev: MouseEvent) {
-  // 阻止冒泡(不要触发 openEditor)
   ev.stopPropagation();
-  if (!confirm(`确定删除《${title}》?同时清除所有章节、剧本、改编决策。`)) {
-    return;
-  }
+  const ok = await confirm({
+    title: `删除《${title}》?`,
+    message: "同时清除该作品的所有章节、剧本、改编决策。该操作不可恢复。",
+    danger: true,
+    confirmLabel: "删除",
+  });
+  if (!ok) return;
   try {
     await deleteNovel(novelId);
     await loadNovels();
+    toast.success(`已删除《${title}》`);
   } catch (e) {
-    alert("删除失败:" + (e instanceof Error ? e.message : String(e)));
+    toast.error("删除失败:" + (e instanceof Error ? e.message : String(e)));
   }
+}
+
+// === 阶段 5.1 桥接 — Link / Unlink Project ===
+
+async function openLinkDrawer(
+  novelId: string,
+  novelTitle: string,
+  ev: MouseEvent,
+) {
+  ev.stopPropagation();
+  linkTargetNovelId.value = novelId;
+  linkTargetNovelTitle.value = novelTitle;
+  linkDrawerOpen.value = true;
+  // 懒加载 projects
+  if (projectsForLink.value.length === 0) {
+    projectsLoading.value = true;
+    try {
+      projectsForLink.value = await listProjectsForLink();
+    } catch (e) {
+      toast.error("加载浑晶项目失败:" + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      projectsLoading.value = false;
+    }
+  }
+}
+
+function closeLinkDrawer() {
+  linkDrawerOpen.value = false;
+}
+
+async function submitLink(projectId: string | null) {
+  if (linkSubmitting.value) return;
+  linkSubmitting.value = true;
+  try {
+    await linkNovelToProject(linkTargetNovelId.value, projectId);
+    linkedProjectByNovel.value = {
+      ...linkedProjectByNovel.value,
+      [linkTargetNovelId.value]: projectId,
+    };
+    if (projectId) {
+      toast.success("已绑定 — 后续 AI 会读取该项目的角色驱动力、知识边界、关系正负极");
+    } else {
+      toast.info("已解绑 — 接下来的 AI 调用不再依赖浑晶项目数据");
+    }
+    closeLinkDrawer();
+  } catch (e) {
+    toast.error("操作失败:" + (e instanceof Error ? e.message : String(e)));
+  } finally {
+    linkSubmitting.value = false;
+  }
+}
+
+function linkedProjectName(novelId: string): string | null {
+  const projectId = linkedProjectByNovel.value[novelId];
+  if (!projectId) return null;
+  const proj = projectsForLink.value.find((p) => p.id === projectId);
+  return proj?.name ?? null;
 }
 
 onMounted(() => {
@@ -81,6 +180,17 @@ onMounted(() => {
       <h1 class="title literary-heading">剧创态</h1>
       <p class="tagline">小说 <span class="arrow">→</span> 剧本</p>
       <p class="sub-tagline">浑晶平台 · 第五创作态</p>
+
+      <!-- 阶段 6 差异化卖点 — 接通父平台 4 大资产 -->
+      <div class="moat-banner">
+        <span class="moat-label">绑定浑晶项目后,AI 同时读取你已建的</span>
+        <span class="moat-chips">
+          <span class="moat-chip">角色驱动力</span>
+          <span class="moat-chip">知识边界</span>
+          <span class="moat-chip">状态时间线</span>
+          <span class="moat-chip">关系正负极</span>
+        </span>
+      </div>
     </header>
 
     <!-- 上传卡 — 直接醒目放最上 -->
@@ -104,8 +214,52 @@ onMounted(() => {
               <span>{{ n.total_chars.toLocaleString() }} 字</span>
               <span class="meta-sep">·</span>
               <span class="meta-format">{{ n.source_format }}</span>
+              <!-- 阶段 5.1 桥接状态指示 -->
+              <span class="meta-sep">·</span>
+              <span
+                v-if="linkedProjectByNovel[n.id]"
+                class="link-status link-status--bound"
+                :title="linkedProjectName(n.id) || '已绑定浑晶项目'"
+              >
+                <svg
+                  width="11"
+                  height="11"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                  <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                </svg>
+                已绑定浑晶项目
+              </span>
+              <span v-else class="link-status link-status--unbound">未绑定</span>
             </div>
           </div>
+          <button
+            class="link-btn"
+            :title="linkedProjectByNovel[n.id] ? '改绑 / 解绑' : '绑定浑晶项目'"
+            @click="(e) => openLinkDrawer(n.id, n.title, e)"
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+            </svg>
+          </button>
           <button
             class="delete-btn"
             title="删除"
@@ -161,34 +315,78 @@ onMounted(() => {
       </template>
     </section>
 
-    <footer class="footer">
-      <a href="https://github.com/LaL-999/hunjing-screenplay" target="_blank"
-        >GitHub 仓库</a
-      >
-      <span class="sep">·</span>
-      <a href="http://localhost:8003/docs" target="_blank">API 文档</a>
-      <span class="sep">·</span>
-      <a
-        href="https://github.com/LaL-999/hunjing-screenplay/blob/main/docs/SCHEMA_DESIGN.md"
-        target="_blank"
-        >Schema 设计</a
-      >
-    </footer>
+    <!-- 阶段 5.1 link 抽屉 — 中央卡片,backdrop 虚化 -->
+    <Teleport to="body">
+      <div v-if="linkDrawerOpen" class="link-overlay" @click.self="closeLinkDrawer">
+        <div class="link-drawer screenplay-module">
+          <header class="drawer-hdr">
+            <h3>绑定浑晶项目</h3>
+            <p class="drawer-sub">
+              《{{ linkTargetNovelTitle }}》绑定后,6 个 AI agent 会读取该项目的
+              SP-2 / 3 / 4 / 7 资产用于生成 + 优化剧本
+            </p>
+          </header>
+
+          <div v-if="projectsLoading" class="drawer-loading">加载项目列表…</div>
+
+          <ul v-else-if="projectsForLink.length > 0" class="project-list">
+            <li
+              v-for="p in projectsForLink"
+              :key="p.id"
+              class="project-item"
+              :class="{
+                'project-item--current':
+                  linkedProjectByNovel[linkTargetNovelId] === p.id,
+              }"
+              @click="submitLink(p.id)"
+            >
+              <div class="project-main">
+                <div class="project-name">{{ p.name }}</div>
+                <div class="project-meta">
+                  <span class="mode-chip">{{ p.mode }}</span>
+                  <span class="type-chip">{{ p.type }}</span>
+                </div>
+              </div>
+              <span
+                v-if="linkedProjectByNovel[linkTargetNovelId] === p.id"
+                class="bound-mark"
+              >当前绑定</span>
+            </li>
+          </ul>
+
+          <p v-else class="drawer-empty">
+            你还没在浑晶建过项目。先去
+            <a href="#" @click.prevent="router.push({ name: 'dashboard' })"
+              >Dashboard</a
+            >
+            选「初始态 / 中间态 / 末尾态」建一个。
+          </p>
+
+          <footer class="drawer-footer">
+            <button
+              v-if="linkedProjectByNovel[linkTargetNovelId]"
+              class="btn-unlink"
+              :disabled="linkSubmitting"
+              @click="submitLink(null)"
+            >
+              解绑
+            </button>
+            <button class="btn-cancel" :disabled="linkSubmitting" @click="closeLinkDrawer">
+              取消
+            </button>
+          </footer>
+        </div>
+      </div>
+    </Teleport>
   </main>
 </template>
 
 <style scoped>
 .home {
-  max-width: 720px;
-  margin: 36px auto;
-  padding: 0 20px;
-  color: var(--text);
-}
-
-.home {
   max-width: 640px;
   margin: var(--space-8) auto;
   padding: 0 var(--space-5);
+  color: var(--text);
 }
 
 .hdr {
@@ -202,7 +400,6 @@ onMounted(() => {
   color: var(--text-muted);
   letter-spacing: 0.32em;
   margin-bottom: var(--space-3);
-  text-transform: none;
 }
 .title {
   font-size: 38px;
@@ -234,6 +431,37 @@ onMounted(() => {
   font-size: 11.5px;
   margin: 0;
   letter-spacing: 0.16em;
+}
+
+/* === 阶段 6 桥接差异化卖点 banner === */
+.moat-banner {
+  margin-top: var(--space-5);
+  padding: var(--space-4) var(--space-5);
+  background: var(--accent-soft);
+  border-radius: var(--radius-lg);
+  text-align: left;
+}
+.moat-label {
+  display: block;
+  font-size: 12px;
+  color: var(--accent-text);
+  letter-spacing: 0.04em;
+  margin-bottom: var(--space-3);
+}
+.moat-chips {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.moat-chip {
+  font-size: 11.5px;
+  padding: 3px 10px;
+  background: var(--card-bg);
+  color: var(--accent-text);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-md);
+  font-weight: 500;
+  letter-spacing: 0.04em;
 }
 
 /* === 书架 === */
@@ -293,6 +521,7 @@ onMounted(() => {
   display: flex;
   gap: 6px;
   align-items: center;
+  flex-wrap: wrap;
 }
 .meta-sep {
   color: var(--border);
@@ -305,6 +534,23 @@ onMounted(() => {
   background: var(--code-bg);
   border-radius: var(--radius-sm);
 }
+.link-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10.5px;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  letter-spacing: 0.04em;
+}
+.link-status--bound {
+  color: var(--accent-text);
+  background: var(--accent-soft);
+}
+.link-status--unbound {
+  color: var(--text-muted);
+  background: var(--code-bg);
+}
 .open-arrow {
   color: var(--text-muted);
   font-size: 24px;
@@ -315,6 +561,35 @@ onMounted(() => {
 .novel-item:hover .open-arrow {
   color: var(--accent);
   transform: translateX(2px);
+}
+
+.link-btn,
+.delete-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  cursor: pointer;
+  margin-right: var(--space-2);
+  opacity: 0;
+  transition: all var(--transition-fast);
+}
+.novel-item:hover .link-btn,
+.novel-item:hover .delete-btn {
+  opacity: 1;
+}
+.link-btn:hover {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.delete-btn:hover {
+  color: var(--danger);
+  background: var(--danger-soft);
 }
 
 /* === 状态行 === */
@@ -363,51 +638,144 @@ onMounted(() => {
   50% { opacity: 0.35; }
 }
 
-.delete-btn {
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--radius-md);
-  width: 26px;
-  height: 26px;
+/* === Link 抽屉 === */
+.link-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 16, 12, 0.45);
+  backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
   justify-content: center;
+  z-index: 100;
+}
+.link-drawer {
+  background: var(--card-bg);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6) var(--space-6) var(--space-5);
+  max-width: 480px;
+  width: 90vw;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-lg);
+  color: var(--text);
+}
+.drawer-hdr h3 {
+  margin: 0 0 var(--space-2);
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+.drawer-sub {
+  font-size: 12.5px;
   color: var(--text-muted);
+  line-height: 1.6;
+  margin: 0 0 var(--space-5);
+}
+.drawer-loading,
+.drawer-empty {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+  padding: var(--space-7) 0;
+  margin: 0;
+}
+.drawer-empty a {
+  color: var(--accent);
+}
+.project-list {
+  list-style: none;
+  margin: 0 0 var(--space-4);
+  padding: 0;
+  overflow-y: auto;
+  flex: 1;
+}
+.project-item {
+  display: flex;
+  align-items: center;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
   cursor: pointer;
-  margin-right: var(--space-2);
-  opacity: 0;
   transition: all var(--transition-fast);
+  border: 1px solid var(--border-soft);
+  margin-bottom: var(--space-2);
 }
-.novel-item:hover .delete-btn {
-  opacity: 1;
+.project-item:hover {
+  background: var(--hover-bg);
+  border-color: var(--accent);
 }
-.delete-btn:hover {
+.project-item--current {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+.project-main {
+  flex: 1;
+}
+.project-name {
+  font-size: 14.5px;
+  font-weight: 500;
+  color: var(--text-strong);
+  margin-bottom: 3px;
+}
+.project-meta {
+  display: flex;
+  gap: var(--space-2);
+}
+.mode-chip,
+.type-chip {
+  font-size: 10.5px;
+  padding: 1px 6px;
+  background: var(--code-bg);
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  letter-spacing: 0.04em;
+  font-family: var(--font-mono);
+}
+.bound-mark {
+  font-size: 11px;
+  color: var(--accent-text);
+  padding: 2px 8px;
+  background: var(--card-bg);
+  border-radius: var(--radius-sm);
+  font-weight: 500;
+}
+.drawer-footer {
+  display: flex;
+  gap: var(--space-3);
+  justify-content: flex-end;
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-soft);
+}
+.btn-unlink,
+.btn-cancel {
+  padding: var(--space-2) var(--space-5);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  border: 1px solid var(--border);
+}
+.btn-unlink {
   color: var(--danger);
+  background: var(--card-bg);
+  border-color: var(--danger);
+}
+.btn-unlink:hover:not(:disabled) {
   background: var(--danger-soft);
 }
-
-.footer {
-  text-align: center;
-  margin-top: var(--space-7);
-  padding-top: var(--space-4);
-  font-size: 11px;
-  color: var(--text-muted);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: var(--space-3);
-  flex-wrap: wrap;
-  letter-spacing: 0.04em;
+.btn-cancel {
+  color: var(--text);
+  background: var(--card-bg);
 }
-.footer a {
-  color: var(--text-muted);
-  transition: color var(--transition-fast);
+.btn-cancel:hover:not(:disabled) {
+  background: var(--hover-bg);
 }
-.footer a:hover {
-  color: var(--accent);
-  border-bottom: none;
-}
-.footer .sep {
-  color: var(--border);
+.btn-unlink:disabled,
+.btn-cancel:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 </style>

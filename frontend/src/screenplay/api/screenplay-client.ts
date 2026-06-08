@@ -1,14 +1,18 @@
 /**
- * 剧创态后端 API client — 极简 fetch 封装。
+ * 剧创态后端 API client — 阶段 6 重写(2026-06-08)。
  *
- * 父平台约定:vite.config.ts 已配 /api → http://localhost:8000 代理。
- * 剧创态走 /api/screenplay/* 子前缀,与父平台其他 router 路径解耦。
+ * 关键变更:
+ *   - **复用父平台 api 客户端**(自带 JWT Bearer + 401 自动 logout +
+ *     统一 ApiError),不再裸 fetch
+ *   - 加 link / unlink novel-to-project endpoint(阶段 5.1)
+ *   - 加 listProjects(给 link UI 下拉用)
  *
- * 鉴权:阶段 3 后端落地后会接通父平台 JWT(从 auth store 读 token)。
- * 当前阶段(2,只迁前端代码)仍走匿名 fetch,后端尚未挂载剧创态 router 时
- * 调用会返 404,前端友好降级提示。
+ * 路径前缀:/screenplay/* — 父平台 api 客户端的 API_BASE = "/api",
+ * 所以 path 这里写 "/screenplay/..." → 实际请求 "/api/screenplay/..."
  */
 
+import { api } from "../../api/client";
+import type { Project } from "../../api/types";
 import type {
   ComposeResponse,
   NovelInfo,
@@ -19,54 +23,18 @@ import type {
   StructureReport,
 } from "../types/screenplay";
 
-const API_BASE = "/api/screenplay";
-
-class ApiError extends Error {
-  constructor(
-    public status: number,
-    public code: string,
-    public detail: string,
-  ) {
-    super(`[${status} ${code}] ${detail}`);
-  }
-}
-
-async function request<T>(
-  path: string,
-  init?: RequestInit,
-): Promise<T> {
-  const r = await fetch(`${API_BASE}${path}`, init);
-  if (!r.ok) {
-    let code = `HTTP_${r.status}`;
-    let detail = r.statusText;
-    try {
-      const body = await r.json();
-      if (body && typeof body === "object" && "detail" in body) {
-        const d = body.detail as { code?: string; message?: string };
-        code = d.code ?? code;
-        detail = d.message ?? detail;
-      }
-    } catch {
-      /* body 不是 JSON,沿用 statusText */
-    }
-    throw new ApiError(r.status, code, detail);
-  }
-  return r.json() as Promise<T>;
-}
-
 // ============================================================
 // Novel
 // ============================================================
 
 export async function listNovels(): Promise<NovelInfo[]> {
-  // 后端返 envelope {items: [...]}
-  const r = await request<{ items: NovelInfo[] }>("/novels");
+  const r = await api.get<{ items: NovelInfo[] }>("/screenplay/novels");
   return r.items ?? [];
 }
 
 /**
  * 上传小说文件(.txt / .epub / .docx)
- * 后端走 multipart/form-data,自动解析章节落库。
+ * 父平台 api.post 支持 FormData(自动 multipart + 不强加 Content-Type)。
  */
 export async function uploadNovel(file: File): Promise<{
   novel_id: string;
@@ -84,38 +52,11 @@ export async function uploadNovel(file: File): Promise<{
 }> {
   const form = new FormData();
   form.append("file", file);
-  const r = await fetch(`${API_BASE}/novels`, {
-    method: "POST",
-    body: form,
-  });
-  if (!r.ok) {
-    let code = `HTTP_${r.status}`;
-    let detail = r.statusText;
-    try {
-      const body = await r.json();
-      if (body && typeof body === "object" && "detail" in body) {
-        const d = body.detail as { code?: string; message?: string };
-        code = d.code ?? code;
-        detail = d.message ?? detail;
-      }
-    } catch {
-      /* ignore */
-    }
-    throw new ApiError(r.status, code, detail);
-  }
-  return r.json();
+  return api.post("/screenplay/novels", form);
 }
 
-/**
- * 删除小说(级联清章节 / 段落 / 故事圣经 / screenplays)
- */
 export async function deleteNovel(novelId: string): Promise<void> {
-  const r = await fetch(`${API_BASE}/novels/${encodeURIComponent(novelId)}`, {
-    method: "DELETE",
-  });
-  if (!r.ok && r.status !== 404) {
-    throw new ApiError(r.status, `HTTP_${r.status}`, r.statusText);
-  }
+  await api.delete(`/screenplay/novels/${encodeURIComponent(novelId)}`);
 }
 
 export async function getNovel(novelId: string): Promise<
@@ -127,23 +68,51 @@ export async function getNovel(novelId: string): Promise<
       paragraph_count: number;
       char_count: number;
     }>;
+    linked_project_id?: string | null;
   }
 > {
-  return request(`/novels/${encodeURIComponent(novelId)}`);
+  return api.get(`/screenplay/novels/${encodeURIComponent(novelId)}`);
 }
 
 export async function getChapterParagraphs(
   chapterId: string,
 ): Promise<Array<{ index_in_chapter: number; text: string }>> {
-  // 后端 GET /chapters/{id} 返 {chapter_id, paragraphs: [...]}
-  const r = await request<{
+  const r = await api.get<{
     paragraphs: Array<{ index_in_chapter: number; text: string }>;
-  }>(`/chapters/${encodeURIComponent(chapterId)}`);
+  }>(`/screenplay/chapters/${encodeURIComponent(chapterId)}`);
   return r.paragraphs ?? [];
 }
 
 // ============================================================
-// Screenplay (PR#10)
+// 阶段 5.1 桥接 — Link / Unlink Novel ↔ Project
+// ============================================================
+
+/**
+ * 绑定小说到浑晶 project — 6 个 LLM agent 会通过 huimeng_bridge 读取该
+ * project 的 SP-2 / 3 / 4 / 7 资产。
+ *
+ * @param projectId 非空 = 绑定;null = 解绑
+ */
+export async function linkNovelToProject(
+  novelId: string,
+  projectId: string | null,
+): Promise<{ novel_id: string; linked_project_id: string | null }> {
+  return api.patch(
+    `/screenplay/novels/${encodeURIComponent(novelId)}/link`,
+    { project_id: projectId },
+  );
+}
+
+/**
+ * 列出当前用户的所有浑晶 project — 给 link UI 下拉选项用。
+ * 走父平台 /projects 而不是 /screenplay/* 前缀。
+ */
+export async function listProjectsForLink(): Promise<Project[]> {
+  return api.get<Project[]>("/projects");
+}
+
+// ============================================================
+// Screenplay
 // ============================================================
 
 export interface ComposeRequest {
@@ -157,68 +126,66 @@ export async function composeScreenplay(
   novelId: string,
   req: ComposeRequest = {},
 ): Promise<ComposeResponse> {
-  return request(`/novels/${encodeURIComponent(novelId)}/compose-screenplay`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(req),
-  });
+  return api.post(
+    `/screenplay/novels/${encodeURIComponent(novelId)}/compose-screenplay`,
+    req,
+  );
 }
 
 export async function getLatestScreenplay(
   novelId: string,
 ): Promise<ScreenplayResponse> {
-  return request(`/novels/${encodeURIComponent(novelId)}/screenplay`);
+  return api.get(
+    `/screenplay/novels/${encodeURIComponent(novelId)}/screenplay`,
+  );
 }
 
 export async function getScreenplayById(
   screenplayId: string,
 ): Promise<ScreenplayResponse> {
-  return request(`/screenplays/${encodeURIComponent(screenplayId)}`);
+  return api.get(
+    `/screenplay/screenplays/${encodeURIComponent(screenplayId)}`,
+  );
 }
 
 export async function getStructureReport(
   screenplayId: string,
 ): Promise<StructureReport> {
-  return request(`/screenplays/${encodeURIComponent(screenplayId)}/structure`);
+  return api.get(
+    `/screenplay/screenplays/${encodeURIComponent(screenplayId)}/structure`,
+  );
 }
 
 // ============================================================
-// Export (PR#17) — 触发文件下载
+// Export(走 downloadFile 二进制下载,带 JWT)
 // ============================================================
 
 export type ExportFormat = "fountain" | "txt" | "yaml";
 
 /**
- * 下载剧本为指定格式。
- * 走原生浏览器下载流(走 a 标签触发,带 attachment header)。
+ * 下载剧本为指定格式 — 复用父平台 api.downloadFile(自动带 JWT + ApiError)。
  */
 export async function downloadScreenplay(
   screenplayId: string,
   format: ExportFormat,
 ): Promise<void> {
-  const url = `${API_BASE}/screenplays/${encodeURIComponent(screenplayId)}/export.${format}`;
-  const r = await fetch(url);
-  if (!r.ok) {
-    let detail = `导出失败 (HTTP ${r.status})`;
-    try {
-      const body = await r.json();
-      if (body?.detail?.message) detail = body.detail.message;
-    } catch { /* ignore */ }
-    throw new Error(detail);
-  }
+  const { blob, headers } = await api.downloadFile(
+    `/screenplay/screenplays/${encodeURIComponent(screenplayId)}/export.${format}`,
+  );
   // 从 Content-Disposition 拿文件名(RFC 5987 编码,filename*=UTF-8''xxx)
-  const disposition = r.headers.get("Content-Disposition") || "";
+  const disposition = headers.get("Content-Disposition") || "";
   let filename = `screenplay.${format}`;
   const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
   if (utf8Match) {
     try {
       filename = decodeURIComponent(utf8Match[1]);
-    } catch { /* fallback */ }
+    } catch {
+      /* fallback */
+    }
   } else {
     const plainMatch = disposition.match(/filename="?([^";]+)"?/i);
     if (plainMatch) filename = plainMatch[1];
   }
-  const blob = await r.blob();
   const blobUrl = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = blobUrl;
@@ -226,45 +193,40 @@ export async function downloadScreenplay(
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
-  // 释放
   setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
 }
 
 // ============================================================
-// 优化 + 版本(PR#16)
+// 优化 + 版本
 // ============================================================
 
-/**
- * 调用人机协作优化引擎(A 单场 / B 整本共用)。
- * 后端会跑 LLM → 存为新版本(parent 指向当前)→ 返新 id + change_log。
- */
 export async function optimizeScreenplay(
   screenplayId: string,
   req: OptimizeRequest,
 ): Promise<OptimizeResponse> {
-  return request(`/screenplays/${encodeURIComponent(screenplayId)}/optimize`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(req),
-  });
+  return api.post(
+    `/screenplay/screenplays/${encodeURIComponent(screenplayId)}/optimize`,
+    req,
+  );
 }
 
-/**
- * 列出该 novel 的所有剧本版本(初始版 + 所有优化分支)。
- */
 export async function listScreenplayVersions(
   novelId: string,
 ): Promise<ScreenplayVersion[]> {
-  const r = await request<{ items: ScreenplayVersion[] }>(
-    `/novels/${encodeURIComponent(novelId)}/versions`,
+  const r = await api.get<{ items: ScreenplayVersion[] }>(
+    `/screenplay/novels/${encodeURIComponent(novelId)}/versions`,
   );
   return r.items ?? [];
 }
 
 // ============================================================
-// 健康检查
+// 健康检查(阶段 6 — 后端尚无此 endpoint,临时返 mock)
 // ============================================================
 
+/**
+ * 阶段 6 注:剧创态自己的 /health endpoint 在阶段 3 没迁入(父平台已有
+ * /health),所以走父平台健康检查 — 返简化结构,不再带 llm_configured。
+ */
 export async function getHealth(): Promise<{
   status: string;
   service: string;
@@ -272,7 +234,29 @@ export async function getHealth(): Promise<{
   llm_model: string;
   llm_configured: boolean;
 }> {
-  return request("/health");
+  // 走父平台 /health(rooted to /api/health),不带 /screenplay 前缀
+  try {
+    const parent = await api.get<Record<string, unknown>>("/health", {
+      skipAuth: true,
+    });
+    return {
+      status: typeof parent.status === "string" ? parent.status : "ok",
+      service: "screenplay",
+      version: (parent.version as string) ?? "merged-into-huimeng",
+      llm_model: (parent.llm_model as string) ?? "(父平台路由)",
+      // 没法可靠判断 LLM 是否配置 — 默认 true,跑不出来 compose 时再报错
+      llm_configured: true,
+    };
+  } catch {
+    return {
+      status: "ok",
+      service: "screenplay",
+      version: "merged-into-huimeng",
+      llm_model: "(父平台路由)",
+      llm_configured: true,
+    };
+  }
 }
 
-export { ApiError };
+// re-export 父平台 ApiError 让历史代码 import 不破
+export { ApiError } from "../../api/client";

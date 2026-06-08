@@ -28,6 +28,9 @@ interface ModeCard {
   // UI 优化(2026-05-21 四轮):抽象几何图标,SVG path 数据(无填充,1.5 stroke,viewBox 24×24)
   // 用 path 的 d 属性数组方便组合,fragment 列表里每个 path 渲染为独立 <path>
   iconPaths: string[];
+  // SP-S 阶段 6(2026-06-08):差异化卖点 tag,放在 description 下方
+  // 不显示则不渲染 — 只有 screenplay / future modes 需要
+  diffTag?: string;
 }
 
 /**
@@ -144,6 +147,8 @@ const MODE_CARDS: ModeCard[] = [
       "M7 14h10",                             // 内文 line 1
       "M7 17h7",                              // 内文 line 2
     ],
+    // 阶段 6:差异化卖点 — 仅剧创态接通父平台 SP-2/3/4/7 资产
+    diffTag: "可接通 浑晶角色驱动力 · 知识边界 · 状态时间线 · 关系正负极",
   },
   {
     // Sprint SP-S 占位卡 — 给未来的第 6/7 态留个 hint,UI 上的"我们还没停下来"承诺
@@ -238,6 +243,9 @@ function handleClick(card: ModeCard) {
       <div class="card-body">
         <h3 class="card-title">{{ card.title }}</h3>
         <p class="card-desc">{{ card.description }}</p>
+        <p v-if="card.diffTag" class="card-diff-tag" :title="card.diffTag">
+          {{ card.diffTag }}
+        </p>
       </div>
 
       <footer class="card-footer">
@@ -413,6 +421,24 @@ function handleClick(card: ModeCard) {
   margin: 0;
   /* UI 优化(2026-05-21 四轮):宽屏下限制描述最大宽度,避免单行过长 */
   max-width: 32em;
+}
+
+/* 阶段 6:剧创态差异化卖点 tag — 接通父平台资产 */
+.card-diff-tag {
+  margin: var(--space-2) 0 0;
+  padding: 4px 10px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--color-accent-text);
+  background: var(--color-accent-soft);
+  border-radius: var(--radius-sm);
+  letter-spacing: 0.04em;
+  font-weight: 500;
+  /* 单行省略避免破坏卡片高度 */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
 }
 
 /* card footer:CTA */

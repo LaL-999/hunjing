@@ -34,6 +34,7 @@
 | **5.6** | screenplay_optimizer 接通 SP-4 状态快照(跨场一致性)| ✅ 完工(2026-06-08 夜)|
 | **5.7** | story_bible_extractor 复用 linked-project 角色档 | ✅ 完工(2026-06-08 夜)|
 | **5.8** | huimeng_bridge 单元测试 16 case | ✅ 完工(2026-06-08 夜)|
+| **6** | 前端视觉融合 + API 复用父平台(critical JWT 修复)+ link UI + 入口卡差异化卖点 | ✅ 完工(2026-06-08 晚)|
 | 6 | 视觉融合(精修)| ⏳ |
 | 7 | 测试 + 文档收尾 | ⏳ |
 
@@ -53,6 +54,35 @@
   - `from app.main import app` 成功导入
   - 18 个 `/api/screenplay/*` 路由全部注册
   - `pytest --co` 962 测试收集成功(父平台测试无污染)
+
+### 阶段 6 完工摘要(前端视觉融合 + link UI)
+
+**critical JWT 修复**:阶段 2 迁入的 `screenplay-client.ts` 是裸 fetch,
+没带 Bearer token。父平台 router 全部 inject `Depends(get_current_user)`,
+意味着前端一调 → 401 全军覆没。本阶段:
+- `screenplay-client.ts` **全套重写** — 复用父平台 `api`(自动 JWT + 统一
+  ApiError + 401 → onUnauthorized)
+- 新增 `linkNovelToProject` / `listProjectsForLink` 两个 API helper
+- 删除独立 `request<T>` + 独立 `ApiError`,直接 re-export 父平台的
+
+**ScreenplayHomeView 重写**:
+- `window.confirm` / `window.alert` → `useConfirm` / `useToast`(项目铁律)
+- 删 hard-coded `http://localhost:8003/docs` 链接
+- 加每本小说的「绑定 / 解绑」入口 + 绑定状态指示
+- header 加「接通浑晶 4 大资产」差异化 banner
+
+**Link 抽屉**:Teleport 到 body,backdrop blur(4px),中央卡片;
+列出该用户的所有浑晶 project,显示当前绑定项目,支持改绑 / 解绑;
+项目空时友好提示 + 跳 Dashboard 链接。
+
+**Dashboard 入口卡升级**:
+- `CreationModeQuadrant` 加 `diffTag` 字段(可选)
+- 剧创态卡显示 "可接通 浑晶角色驱动力 · 知识边界 · 状态时间线 · 关系正负极"
+- 紫色 chip + 单行省略,不破坏卡片高度
+
+**验证**:
+- ✓ vue-tsc 0 错
+- ✓ vite build 2.31s 过(694+ modules)
 
 ### 阶段 5.1 完工摘要(huimeng_bridge 骨架就位)
 
