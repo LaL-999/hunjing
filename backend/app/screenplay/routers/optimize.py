@@ -52,6 +52,10 @@ class OptimizeRequestBody(BaseModel):
     focus: Literal["fidelity", "structure", "both"] = "both"
     # PR#16 C:作者已做的决策(decision_id → 选项 type)
     user_decisions: dict[str, str] | None = None
+    # 阶段 8.1(2026-06-08):作者自由文本指令
+    # 例:"把太子的台词改得更口语化" / "加冲突让 X 角色更立体"
+    # 空时回退纯诊断驱动(原行为完全不变)
+    user_instruction: str | None = None
 
 
 class ChangeLogItem(BaseModel):
@@ -144,6 +148,7 @@ def api_optimize_screenplay(
             focus=body.focus,
             diagnostics=diagnostics,
             bridge_snapshots_block=snapshots_bridge_block,
+            user_instruction=body.user_instruction,
         ))
     except ScreenplayOptimizeError as e:
         raise HTTPException(

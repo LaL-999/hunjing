@@ -58,6 +58,11 @@ class OptimizeRequest:
     # 阶段 5.6 桥接:SP-4 角色状态时间线 markdown 块(可空)。
     # 优化器跨场对比 emotion / position / inventory 检测人设漂移用。
     bridge_snapshots_block: str = ""
+    # 阶段 8.1(2026-06-08):作者自由文本指令(可空)。
+    # 用户在 OptimizationModal 输入"想怎么改",空时回退纯诊断驱动(原行为)。
+    # 与 bridge 资产协同 — 见 prompt 优先级铁律:作者指令优先,但 bridge 铁律
+    # (秘密不暴露 / 角色不说不知道的事 / 互称语气匹配 polarity)仍然生效。
+    user_instruction: str | None = None
 
     def effective_max_tokens(self) -> int:
         """根据 scope 自动调整 max_tokens(单场 3500 / 整本 6000)。"""
@@ -260,6 +265,9 @@ def _build_user_input(req: OptimizeRequest) -> dict:
     # 阶段 5.6 桥接:SP-4 状态快照非空才加(让 prompt 铁律生效)
     if req.bridge_snapshots_block:
         payload["character_snapshots"] = req.bridge_snapshots_block
+    # 阶段 8.1:作者自由文本指令非空才加(空时 prompt 走纯诊断驱动)
+    if req.user_instruction and req.user_instruction.strip():
+        payload["user_instruction"] = req.user_instruction.strip()
     return payload
 
 

@@ -276,6 +276,9 @@ export interface OptimizeRequest {
   focus?: OptimizeFocus;
   // PR#16 C:作者已做的决策 — 让 LLM 尊重作者偏好
   user_decisions?: Record<string, "voiceover" | "action_externalize" | "delete" | "subtext" | "symbolism" | "montage">;
+  // 阶段 8.1(2026-06-08):作者自由文本指令(可空)
+  // 空时走纯诊断驱动;非空时优先级最高,bridge 资产铁律仍生效
+  user_instruction?: string;
 }
 
 export interface ChangeLogEntry {

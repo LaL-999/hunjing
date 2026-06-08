@@ -43,6 +43,9 @@ const stage = computed<"config" | "running" | "done" | "error">(() => {
 // ============================================================
 
 const selectedFocus = ref<OptimizeFocus>("both");
+// 阶段 8.1:作者自由文本指令(可空)— 空时走纯诊断驱动
+const userInstruction = ref<string>("");
+const INSTRUCTION_MAX = 500;
 
 // 找到 target scene 的诊断(预填给 LLM 看)
 const targetSceneDiagnostic = computed(() => {
@@ -167,10 +170,13 @@ const actionColor: Record<string, string> = {
 // ============================================================
 
 async function handleStart() {
+  const trimmed = userInstruction.value.trim();
   await store.runOptimize({
     scope: props.scope,
     target_scene_id: props.targetSceneId,
     focus: selectedFocus.value,
+    // 阶段 8.1:非空才传,空时让后端走纯诊断驱动(原行为不变)
+    ...(trimmed ? { user_instruction: trimmed } : {}),
   });
   // 状态变化 → stage computed 自动切到 'done' 或 'error'
 }
@@ -345,6 +351,29 @@ async function handleReject() {
                   <div class="fp-title">{{ opt.l }}</div>
                   <div class="fp-desc">{{ opt.d }}</div>
                 </label>
+              </div>
+            </div>
+
+            <!-- 阶段 8.1:作者自由文本指令(可空,空时走纯诊断驱动) -->
+            <div class="instruction-group">
+              <div class="instruction-label">
+                <span>想怎么改?(可选)</span>
+                <span class="instruction-hint">作者主权 — 留空则 AI 按诊断自由发挥</span>
+              </div>
+              <textarea
+                v-model="userInstruction"
+                class="instruction-textarea"
+                :maxlength="INSTRUCTION_MAX"
+                rows="3"
+                placeholder="例:把太子的台词改得更口语化  /  让 X 角色更冷漠且有层次  /  缩短第 3 场加冲突"
+              />
+              <div class="instruction-meta">
+                <span v-if="userInstruction.trim()" class="instr-active">
+                  指令将与诊断 + 桥接资产协同生效(作者优先)
+                </span>
+                <span class="instr-count">
+                  {{ userInstruction.length }} / {{ INSTRUCTION_MAX }}
+                </span>
               </div>
             </div>
 
@@ -720,6 +749,63 @@ async function handleReject() {
 .fp-desc {
   font-size: 10.5px;
   color: var(--text-muted);
+}
+
+/* 阶段 8.1:作者自由文本指令 */
+.instruction-group {
+  margin-top: 12px;
+}
+.instruction-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+.instruction-hint {
+  font-size: 10.5px;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+.instruction-textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card-bg);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.55;
+  resize: vertical;
+  min-height: 56px;
+  transition: border-color 150ms;
+  box-sizing: border-box;
+}
+.instruction-textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.instruction-textarea::placeholder {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.instruction-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 4px;
+  font-size: 10.5px;
+  color: var(--text-muted);
+}
+.instr-active {
+  color: var(--accent);
+}
+.instr-count {
+  font-family: var(--font-mono);
+  font-size: 10px;
 }
 
 .cost-hint {
