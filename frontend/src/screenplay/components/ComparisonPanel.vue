@@ -18,6 +18,7 @@ import {
   type ModelCandidateApi,
   type ProviderConfigApi,
 } from "../api/screenplay-client";
+import ComparisonRadarChart from "./ComparisonRadarChart.vue";
 import { useScreenplayStore } from "../stores/screenplay";
 import { toast } from "../../composables/useToast";
 import { ApiError } from "../../api/client";
@@ -442,7 +443,50 @@ const ELEMENT_TYPE_LABEL: Record<string, string> = {
             </button>
           </div>
 
-          <!-- 并排候选列 -->
+          <!-- ===== 顶部排行榜:0.5 秒抓眼球「哪个赢了」===== -->
+          <div class="leaderboard">
+            <div
+              v-for="(c, i) in sortedCandidates.filter(x => x.success && x.scores)"
+              :key="`lb-${c.provider_label}`"
+              class="lb-row"
+              :class="{ recommended: c.provider_label === result.recommended_label }"
+            >
+              <span class="lb-rank mono">#{{ i + 1 }}</span>
+              <span class="lb-label">{{ c.provider_label }}</span>
+              <span v-if="c.provider_label === result.recommended_label" class="lb-crown">🏆</span>
+              <div class="lb-bar-wrap">
+                <div
+                  class="lb-bar"
+                  :style="`width: ${Math.min(100, (c.scores?.overall ?? 0) * 100)}%`"
+                ></div>
+              </div>
+              <span class="lb-num mono">{{ ((c.scores?.overall ?? 0) * 100).toFixed(0) }}</span>
+            </div>
+            <div
+              v-for="c in result.candidates.filter(x => !x.success)"
+              :key="`lb-fail-${c.provider_label}`"
+              class="lb-row lb-row--failed"
+            >
+              <span class="lb-rank mono">×</span>
+              <span class="lb-label">{{ c.provider_label }}</span>
+              <span class="lb-err">{{ (c.error_message || "失败").slice(0, 40) }}</span>
+            </div>
+          </div>
+
+          <!-- ===== 雷达图:为什么赢(2 秒看出形状)===== -->
+          <div
+            v-if="result.candidates.filter(c => c.success).length >= 1"
+            class="radar-section"
+          >
+            <ComparisonRadarChart
+              :candidates="result.candidates"
+              :recommended-label="result.recommended_label"
+              :size="380"
+            />
+          </div>
+
+          <!-- ===== 细节卡片:深入对比 ===== -->
+          <h3 class="section-title">逐个候选 · 细节</h3>
           <div class="cand-grid">
             <article
               v-for="c in sortedCandidates"
@@ -898,7 +942,108 @@ const ELEMENT_TYPE_LABEL: Record<string, string> = {
   display: flex;
   flex-direction: column;
   padding: 16px 24px;
+  overflow-y: auto;
+}
+
+/* === 顶部排行榜 === */
+.leaderboard {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 18px;
+  padding: 12px 14px;
+  background: var(--bg-deep);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+}
+.lb-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12.5px;
+  padding: 4px 0;
+}
+.lb-row.recommended {
+  font-weight: 500;
+}
+.lb-row--failed {
+  opacity: 0.5;
+}
+.lb-rank {
+  width: 26px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+.lb-row.recommended .lb-rank {
+  color: var(--accent);
+  font-weight: 700;
+}
+.lb-row--failed .lb-rank {
+  color: var(--danger);
+}
+.lb-label {
+  flex: 0 0 auto;
+  min-width: 140px;
+  max-width: 200px;
+  color: var(--text);
+  white-space: nowrap;
   overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lb-crown {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+.lb-bar-wrap {
+  flex: 1;
+  height: 10px;
+  background: var(--bg);
+  border-radius: 5px;
+  overflow: hidden;
+  min-width: 80px;
+}
+.lb-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--accent-hover));
+  border-radius: 5px;
+  transition: width 700ms ease-out;
+}
+.lb-row:not(.recommended) .lb-bar {
+  opacity: 0.6;
+}
+.lb-num {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent-text);
+  min-width: 30px;
+  text-align: right;
+}
+.lb-err {
+  flex: 1;
+  font-size: 11px;
+  color: var(--danger);
+  font-style: italic;
+  word-break: break-all;
+}
+
+/* === 雷达 section === */
+.radar-section {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 18px;
+}
+
+/* === 二级标题 === */
+.section-title {
+  margin: 4px 0 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: 0.04em;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border-soft);
 }
 .result-ctrl {
   display: flex;
@@ -945,12 +1090,10 @@ const ELEMENT_TYPE_LABEL: Record<string, string> = {
 }
 
 .cand-grid {
+  /* 三层叠加后 cmp-result 自己 overflow-y,这里不再独占滚动 */
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
   gap: 14px;
-  overflow-y: auto;
-  padding-right: 4px;
-  flex: 1;
 }
 
 .cand-card {
