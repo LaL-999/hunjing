@@ -43,6 +43,7 @@ import {
   type UpdateEventRequest,
 } from "../api/types";
 import BehaviorBaselineEditor from "./BehaviorBaselineEditor.vue";
+import Icon from "./Icon.vue";
 import SkeletonBlock from "./SkeletonBlock.vue";
 
 type NodeKind = "PERSON" | "EVENT" | "OTHER";
@@ -592,7 +593,9 @@ function gotoRecentSimulation() {
           <span class="node-type-chip" :class="`chip-${nodeType.toLowerCase()}`">
             {{ headerTitle }}
           </span>
-          <button class="close-btn" type="button" aria-label="关闭" @click="emit('close')">×</button>
+          <button class="close-btn" type="button" aria-label="关闭" @click="emit('close')">
+            <Icon name="close" :size="18" />
+          </button>
         </header>
 
         <div v-if="loading" class="loading-skeleton" aria-busy="true" aria-live="polite">
@@ -627,7 +630,7 @@ function gotoRecentSimulation() {
                作为独立 agent 扮演时会用到。原作角色由 AI 抽完图谱后自动补全;手建角色可
                手动填或点底部"AI 补全档案"按钮触发 LLM 补全空字段(已填的不覆盖)。-->
           <div class="agent-profile-banner" v-if="!isCreate">
-            <span class="banner-icon" aria-hidden="true">🎭</span>
+            <Icon name="character" :size="14" class="banner-icon" />
             <span class="banner-text">
               下方 4 字段是 <strong>agent 档案</strong> — 续写时角色作为独立 agent 扮演时使用。
             </span>
@@ -894,22 +897,29 @@ function gotoRecentSimulation() {
 </template>
 
 <style scoped>
+/* 2026-06-08 UI 大升级:
+ *   380px → clamp(420px, 38vw, 560px) 自适应宽度
+ *   - 小屏 1280-1440:420px(给 3D 图谱主区留更多)
+ *   - 中屏 1600+:~ 600px(信息密度舒展)
+ *   - 大屏 1920+:封顶 560px(避免过宽吞噬主区)
+ * 用户反馈:"全部挤在一个小窗口很拥挤"
+ * 同时加深 box-shadow + 用 var(--shadow-lg) 替散落 rgba */
 .drawer {
   position: fixed;
   top: 0;
   right: 0;
   bottom: 0;
-  width: 380px;
+  width: clamp(420px, 38vw, 560px);
   max-width: 100vw;
   z-index: var(--z-modal);
   background: var(--color-surface);
   border-left: 1px solid var(--color-border);
-  box-shadow: -4px 0 12px rgba(0, 0, 0, 0.05);
-  padding: var(--space-5) var(--space-5) var(--space-6);
+  box-shadow: var(--shadow-lg);
+  padding: var(--space-6) var(--space-6) var(--space-8);
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: var(--space-5);
 }
 
 .drawer-header {
@@ -935,11 +945,14 @@ function gotoRecentSimulation() {
   background: var(--color-bg-subtle);
 }
 
+/* 2026-06-08 UI 升级:close-btn 从 × 字符 → Icon 组件,
+   去掉 font-size,用 flex 居中确保 SVG 视觉对齐 */
 .close-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 28px;
   height: 28px;
-  font-size: var(--text-xl);
-  line-height: 1;
   color: var(--color-text-subtle);
   background: transparent;
   border-radius: var(--radius-full);
