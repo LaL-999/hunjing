@@ -28,6 +28,7 @@ import UpgradeModal from "./components/UpgradeModal.vue";
 import { useDocumentViewer } from "./composables/useDocumentViewer";
 import { registerGlobalSearchShortcut } from "./composables/useGlobalSearch";
 import { useNewProjectModal } from "./composables/useNewProjectModal";
+import { useSidebarLayout } from "./composables/useSidebarLayout";
 import { useAuthStore } from "./stores/auth";
 import { useQuotaStore } from "./stores/quota";
 import type { Project, ProjectMode } from "./api/types";
@@ -38,6 +39,8 @@ const auth = useAuthStore();
 const quota = useQuotaStore();
 const newProjectModal = useNewProjectModal();
 const docViewer = useDocumentViewer();
+// 2026-06-08:sidebar 折叠展开全局状态(类 Claude 客户端)
+const { collapsed: sidebarCollapsed, toggle: toggleSidebar } = useSidebarLayout();
 
 // Sprint 6.A2 路线图 #6(2026-05-23):注册全局 Cmd+K / Ctrl+K 快捷键
 // 路由在 /projects/:id 时自动 scope 到该项目;其他路由 = 全平台搜
@@ -84,8 +87,30 @@ function handleProjectCreated(p: Project, mode: ProjectMode) {
 </script>
 
 <template>
-  <div class="app-shell" :class="{ 'app-shell--fullscreen': isFullscreen }">
+  <div
+    class="app-shell"
+    :class="{
+      'app-shell--fullscreen': isFullscreen,
+      'app-shell--sidebar-collapsed': sidebarCollapsed && !isFullscreen,
+    }"
+  >
     <AppSidebar v-if="!isFullscreen" />
+
+    <!-- 2026-06-08:sidebar 折叠后的"展开"浮动按钮 — fixed 在屏幕左上 -->
+    <button
+      v-if="!isFullscreen && sidebarCollapsed"
+      type="button"
+      class="sidebar-expand-fab"
+      title="展开侧栏"
+      aria-label="展开侧栏"
+      @click="toggleSidebar"
+    >
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+           stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="3" width="18" height="18" rx="2" />
+        <line x1="9" y1="3" x2="9" y2="21" />
+      </svg>
+    </button>
 
     <main class="app-main">
       <div class="app-main-content">
@@ -142,6 +167,31 @@ function handleProjectCreated(p: Project, mode: ProjectMode) {
   /* 2026-06-05:改 flex column — 内容区滚动下放到 .app-main-content,Beian 永远贴底 */
   display: flex;
   flex-direction: column;
+}
+
+/* 2026-06-08:sidebar 折叠浮动展开按钮 — fixed 左上,跟 sidebar header 同高 */
+.sidebar-expand-fab {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  z-index: var(--z-sticky);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  transition: all var(--duration-fast) var(--ease-out);
+}
+.sidebar-expand-fab:hover {
+  color: var(--color-accent);
+  border-color: var(--color-accent-border);
+  background: var(--color-surface-hover);
 }
 
 .app-main-content {

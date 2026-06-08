@@ -25,6 +25,7 @@ import { useGlobalSearch } from "../composables/useGlobalSearch";
 import { useLoginModal } from "../composables/useLoginModal";
 import { useDocumentViewer } from "../composables/useDocumentViewer";
 import { useTheme, type ThemePreference } from "../composables/useTheme";
+import { useSidebarLayout } from "../composables/useSidebarLayout";
 import { confirm as confirmDialog } from "../composables/useConfirm";
 import { toast } from "../composables/useToast";
 
@@ -47,6 +48,8 @@ const events = useEventBus();
 const loginModal = useLoginModal();
 const docViewer = useDocumentViewer();
 const theme = useTheme();
+// 2026-06-08:sidebar 折叠展开
+const { collapsed: sidebarCollapsed, toggle: toggleSidebar } = useSidebarLayout();
 
 /** 用户菜单子菜单 — "切换主题"展开后用 */
 const themeSubmenuOpen = ref(false);
@@ -354,11 +357,28 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <aside class="sidebar">
-    <!-- 顶部 logo -->
-    <header class="sidebar-header" @click="gotoHome">
-      <span class="logo-mark">◆</span>
-      <span class="logo-text">浑晶</span>
+  <aside class="sidebar" :class="{ 'sidebar--collapsed': sidebarCollapsed }">
+    <!-- 顶部 logo + 折叠按钮 -->
+    <header class="sidebar-header">
+      <div class="sidebar-header-logo" @click="gotoHome">
+        <span class="logo-mark">◆</span>
+        <span class="logo-text">浑晶</span>
+      </div>
+      <!-- 2026-06-08:折叠按钮(对齐 Claude 客户端体验)
+           展开态显示在 header 右侧,折叠态由 App.vue 的 fab 接管 -->
+      <button
+        type="button"
+        class="sidebar-collapse-btn"
+        title="收起侧栏"
+        aria-label="收起侧栏"
+        @click.stop="toggleSidebar"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="2" />
+          <line x1="9" y1="3" x2="9" y2="21" />
+        </svg>
+      </button>
     </header>
 
     <!-- Sprint 6.A2 路线图 #6(2026-05-23):全局搜索入口
@@ -603,21 +623,61 @@ onUnmounted(() => {
   flex-direction: column;
   flex-shrink: 0;
   user-select: none;
+  /* 2026-06-08:折叠展开动画 */
+  transition: width var(--duration-base) var(--ease-out-soft);
+  overflow: hidden;
 }
 
-/* ===== 顶部 logo ===== */
+/* 折叠态 — 宽度收 0,内容平滑隐藏,主区域自动 flex 占满 */
+.sidebar--collapsed {
+  width: 0;
+  border-right: none;
+}
+
+/* ===== 顶部 logo + 折叠按钮一行 ===== */
 .sidebar-header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: var(--space-2);
-  padding: var(--space-4) var(--space-5);
-  cursor: pointer;
+  padding: var(--space-3) var(--space-5);
   border-bottom: 1px solid var(--color-border);
-  transition: background var(--duration-fast) var(--ease-out);
+  flex-shrink: 0;
+  /* 至少 240px - 内容不能被 sidebar 收缩动画期间挤变形 */
+  min-width: 240px;
 }
 
-.sidebar-header:hover {
+.sidebar-header-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+  padding: 4px 6px;
+  margin: -4px -6px;
+  border-radius: var(--radius-sm);
+  transition: background var(--duration-fast) var(--ease-out);
+}
+.sidebar-header-logo:hover {
   background: var(--color-surface-hover);
+}
+
+.sidebar-collapse-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-subtle);
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out);
+}
+.sidebar-collapse-btn:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+  border-color: var(--color-border);
 }
 
 .logo-mark {

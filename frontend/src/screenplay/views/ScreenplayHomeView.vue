@@ -77,7 +77,9 @@ async function loadNovels() {
 }
 
 function backToDashboard() {
-  router.push({ name: "home" });
+  // 2026-06-08 bug fix:首页路由名是 "dashboard" 不是 "home",
+  // 之前写错导致按钮点击无反应(路由名不存在,vue-router silently no-op)。
+  router.push({ name: "dashboard" });
 }
 
 function openEditor(novelId: string) {
@@ -178,7 +180,7 @@ onMounted(() => {
         type="button"
         class="home-back-btn"
         @click="backToDashboard"
-        title="返回浑晶主页"
+        title="返回主页"
       >
         <svg
           width="14" height="14" viewBox="0 0 24 24" fill="none"
@@ -186,7 +188,7 @@ onMounted(() => {
         >
           <path d="M19 12H5M12 19l-7-7 7-7" />
         </svg>
-        <span>浑晶主页</span>
+        <span>返回主页</span>
       </button>
     </div>
 
