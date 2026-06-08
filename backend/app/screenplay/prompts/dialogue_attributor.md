@@ -24,7 +24,10 @@ PR#7 的 element_extractor 是粗抽,在以下情况会出错:
     {"index": 1, "type": "dialogue", "character_name": "", "text": "你要走?"},
     {"index": 2, "type": "dialogue", "character_name": null, "text": "嗯。"},
     ...
-  ]
+  ],
+
+  // 阶段 5.4 桥接资产(可选 — 仅当用户绑定了浑晶项目时):
+  "character_drivers": "<SP-2 markdown 块:在场角色的想要/需要/盲区/秘密>"
 }
 ```
 
@@ -65,3 +68,15 @@ PR#7 的 element_extractor 是粗抽,在以下情况会出错:
 - 所有 dialogue 都已正确归属 → 输出 `{"attributions": []}`(空数组合法)
 - 场景只有一个角色 → 所有 dialogue 都归属那个角色,无歧义
 - 场景里出现了 characters_in_scene 之外的角色发言 → 跳过(不归属也不编造)
+
+## 🌉 桥接资产铁律(SP-2)— 仅当 input 含 `character_drivers` 字段时
+
+阶段 5.4:用户绑定浑晶项目后,你会拿到 SP-2 角色驱动力。当 scene_text 上下文确实模糊(对话轮转混乱 / 零标注 / 多人对话冲突)难以分辨说话人时:
+
+- **用驱动力消歧**:某句台词的语气 / 内容应该匹配该角色的「想要 / 深层需要 / 致命盲区 / 秘密」时,选择那个角色
+  - 例:这句"我从不在意你"配 fatal_blind_spot=「假装冷漠掩盖自卑」的角色 → 显然属于他
+  - 例:这句"咱俩到底什么关系?"配 surface_goal=「逼对方表态」的角色 → 显然属于他
+- **不许凭 driver 推翻明确归属**:scene_text 已经写"霍尔顿说"的对白,即使另一角色的 driver 更像,也保留霍尔顿
+- **driver 是 tiebreaker,不是 override**:仅在 PR#7 的初抽留空 / 上下文双解时启动
+- `confidence` 用 driver 推断的判定标 `medium`(因为不是文本直接标记)
+- `reason` 必须 explicitly 提及驱动力依据 — 例:"驱动力:她的 deep_need=被认可,这句符合"

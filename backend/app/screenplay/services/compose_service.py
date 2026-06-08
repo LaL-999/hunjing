@@ -295,9 +295,11 @@ def orchestrate_full_pipeline(
                 continue
 
             # 3b2. dialogue_attributor(可选,失败降级)
+            # 阶段 5.4:driver 块复用 element_extractor 已抓的(同场角色不变)
             if opts.refine_dialogue and elements:
                 refined = _run_dialogue_attributor(
                     scene_text, chars_in_scene, elements, warnings, scene_path,
+                    bridge_drivers_block=extractor_bridge["drivers"],
                 )
                 stats_counter["refine_calls"] += 1
                 if refined is not None:
@@ -498,10 +500,18 @@ def _run_dialogue_attributor(
     draft_elements: list[ScreenplayElement],
     warnings: list[dict],
     path: str,
+    *,
+    bridge_drivers_block: str = "",
 ) -> list[ScreenplayElement] | None:
-    """refine_attribution,失败降级为返 None(调用方继续用 draft_elements)。"""
+    """refine_attribution,失败降级为返 None(调用方继续用 draft_elements)。
+
+    阶段 5.4:接通 SP-2 驱动力作为消歧 tiebreaker。
+    """
     try:
-        result = refine_attribution(scene_text, characters_in_scene, draft_elements)
+        result = refine_attribution(
+            scene_text, characters_in_scene, draft_elements,
+            bridge_drivers_block=bridge_drivers_block,
+        )
         return result.elements
     except DialogueAttributionError as e:
         logger.warning("dialogue_attributor %s failed (downgrade): %s", path, e)

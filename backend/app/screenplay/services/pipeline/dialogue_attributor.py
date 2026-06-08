@@ -95,6 +95,8 @@ def refine_attribution(
     scene_text: str,
     characters_in_scene: list[CharacterRef],
     draft_elements: list[ScreenplayElement],
+    *,
+    bridge_drivers_block: str = "",
 ) -> RefineResult:
     """对已抽的 elements 做归属精修。
 
@@ -109,6 +111,10 @@ def refine_attribution(
         scene_text: 完整场景原文
         characters_in_scene: 角色清单(含 aka)
         draft_elements: PR#7 输出的初抽元素
+        bridge_drivers_block: 阶段 5.4 — SP-2 角色驱动力 markdown 块。
+            当一句台词上下文模糊"她说""他答"难以分辨时,driver(性格 / 目标
+            / 秘密)可作为消歧依据 —— 例:这句"我从不在意你"配 fatal_blind_spot=
+            「假装冷漠掩盖自卑」的角色,显然属于他而不是另一个温柔角色。
 
     Returns:
         RefineResult — 含修正后的 elements + 修正记录
@@ -131,7 +137,7 @@ def refine_attribution(
         return RefineResult(elements=list(draft_elements), attributions=[])
 
     # 构造 LLM 输入
-    user_input = {
+    user_input: dict = {
         "scene_text": scene_text,
         "characters_in_scene": [
             {"id": c.id, "name": c.name, "aka": c.aka}
@@ -147,6 +153,9 @@ def refine_attribution(
             for i, el in enumerate(draft_elements)
         ],
     }
+    # 阶段 5.4 桥接 — SP-2 驱动力作为消歧线索(非空才加)
+    if bridge_drivers_block:
+        user_input["character_drivers"] = bridge_drivers_block
 
     try:
         parsed, usage = call_json(_get_system_prompt(), user_input, max_tokens=3000)
