@@ -8,7 +8,7 @@
  *  - commit 4:触发 compose + 进度对话框
  */
 import { computed, onMounted, provide, ref, watch } from "vue";
-import { useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 
 import AdaptationDecisionPanel from "../components/AdaptationDecisionPanel.vue";
 import BridgeGainBanner from "../components/BridgeGainBanner.vue";
@@ -27,6 +27,7 @@ import type { OptimizeScope } from "../types/screenplay";
 
 const props = defineProps<{ id: string }>();
 const router = useRouter();
+const route = useRoute();
 const store = useScreenplayStore();
 
 /**
@@ -63,8 +64,30 @@ const status = computed(() => {
   return { label: "待生成 — 点击右上「生成剧本」", tone: "muted" };
 });
 
+/**
+ * 2026-06-08 用户精修:返回按钮智能识别来源(from query)
+ *
+ * 用户报告:从「我的剧本」点进剧本编辑器,返回时却跳到剧创态主页,
+ * 不是回到「我的剧本」。
+ *
+ * 治理:openNovel 时带 `?from=my-screenplays` query 标识入口,
+ * 返回按钮按 from 跳回对应来源(白名单防开放重定向)。
+ *
+ * 已知合法 from:
+ *   - my-screenplays(我的剧本书架)
+ *   - 默认:screenplay-home(剧创态主页)
+ */
+const ALLOWED_BACK_ROUTES: Record<string, string> = {
+  "my-screenplays": "my-screenplays",
+};
+
 function goHome() {
-  // 父平台 "home" 对应 "screenplay-home"(剧创态主页),退到剧本书架
+  const from = route.query.from;
+  if (typeof from === "string" && ALLOWED_BACK_ROUTES[from]) {
+    router.push({ name: ALLOWED_BACK_ROUTES[from] });
+    return;
+  }
+  // 默认退到剧创态主页
   router.push({ name: "screenplay-home" });
 }
 

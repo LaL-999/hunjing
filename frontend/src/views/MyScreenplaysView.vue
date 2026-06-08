@@ -48,11 +48,12 @@ async function load() {
 }
 
 function openNovel(id: string) {
-  router.push({ name: "screenplay-editor", params: { id } });
-}
-
-function gotoUpload() {
-  router.push({ name: "screenplay-home" });
+  // 2026-06-08 用户精修:带 from query 标识来源,编辑器返回时回这里
+  router.push({
+    name: "screenplay-editor",
+    params: { id },
+    query: { from: "my-screenplays" },
+  });
 }
 
 function backToDashboard() {
@@ -122,24 +123,14 @@ onMounted(() => {
 
     <div class="myss-scroll">
       <div class="myss-inner">
-        <!-- 顶部标题区 -->
+        <!-- 顶部标题区 — 2026-06-08:删「新建作品」按钮(用户原话:
+             创作剧本只能通过主页的剧创态卡片入口) -->
         <header class="myss-hdr">
           <h1 class="myss-title literary-heading">我的剧本</h1>
           <p class="myss-sub">
             <span v-if="hasNovels">共 {{ novels.length }} 部作品</span>
             <span v-else-if="!loading && auth.isAuthed">还没有剧本作品</span>
           </p>
-          <button
-            type="button"
-            class="new-btn"
-            @click="gotoUpload"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
-                 stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 5v14 M5 12h14" />
-            </svg>
-            <span>新建作品</span>
-          </button>
         </header>
 
         <!-- 未登录态 -->
@@ -159,7 +150,7 @@ onMounted(() => {
           <div class="skeleton-card" v-for="i in 3" :key="i" />
         </div>
 
-        <!-- 空态 -->
+        <!-- 空态 — 2026-06-08:引导改指主页剧创态卡(不再自带创建入口) -->
         <section v-else-if="!hasNovels" class="myss-empty">
           <svg class="empty-icon" width="44" height="44" viewBox="0 0 24 24"
                fill="none" stroke="currentColor" stroke-width="1.2"
@@ -168,7 +159,9 @@ onMounted(() => {
             <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
           </svg>
           <p class="empty-title">书架尚空</p>
-          <p class="empty-hint">点击「新建作品」上传小说,AI 开始把它编成剧本</p>
+          <p class="empty-hint">
+            回主页点击「剧创态」卡片,上传小说,AI 帮你把它编成剧本
+          </p>
         </section>
 
         <!-- 作品列表 -->
@@ -298,23 +291,8 @@ onMounted(() => {
   color: var(--text-muted);
   letter-spacing: 0.04em;
 }
-.new-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 7px 14px;
-  background: var(--accent);
-  color: white;
-  border: none;
-  border-radius: var(--radius-md);
-  font-size: 12.5px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background var(--transition-fast);
-}
-.new-btn:hover {
-  background: var(--accent-hover);
-}
+/* 2026-06-08:.new-btn 删除(用户拍板:创建入口收归剧创态卡片,
+   这里是纯书架页,只展示不创建) */
 
 /* 未登录态 */
 .myss-guest {

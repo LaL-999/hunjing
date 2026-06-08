@@ -13,6 +13,22 @@
 
 <template>
   <div class="byok-page">
+    <!-- 2026-06-08 用户精修:加返回主页按钮(之前缺) -->
+    <div class="page-toolbar">
+      <button
+        type="button"
+        class="back-btn"
+        @click="router.push('/dashboard')"
+        title="返回主页"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M19 12H5M12 19l-7-7 7-7" />
+        </svg>
+        <span>返回主页</span>
+      </button>
+    </div>
+
     <!-- 顶部状态 -->
     <header class="page-header">
       <div class="title-block">
@@ -394,6 +410,29 @@ watch(() => byok.status, (s) => {
   display: flex;
   flex-direction: column;
   gap: var(--space-6);
+}
+
+/* 2026-06-08:返回主页 toolbar */
+.page-toolbar {
+  margin-bottom: calc(-1 * var(--space-3));   /* 抵消 .byok-page gap 一半,让按钮贴顶 */
+}
+.back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px 6px 10px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out);
+}
+.back-btn:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+  border-color: var(--color-border);
 }
 
 .page-header {
