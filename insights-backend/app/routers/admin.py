@@ -1547,19 +1547,31 @@ async def get_screenplay_analytics(
         ]
         funnel = []
         for et, label, extra_where in funnel_steps:
-            sql = (
-                "SELECT COUNT(DISTINCT user_id) AS u, COUNT(*) AS c FROM events "
-                f"WHERE event_type = ? AND timestamp_ms >= ?"
-            )
-            if extra_where:
-                sql += f" AND {extra_where}"
-            r = fetch_one(conn, sql, (et, window_ms))
-            funnel.append({
-                "event_type": et,
-                "label": label,
-                "unique_users": int(r["u"]) if r else 0,
-                "total_count": int(r["c"]) if r else 0,
-            })
+            # 2026-06-09 兜底:每个 step 独立 try/except,任一 SQL 失败
+            # 不影响其他 step + 不让整个 endpoint 500(常见原因:老 SQLite 不
+            # 支持 json_extract;extra_where 语法错;event_type 不在表中)
+            try:
+                sql = (
+                    "SELECT COUNT(DISTINCT user_id) AS u, COUNT(*) AS c FROM events "
+                    f"WHERE event_type = ? AND timestamp_ms >= ?"
+                )
+                if extra_where:
+                    sql += f" AND {extra_where}"
+                r = fetch_one(conn, sql, (et, window_ms))
+                funnel.append({
+                    "event_type": et,
+                    "label": label,
+                    "unique_users": int(r["u"]) if r else 0,
+                    "total_count": int(r["c"]) if r else 0,
+                })
+            except sqlite3.OperationalError as exc:
+                logger.warning("funnel step %s SQL failed: %s", et, exc)
+                funnel.append({
+                    "event_type": et,
+                    "label": label,
+                    "unique_users": 0,
+                    "total_count": 0,
+                })
 
         # ============================================================
         # 3. 多模型对比胜出 vendor 分布(从 meta_json 解析 recommended)
