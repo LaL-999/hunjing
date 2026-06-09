@@ -1661,15 +1661,24 @@ watch(
   border-radius: 9px;
 }
 
-/* tab content wrapper(用 v-show 切,无 transition,避免内部布局重算)*/
+/* 2026-06-09 P3 v2 bug fix:
+ *   旧版用 display: contents + !important 把 v-show 的 inline display:none
+ *   覆盖了 → saved tab 在 plan tab 也显示;footer 跨 tab 渗透。
+ *   修法:tab content 用 flex column,v-show 正常切换 display 属性,
+ *   不用任何 !important / contents hack。
+ */
 .epp-tab-content {
-  display: contents;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  /* 子元素 ctrl-row / persp-tabs / persp-content / footer 按自身规则布局 */
 }
 
-/* 2026-06-09 P3:我的方案 tab */
+/* 我的方案 tab — display block 覆盖 .epp-tab-content 的 flex,内部子项按
+ * 普通 document flow 排,加 overflow + padding。 */
 .epp-saved-tab {
-  display: block !important;   /* 覆盖 display: contents */
-  flex: 1;
+  display: block;
   overflow-y: auto;
   padding: 20px 24px;
 }
