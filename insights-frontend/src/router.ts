@@ -17,6 +17,8 @@ import BusinessView from "./views/BusinessView.vue";
 import UsersListView from "./views/UsersListView.vue";
 // BYOK 审核后台(2026-06-05):自携密钥订单人工审核 — 调主平台 backend admin endpoint
 import BYOKReviewView from "./views/BYOKReviewView.vue";
+// 2026-06-09 — 剧创态(第 5 态)使用洞察
+import ScreenplayAnalyticsView from "./views/ScreenplayAnalyticsView.vue";
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -44,5 +46,7 @@ export const router = createRouter({
     { path: "/users", name: "users", component: UsersListView },
     // BYOK 审核后台(2026-06-05)
     { path: "/byok-review", name: "byok-review", component: BYOKReviewView },
+    // 2026-06-09:剧创态使用洞察
+    { path: "/screenplay", name: "screenplay-analytics", component: ScreenplayAnalyticsView },
   ],
 });

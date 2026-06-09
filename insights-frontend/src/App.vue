@@ -56,6 +56,11 @@ import Icon from "./components/Icon.vue";
             <Icon name="compass" :size="16" />
             <span>作者指南针</span>
           </router-link>
+          <!-- 2026-06-09:剧创态使用洞察 -->
+          <router-link to="/screenplay" active-class="active" class="nav-link">
+            <Icon name="film" :size="16" />
+            <span>剧创态洞察</span>
+          </router-link>
         </div>
         <div class="nav-group">
           <div class="group-label">实时</div>

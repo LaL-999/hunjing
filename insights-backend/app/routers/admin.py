@@ -1468,3 +1468,218 @@ async def get_live(_: None = Depends(require_admin)) -> dict:
         }
     finally:
         conn.close()
+
+
+# ============================================================
+# /admin/screenplay — 剧创态(第 5 态)使用洞察(2026-06-09 新增)
+#
+# 价值:
+#   平台上线了 BYOK + 多模型对比 + 剧创态全集成,但前面 0 追踪。
+#   这个 endpoint 给运营 / 产品看:
+#     1. 哪些剧创态功能用得多 / 用得少(指导后续优先级)
+#     2. 多模型对比的胜出 vendor 分布(行业洞察:谁家 LLM 真的写剧本强)
+#     3. 桥接资产价值(读了多少父平台 SP-2/3/7,转化率几何)
+#     4. 转化漏斗:dashboard 卡片 → 上传小说 → 触发 compose → 优化重排 → 多模型对比
+# ============================================================
+
+
+@router.get("/screenplay")
+async def get_screenplay_analytics(
+    _: None = Depends(require_admin),
+    days: int = 30,
+) -> dict:
+    """剧创态使用洞察看板。
+
+    Args:
+        days: 时间窗口(默认 30 天)
+    """
+    days = max(1, min(days, 365))  # 兜底
+    now_ms = int(time.time() * 1000)
+    window_ms = now_ms - (days * 24 * 3600 * 1000)
+
+    conn = _get_conn()
+    try:
+        # ============================================================
+        # 1. 剧创态各事件计数(过去 N 天)
+        # ============================================================
+        sp_events = [
+            "screenplay_novel_upload",
+            "screenplay_compose_start",
+            "screenplay_compose_done",
+            "screenplay_optimize",
+            "screenplay_characters_view",
+            "screenplay_episodes_plan",
+            "model_compare_start",
+            "model_compare_run",
+            "model_compare_winner",
+        ]
+        placeholders = ",".join("?" * len(sp_events))
+        rows = fetch_all(
+            conn,
+            f"""SELECT event_type, COUNT(*) AS cnt,
+                       COUNT(DISTINCT user_id) AS unique_users
+                FROM events
+                WHERE event_type IN ({placeholders})
+                  AND timestamp_ms >= ?
+                GROUP BY event_type""",
+            (*sp_events, window_ms),
+        )
+        events_by_type = {r["event_type"]: {
+            "count": int(r["cnt"]),
+            "unique_users": int(r["unique_users"]),
+        } for r in rows}
+        # 补全 0 事件
+        for et in sp_events:
+            events_by_type.setdefault(et, {"count": 0, "unique_users": 0})
+
+        # ============================================================
+        # 2. 转化漏斗:dashboard 卡片 → 上传 → compose → optimize → compare
+        # ============================================================
+        funnel_steps = [
+            ("dashboard_card_click", "Dashboard 剧创态卡点击",
+             "(meta JSON LIKE '%\"card\":\"screenplay\"%')"),
+            ("screenplay_novel_upload", "上传小说", None),
+            ("screenplay_compose_start", "触发剧本生成", None),
+            ("screenplay_optimize", "AI 优化重排", None),
+            ("model_compare_start", "多模型对比", None),
+        ]
+        funnel = []
+        for et, label, extra_where in funnel_steps:
+            sql = (
+                "SELECT COUNT(DISTINCT user_id) AS u, COUNT(*) AS c FROM events "
+                f"WHERE event_type = ? AND timestamp_ms >= ?"
+            )
+            if extra_where:
+                sql += f" AND {extra_where}"
+            r = fetch_one(conn, sql, (et, window_ms))
+            funnel.append({
+                "event_type": et,
+                "label": label,
+                "unique_users": int(r["u"]) if r else 0,
+                "total_count": int(r["c"]) if r else 0,
+            })
+
+        # ============================================================
+        # 3. 多模型对比胜出 vendor 分布(从 meta_json 解析 recommended)
+        # ============================================================
+        winner_rows = fetch_all(
+            conn,
+            """SELECT meta_json FROM events
+               WHERE event_type = 'model_compare_winner'
+                 AND timestamp_ms >= ?""",
+            (window_ms,),
+        )
+        winner_counter: Counter[str] = Counter()
+        for r in winner_rows:
+            try:
+                meta = json.loads(r["meta_json"] or "{}")
+                rec = meta.get("recommended")
+                if isinstance(rec, str) and rec:
+                    winner_counter[rec] += 1
+            except (json.JSONDecodeError, TypeError):
+                continue
+        winner_distribution = [
+            {"provider": name, "wins": count}
+            for name, count in winner_counter.most_common(10)
+        ]
+
+        # ============================================================
+        # 4. Optimize scope/focus 分布(用户更关注全篇还是单场?保真度还是结构?)
+        # ============================================================
+        opt_rows = fetch_all(
+            conn,
+            """SELECT meta_json FROM events
+               WHERE event_type = 'screenplay_optimize'
+                 AND timestamp_ms >= ?""",
+            (window_ms,),
+        )
+        scope_counter: Counter[str] = Counter()
+        focus_counter: Counter[str] = Counter()
+        for r in opt_rows:
+            try:
+                meta = json.loads(r["meta_json"] or "{}")
+                scope = meta.get("scope")
+                focus = meta.get("focus")
+                if scope:
+                    scope_counter[str(scope)] += 1
+                if focus:
+                    focus_counter[str(focus)] += 1
+            except (json.JSONDecodeError, TypeError):
+                continue
+
+        # ============================================================
+        # 5. Dashboard 各卡片转化率(谁更受欢迎)
+        # ============================================================
+        card_rows = fetch_all(
+            conn,
+            """SELECT meta_json FROM events
+               WHERE event_type = 'dashboard_card_click'
+                 AND timestamp_ms >= ?""",
+            (window_ms,),
+        )
+        card_counter: Counter[str] = Counter()
+        for r in card_rows:
+            try:
+                meta = json.loads(r["meta_json"] or "{}")
+                card = meta.get("card")
+                if isinstance(card, str) and card:
+                    card_counter[card] += 1
+            except (json.JSONDecodeError, TypeError):
+                continue
+
+        # ============================================================
+        # 6. 桥接(huimeng_bridge)使用率:从 huimeng.sp_screenplays.stats_json 读
+        # 这是结构化数据,不是事件 — 但仍能从 attached 库查到
+        # ============================================================
+        bridge_stats: dict = {
+            "total_screenplays": 0,
+            "with_bridge": 0,
+            "avg_drivers_injections": 0.0,
+            "avg_knowledge_injections": 0.0,
+            "avg_polarity_injections": 0.0,
+        }
+        if huimeng_attached(conn):
+            try:
+                br = fetch_all(
+                    conn,
+                    """SELECT stats_json FROM huimeng.sp_screenplays
+                       WHERE created_at >= datetime('now', ?)""",
+                    (f"-{days} days",),
+                )
+                total = len(br)
+                with_bridge = 0
+                sum_drivers = sum_knowledge = sum_polarity = 0
+                for row in br:
+                    try:
+                        st = json.loads(row["stats_json"] or "{}")
+                    except (json.JSONDecodeError, TypeError):
+                        continue
+                    if st.get("bridge_was_linked"):
+                        with_bridge += 1
+                    sum_drivers += int(st.get("bridge_drivers_injections", 0) or 0)
+                    sum_knowledge += int(st.get("bridge_knowledge_injections", 0) or 0)
+                    sum_polarity += int(st.get("bridge_polarity_injections", 0) or 0)
+                bridge_stats = {
+                    "total_screenplays": total,
+                    "with_bridge": with_bridge,
+                    "avg_drivers_injections": round(sum_drivers / total, 2) if total else 0.0,
+                    "avg_knowledge_injections": round(sum_knowledge / total, 2) if total else 0.0,
+                    "avg_polarity_injections": round(sum_polarity / total, 2) if total else 0.0,
+                }
+            except sqlite3.OperationalError as exc:
+                # sp_screenplays 表不存在(huimeng DB 未跑 migration 085)
+                logger.debug("bridge stats skipped: %s", exc)
+
+        return {
+            "window_days": days,
+            "now_ms": now_ms,
+            "events_by_type": events_by_type,
+            "funnel": funnel,
+            "winner_distribution": winner_distribution,
+            "optimize_scope_distribution": dict(scope_counter),
+            "optimize_focus_distribution": dict(focus_counter),
+            "dashboard_card_clicks": dict(card_counter),
+            "bridge_stats": bridge_stats,
+        }
+    finally:
+        conn.close()
