@@ -27,10 +27,11 @@ import yaml as yamllib
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
-from app.deps import get_current_user
+from app.deps import get_current_user, get_db
 from app.models.user import User
 from app.screenplay.services import (
     episode_planner,
+    episode_plan_store,
     episode_quality_scorer,
     episode_title_writer,
     multi_perspective_planner,
@@ -278,3 +279,139 @@ def api_get_presets() -> dict:
             for key in ("rhythm", "hook", "arc")
         ],
     }
+
+
+# ============================================================
+# 分集方案持久化(2026-06-09 新增)
+#
+# 用户报告:分集结果不持久化,退出 modal 全丢。升级为有状态业务实体。
+#
+#   POST   /novels/{novel_id}/episode-plans       保存方案
+#   GET    /novels/{novel_id}/episode-plans       列出该小说所有方案
+#   GET    /episode-plans/{plan_id}               单个方案详情
+#   PATCH  /episode-plans/{plan_id}               改名
+#   DELETE /episode-plans/{plan_id}               删除
+# ============================================================
+
+
+class SaveEpisodePlanBody(BaseModel):
+    scheme_name: str = Field(..., min_length=1, max_length=80)
+    preset: str = Field(..., min_length=1, max_length=32)
+    target_minutes: float = Field(..., gt=0)
+    # 完整 MultiPerspectivePlan 序列化结构 — 前端传刚跑完的 plan
+    plan_data: dict = Field(...)
+
+
+class RenameEpisodePlanBody(BaseModel):
+    scheme_name: str = Field(..., min_length=1, max_length=80)
+
+
+@router.post("/novels/{novel_id}/episode-plans")
+def api_save_episode_plan(
+    novel_id: str,
+    body: SaveEpisodePlanBody,
+    user: User = Depends(get_current_user),
+    conn=Depends(get_db),
+) -> dict:
+    """保存一个分集方案 — 用户跑完一次分集后命名保存。
+
+    Errors:
+      403 NOVEL_NOT_OWNED       小说不属于该用户
+      400 INVALID_NAME          方案名空 / 过长
+    """
+    try:
+        plan_id = episode_plan_store.save_plan(
+            conn,
+            novel_id=novel_id,
+            user_id=user.id,
+            scheme_name=body.scheme_name,
+            preset=body.preset,
+            target_minutes=body.target_minutes,
+            plan_data=body.plan_data,
+        )
+    except PermissionError:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "NOVEL_NOT_OWNED", "message": "小说不存在或无权访问"},
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "INVALID_NAME", "message": str(exc)},
+        )
+    return {"plan_id": plan_id}
+
+
+@router.get("/novels/{novel_id}/episode-plans")
+def api_list_episode_plans(
+    novel_id: str,
+    user: User = Depends(get_current_user),
+    conn=Depends(get_db),
+) -> dict:
+    """列出该 novel 下该用户所有方案,按创建时间倒序。跨用户返空。"""
+    plans = episode_plan_store.list_plans(
+        conn, novel_id=novel_id, user_id=user.id,
+    )
+    return {
+        "items": [episode_plan_store.to_summary_dict(p) for p in plans],
+    }
+
+
+@router.get("/episode-plans/{plan_id}")
+def api_get_episode_plan(
+    plan_id: str,
+    user: User = Depends(get_current_user),
+    conn=Depends(get_db),
+) -> dict:
+    """拿单个方案完整数据(含 plan_data 完整快照)。"""
+    p = episode_plan_store.get_plan(conn, plan_id=plan_id, user_id=user.id)
+    if not p:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "NOT_FOUND", "message": "方案不存在或无权访问"},
+        )
+    return episode_plan_store.to_full_dict(p)
+
+
+@router.patch("/episode-plans/{plan_id}")
+def api_rename_episode_plan(
+    plan_id: str,
+    body: RenameEpisodePlanBody,
+    user: User = Depends(get_current_user),
+    conn=Depends(get_db),
+) -> dict:
+    """改方案名。"""
+    try:
+        ok = episode_plan_store.rename_plan(
+            conn, plan_id=plan_id, user_id=user.id,
+            new_name=body.scheme_name,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "INVALID_NAME", "message": str(exc)},
+        )
+    if not ok:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "NOT_FOUND", "message": "方案不存在或无权访问"},
+        )
+    return {"ok": True}
+
+
+@router.delete("/episode-plans/{plan_id}")
+def api_delete_episode_plan(
+    plan_id: str,
+    user: User = Depends(get_current_user),
+    conn=Depends(get_db),
+) -> dict:
+    """删方案。"""
+    ok = episode_plan_store.delete_plan(
+        conn, plan_id=plan_id, user_id=user.id,
+    )
+    if not ok:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "NOT_FOUND", "message": "方案不存在或无权访问"},
+        )
+    return {"ok": True}

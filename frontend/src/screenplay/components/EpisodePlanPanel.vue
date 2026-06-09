@@ -71,6 +71,29 @@ const currentScores = computed<PlanQualityScoresApi | null>(() => {
   return plan.value.perspective_scores[activePerspective.value] || null;
 });
 
+/**
+ * 2026-06-09:判断不同视角是否切出相同 cuts(数据特征导致 — 不是 bug)
+ * 例如《麦田》只切 2 集时,3 视角可能因小说太短碰巧选同样切点。
+ * 加这个 computed 让 UI 显示友好提示,而不是让用户以为 bug。
+ */
+const perspectivesMatchCurrent = computed<string[]>(() => {
+  if (!plan.value) return [];
+  const cur = currentPlan.value;
+  if (!cur) return [];
+  const matches: string[] = [];
+  for (const p of plan.value.perspectives) {
+    if (p.perspective === activePerspective.value) continue;
+    // cuts 数组完全相同 = 同切点
+    if (
+      p.cuts.length === cur.cuts.length &&
+      p.cuts.every((c, i) => c === cur.cuts[i])
+    ) {
+      matches.push(p.label || p.perspective);
+    }
+  }
+  return matches;
+});
+
 const isCustomPreset = computed(() => selectedPreset.value === "custom");
 
 const effectiveTarget = computed<number>(() => {
@@ -411,6 +434,27 @@ watch(
                 class="llm-failed-warn"
               >
                 ⚠ 此视角 LLM 调用失败,已自动退到节奏算法
+              </div>
+
+              <!-- 2026-06-09:不同视角推荐同一组切点时的友好提示
+                   (作品太短 / 张力曲线扁平时常出现 — 不是 bug) -->
+              <div
+                v-if="perspectivesMatchCurrent.length > 0"
+                class="persp-match-info"
+              >
+                <svg
+                  width="14" height="14" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
+                >
+                  <circle cx="12" cy="12" r="10" />
+                  <path d="M12 16v-4" />
+                  <path d="M12 8h.01" />
+                </svg>
+                <span>
+                  {{ perspectivesMatchCurrent.join(' / ') }}
+                  视角也推荐相同切点 —
+                  作品较短 / 节奏均匀时 3 个算法常会汇聚到同一组切集,属正常。
+                </span>
               </div>
 
               <!-- 4 维评分卡 -->
@@ -917,6 +961,24 @@ watch(
   font-size: 11.5px;
   margin-bottom: 12px;
   border-radius: var(--radius-sm);
+}
+/* 2026-06-09:视角"碰巧推荐相同切点"的友好信息提示 */
+.persp-match-info {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--accent-soft);
+  border-left: 3px solid var(--accent);
+  color: var(--accent-text);
+  font-size: 11.5px;
+  line-height: 1.55;
+  margin-bottom: 12px;
+  border-radius: var(--radius-sm);
+}
+.persp-match-info svg {
+  flex-shrink: 0;
+  margin-top: 1px;
 }
 
 /* quality card */
