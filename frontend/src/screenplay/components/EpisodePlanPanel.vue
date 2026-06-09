@@ -26,6 +26,7 @@ import {
   planEpisodesMulti,
   renameEpisodePlan,
   saveEpisodePlan,
+  type EpisodePlanExportMode,
   type EpisodePlanSummaryApi,
   type EpisodePresetApi,
   type EpisodeWithMetaApi,
@@ -316,20 +317,43 @@ function closeRenameDialog() {
   renameDialogName.value = "";
 }
 
-/** 导出方案 — 弹下拉选格式后下载 */
+/** 导出方案 — 2026-06-09 v2:弹 dialog 选 format + mode 一次性指定 */
 const exportingPlanId = ref<string | null>(null);
+const exportDialogOpen = ref<boolean>(false);
+const exportingPlan = ref<EpisodePlanSummaryApi | null>(null);
+const exportFormat = ref<ExportFormat>("fountain");
+const exportMode = ref<EpisodePlanExportMode>("full");
 
-async function exportPlan(planId: string, fmt: ExportFormat) {
-  exportingPlanId.value = planId;
+function openExportDialog(p: EpisodePlanSummaryApi) {
+  exportingPlan.value = p;
+  exportFormat.value = "fountain";
+  exportMode.value = "full";
+  exportDialogOpen.value = true;
+}
+
+function closeExportDialog() {
+  exportDialogOpen.value = false;
+  exportingPlan.value = null;
+}
+
+async function confirmExport() {
+  const p = exportingPlan.value;
+  if (!p) return;
+  exportingPlanId.value = p.id;
   try {
-    await downloadEpisodePlan(planId, fmt);
-    toast.success(`已导出 ${fmt} 文件`);
+    await downloadEpisodePlan(p.id, exportFormat.value, exportMode.value);
+    toast.success(`已导出 ${exportFormat.value}(${exportModeLabel(exportMode.value)})`);
+    closeExportDialog();
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     toast.error("导出失败:" + msg);
   } finally {
     exportingPlanId.value = null;
   }
+}
+
+function exportModeLabel(m: EpisodePlanExportMode): string {
+  return { outline: "仅大纲", full: "大纲+剧本", script: "仅剧本" }[m];
 }
 
 async function confirmRename() {
@@ -893,30 +917,19 @@ watch(
                 </div>
               </div>
               <div class="saved-actions">
-                <!-- 导出三按钮(直接点 = 单种格式下载,避免下拉一层)-->
+                <!-- 2026-06-09 v2:统一导出按钮(弹 dialog 选 format + mode)-->
                 <button
                   class="saved-action-btn saved-action-btn--export"
                   :disabled="exportingPlanId === p.id"
-                  title="导出 fountain(剧本行业格式)"
-                  @click="exportPlan(p.id, 'fountain')"
+                  title="导出方案(选格式 + 模式)"
+                  @click="openExportDialog(p)"
                 >
-                  <span class="export-format-text">.fountain</span>
-                </button>
-                <button
-                  class="saved-action-btn saved-action-btn--export"
-                  :disabled="exportingPlanId === p.id"
-                  title="导出 txt(人读纯文本)"
-                  @click="exportPlan(p.id, 'txt')"
-                >
-                  <span class="export-format-text">.txt</span>
-                </button>
-                <button
-                  class="saved-action-btn saved-action-btn--export"
-                  :disabled="exportingPlanId === p.id"
-                  title="导出 yaml(开发者 / 备份)"
-                  @click="exportPlan(p.id, 'yaml')"
-                >
-                  <span class="export-format-text">.yaml</span>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                       stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
+                  </svg>
                 </button>
                 <button class="saved-action-btn" @click="openRenameDialog(p)" title="改名">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
@@ -976,6 +989,78 @@ watch(
         <div class="epp-dialog-ftr">
           <button class="btn-cancel" @click="closeRenameDialog">取消</button>
           <button class="btn-primary" @click="confirmRename">改名</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2026-06-09 v2:导出 dialog — 选 format + mode -->
+    <div v-if="exportDialogOpen" class="epp-dialog-overlay" @click.self="closeExportDialog">
+      <div class="epp-dialog epp-export-dialog screenplay-module">
+        <h3 class="epp-dialog-title">导出方案</h3>
+        <p class="epp-dialog-desc">
+          {{ exportingPlan?.scheme_name }}
+        </p>
+
+        <!-- 模式选择(垂直 3 选 1)-->
+        <div class="export-section-label">导出内容</div>
+        <div class="export-mode-list">
+          <label class="export-mode-item" :class="{ active: exportMode === 'outline' }">
+            <input type="radio" v-model="exportMode" value="outline" />
+            <div class="export-mode-main">
+              <div class="export-mode-name">仅大纲</div>
+              <div class="export-mode-hint">集标题 + 钩子 + scene_id 列表,文件最轻</div>
+            </div>
+          </label>
+          <label class="export-mode-item" :class="{ active: exportMode === 'full' }">
+            <input type="radio" v-model="exportMode" value="full" />
+            <div class="export-mode-main">
+              <div class="export-mode-name">大纲 + 完整剧本 <span class="recommended-tag">推荐</span></div>
+              <div class="export-mode-hint">每集嵌入对应场景的动作 + 对白,适合给制片人 / 团队</div>
+            </div>
+          </label>
+          <label class="export-mode-item" :class="{ active: exportMode === 'script' }">
+            <input type="radio" v-model="exportMode" value="script" />
+            <div class="export-mode-main">
+              <div class="export-mode-name">仅剧本</div>
+              <div class="export-mode-hint">每集 # Episode N 标题下直接放场景内容,无元信息</div>
+            </div>
+          </label>
+        </div>
+
+        <!-- 格式选择(横向 3 选 1)-->
+        <div class="export-section-label">文件格式</div>
+        <div class="export-format-tabs">
+          <button
+            class="export-format-tab"
+            :class="{ active: exportFormat === 'fountain' }"
+            @click="exportFormat = 'fountain'"
+          >
+            .fountain
+            <span class="export-format-sub">行业标准</span>
+          </button>
+          <button
+            class="export-format-tab"
+            :class="{ active: exportFormat === 'txt' }"
+            @click="exportFormat = 'txt'"
+          >
+            .txt
+            <span class="export-format-sub">中文人读</span>
+          </button>
+          <button
+            class="export-format-tab"
+            :class="{ active: exportFormat === 'yaml' }"
+            @click="exportFormat = 'yaml'"
+          >
+            .yaml
+            <span class="export-format-sub">备份</span>
+          </button>
+        </div>
+
+        <div class="epp-dialog-ftr">
+          <button class="btn-cancel" @click="closeExportDialog" :disabled="exportingPlanId !== null">取消</button>
+          <button class="btn-primary" @click="confirmExport" :disabled="exportingPlanId !== null">
+            {{ exportingPlanId ? "下载中…" : "下载" }}
+          </button>
         </div>
       </div>
     </div>
@@ -1768,20 +1853,114 @@ watch(
   color: var(--danger);
   border-color: var(--danger);
 }
-/* 2026-06-09 P4:导出格式按钮(文字型,比 svg 按钮窄)*/
-.saved-action-btn--export {
-  width: auto;
-  padding: 0 8px;
-}
+/* 2026-06-09 v2:导出 hover 紫 */
 .saved-action-btn--export:hover:not(:disabled) {
   background: var(--accent-soft);
   color: var(--accent);
   border-color: var(--accent-border);
 }
-.export-format-text {
-  font-family: var(--font-mono);
+
+/* 2026-06-09 v2:导出 dialog */
+.epp-export-dialog {
+  max-width: 480px;
+}
+.export-section-label {
+  margin: 16px 0 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.export-mode-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.export-mode-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.export-mode-item:hover {
+  border-color: var(--accent-border);
+}
+.export-mode-item.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+.export-mode-item input[type="radio"] {
+  margin: 3px 0 0 0;
+  accent-color: var(--accent);
+}
+.export-mode-main {
+  flex: 1;
+  min-width: 0;
+}
+.export-mode-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+.recommended-tag {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 1px 6px;
   font-size: 10px;
+  background: var(--accent);
+  color: white;
+  border-radius: 9px;
+  font-weight: 500;
   letter-spacing: 0.04em;
+}
+.export-mode-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.export-format-tabs {
+  display: flex;
+  gap: 6px;
+}
+.export-format-tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 10px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.export-format-tab:hover {
+  border-color: var(--accent-border);
+}
+.export-format-tab.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+.export-format-sub {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+.export-format-tab.active .export-format-sub {
+  color: var(--accent-text);
 }
 
 /* 2026-06-09 P3:保存 / 改名对话框 */

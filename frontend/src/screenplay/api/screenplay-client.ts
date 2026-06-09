@@ -411,14 +411,19 @@ export async function deleteEpisodePlan(planId: string): Promise<void> {
   );
 }
 
-/** 下载分集方案为指定格式(fountain / txt / yaml)*/
+/** 分集导出模式 — 2026-06-09 v2 */
+export type EpisodePlanExportMode = "outline" | "full" | "script";
+
+/** 下载分集方案为指定格式(fountain / txt / yaml)+ 模式 */
 export async function downloadEpisodePlan(
   planId: string,
   format: ExportFormat,
+  mode: EpisodePlanExportMode = "outline",
 ): Promise<void> {
-  const { blob, headers } = await api.downloadFile(
-    `/screenplay/episode-plans/${encodeURIComponent(planId)}/export.${format}`,
-  );
+  const url =
+    `/screenplay/episode-plans/${encodeURIComponent(planId)}/export.${format}` +
+    `?mode=${encodeURIComponent(mode)}`;
+  const { blob, headers } = await api.downloadFile(url);
   const disposition = headers.get("Content-Disposition") || "";
   let filename = `episode-plan.${format}`;
   const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);

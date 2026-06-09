@@ -436,18 +436,28 @@ _EXPORT_FORMATS = {
     "yaml": ("application/x-yaml; charset=utf-8", "yaml"),
 }
 
+_EXPORT_MODES = ("outline", "full", "script")
+
 
 @router.get("/episode-plans/{plan_id}/export.{fmt}")
 def api_export_episode_plan(
     plan_id: str,
     fmt: str,
+    mode: str = "outline",
     user: User = Depends(get_current_user),
     conn=Depends(get_db),
 ):
     """导出分集方案为指定格式。
 
+    Query:
+      mode = outline | full | script
+        - outline:仅大纲(集标题 + 钩子 + scene_id 列表)— 文件最小
+        - full:大纲 + 每集嵌入完整剧本内容(动作 + 对白)
+        - script:仅剧本(每集 # Episode 标题下直接放 scene 内容,无元信息)
+
     Errors:
       400 UNSUPPORTED_FORMAT  fmt 不在 fountain/txt/yaml 内
+      400 UNSUPPORTED_MODE    mode 不在 outline/full/script 内
       404 NOT_FOUND           方案不存在或无权访问
     """
     if fmt not in _EXPORT_FORMATS:
@@ -458,6 +468,14 @@ def api_export_episode_plan(
                 "message": f"不支持的格式: {fmt}(支持:fountain / txt / yaml)",
             },
         )
+    if mode not in _EXPORT_MODES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "code": "UNSUPPORTED_MODE",
+                "message": f"不支持的导出模式: {mode}(支持:outline / full / script)",
+            },
+        )
 
     p = episode_plan_store.get_plan(conn, plan_id=plan_id, user_id=user.id)
     if not p:
@@ -466,19 +484,42 @@ def api_export_episode_plan(
             detail={"code": "NOT_FOUND", "message": "方案不存在或无权访问"},
         )
 
-    summary_dict = episode_plan_store.to_full_dict(p)  # 含全字段
+    summary_dict = episode_plan_store.to_full_dict(p)
     plan_data = p.plan_data
 
+    # mode=full/script 需要剧本本体 — 拉该 novel 最新一份剧本
+    screenplay_dict = None
+    if mode in ("full", "script"):
+        try:
+            sp = screenplay_store.get_latest_screenplay(p.novel_id, user.id)
+        except Exception as exc:
+            logger.warning("拉剧本失败 %s: %s", p.novel_id, exc)
+            sp = None
+        if sp and sp.get("yaml_text"):
+            try:
+                import yaml
+                parsed = yaml.safe_load(sp["yaml_text"]) or {}
+                if isinstance(parsed, dict):
+                    screenplay_dict = parsed
+            except Exception as exc:
+                logger.warning("解析剧本 yaml 失败 %s: %s", p.novel_id, exc)
+        # 没拿到 → exporter 自动降级 outline + 加 warning
+
     if fmt == "fountain":
-        content = episode_plan_exporter.export_to_fountain(summary_dict, plan_data)
+        content = episode_plan_exporter.export_to_fountain(
+            summary_dict, plan_data, mode=mode, screenplay_dict=screenplay_dict,
+        )
     elif fmt == "txt":
-        content = episode_plan_exporter.export_to_txt(summary_dict, plan_data)
+        content = episode_plan_exporter.export_to_txt(
+            summary_dict, plan_data, mode=mode, screenplay_dict=screenplay_dict,
+        )
     else:  # yaml
-        content = episode_plan_exporter.export_to_yaml(summary_dict, plan_data)
+        content = episode_plan_exporter.export_to_yaml(
+            summary_dict, plan_data, mode=mode, screenplay_dict=screenplay_dict,
+        )
 
     mime, ext = _EXPORT_FORMATS[fmt]
-    safe_name = episode_plan_exporter.safe_filename(p.scheme_name)
-    # RFC 5987 中文文件名编码
+    safe_name = episode_plan_exporter.safe_filename(p.scheme_name, mode=mode)
     filename_utf8 = urlquote(f"{safe_name}.{ext}")
     disposition = f"attachment; filename*=UTF-8''{filename_utf8}"
 
