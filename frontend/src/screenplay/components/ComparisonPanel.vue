@@ -14,12 +14,14 @@ import { computed, onMounted, ref, watch } from "vue";
 
 import {
   compareModels,
+  type CompareMode,
   type ComparisonResultApi,
   type ModelCandidateApi,
   type ProviderConfigApi,
 } from "../api/screenplay-client";
 import ComparisonRadarChart from "./ComparisonRadarChart.vue";
 import { useScreenplayStore } from "../stores/screenplay";
+import { useBYOKStore } from "../../stores/byok";
 import { toast } from "../../composables/useToast";
 import { track } from "../../composables/useAnalytics";
 import { ApiError } from "../../api/client";
@@ -28,20 +30,56 @@ const props = defineProps<{ visible: boolean }>();
 const emit = defineEmits<{ (e: "close"): void }>();
 
 const store = useScreenplayStore();
+const byok = useBYOKStore();
 
 type Stage = "config" | "running" | "result";
 const stage = ref<Stage>("config");
+
+// =====================================================================
+// 2026-06-09:运行模式 — byok / platform
+// =====================================================================
+const mode = ref<CompareMode>(byok.isActive.value ? "byok" : "platform");
+
+/** BYOK 解锁弹窗触发(切到 byok 模式但用户没开通时显示) */
+const showBYOKPrompt = ref(false);
+
+function tryToggleMode(target: CompareMode) {
+  if (target === mode.value) return;
+  if (target === "byok" && !byok.isActive.value) {
+    // 非自携用户尝试切到 byok 模式 → 弹窗提示开通
+    showBYOKPrompt.value = true;
+    return;
+  }
+  mode.value = target;
+  // 切到 platform 时清空可能历史填的 api_key(避免后端误认)
+  if (target === "platform") {
+    providers.value = providers.value.map(p => ({ ...p, api_key: "" }));
+  } else if (target === "byok") {
+    // 切回 byok 模式 — 尝试从 localStorage 恢复历史配置
+    loadFromStorage();
+  }
+}
+
+function closeBYOKPrompt() {
+  showBYOKPrompt.value = false;
+}
+
+function goToBYOKActivation() {
+  closeBYOKPrompt();
+  // 关闭对比 modal,触发自携密钥解锁弹窗(全局事件总线 / 直接跳转)
+  emit("close");
+  // 用 location 触发 sidebar 的自携密钥菜单 — 让用户点击触发 unlock modal
+  // 实际平台已有 BYOKUnlockModal,但触发需 sidebar 菜单点击;最简方案:toast 引导
+  toast.info("请点击右下角用户菜单 → 自携密钥 → 开通");
+}
 
 // =====================================================================
 // 配置阶段 state
 // =====================================================================
 
 const selectedSceneId = ref<string>("");
-const providers = ref<ProviderConfigApi[]>([
-  { label: "DeepSeek V3", api_key: "", base_url: "https://api.deepseek.com/v1", model: "deepseek-chat" },
-  { label: "OpenAI GPT-4o", api_key: "", base_url: "https://api.openai.com/v1", model: "gpt-4o" },
-]);
 
+// 2026-06-09:5 个预设 vendor(label / base_url / model 不变)
 const PRESETS: Array<Omit<ProviderConfigApi, "api_key">> = [
   { label: "DeepSeek V3", base_url: "https://api.deepseek.com/v1", model: "deepseek-chat" },
   { label: "OpenAI GPT-4o", base_url: "https://api.openai.com/v1", model: "gpt-4o" },
@@ -49,6 +87,17 @@ const PRESETS: Array<Omit<ProviderConfigApi, "api_key">> = [
   { label: "Qwen Max", base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen-max" },
   { label: "Moonshot Kimi", base_url: "https://api.moonshot.cn/v1", model: "moonshot-v1-8k" },
 ];
+
+// 2026-06-09:默认选中 DeepSeek V3 + Qwen Max + Moonshot Kimi 三个(用户拍板)
+const DEFAULT_PRESET_LABELS = ["DeepSeek V3", "Qwen Max", "Moonshot Kimi"];
+
+function buildDefaultProviders(): ProviderConfigApi[] {
+  return PRESETS
+    .filter(p => DEFAULT_PRESET_LABELS.includes(p.label))
+    .map(p => ({ ...p, api_key: "" }));
+}
+
+const providers = ref<ProviderConfigApi[]>(buildDefaultProviders());
 
 const STORAGE_KEY = "huimeng_screenplay_compare_providers";
 
@@ -73,6 +122,8 @@ function removeProvider(idx: number) {
 }
 
 function loadFromStorage() {
+  // 2026-06-09:只在 byok 模式下尝试 load 历史配置(平台模式只用预设)
+  if (mode.value !== "byok") return;
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return;
@@ -91,6 +142,8 @@ function loadFromStorage() {
 }
 
 function saveToStorage() {
+  // 2026-06-09:只在 byok 模式下持久化(平台模式无敏感数据可存)
+  if (mode.value !== "byok") return;
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(providers.value));
   } catch {
@@ -107,10 +160,15 @@ const sceneOptions = computed(() => {
   }));
 });
 
-// 验证配置
+// 验证配置 — 2026-06-09:platform 模式下不要求 api_key / base_url
 const isConfigValid = computed(() => {
   if (!selectedSceneId.value) return false;
   if (providers.value.length < 2) return false;
+  if (mode.value === "platform") {
+    // 只要求 label + model
+    return providers.value.every(p => p.label && p.model);
+  }
+  // byok 模式 — 4 字段全填
   return providers.value.every(
     p => p.label && p.api_key && p.base_url && p.model,
   );
@@ -175,13 +233,14 @@ async function handleStart() {
     return;
   }
   saveToStorage();
-  // 2026-06-09 埋点 — 多模型对比触发(N vendors / scene 维度可下钻)
+  // 2026-06-09 埋点 — 多模型对比触发(N vendors / scene / mode 维度可下钻)
   track("model_compare_run", {
     mode: "screenplay",
     meta: {
       n_providers: providers.value.length,
       providers: providers.value.map(p => p.label),
       scene_id: selectedSceneId.value,
+      compare_mode: mode.value,   // byok / platform
     },
   });
   stage.value = "running";
@@ -192,6 +251,7 @@ async function handleStart() {
       store.screenplayId,
       selectedSceneId.value,
       providers.value,
+      mode.value,
     );
     stage.value = "result";
     const success = result.value.candidates.filter(c => c.success).length;
@@ -309,9 +369,8 @@ const ELEMENT_TYPE_LABEL: Record<string, string> = {
         <header class="cmp-hdr">
           <div>
             <h2 class="literary-heading">多模型对比</h2>
-            <p class="cmp-sub">
-              一场剧本,N 个 LLM 并行跑 — fidelity 4 维可解释打分,告诉你「为什么 A 比 B 好」
-            </p>
+            <!-- 2026-06-09:文案简化 -->
+            <p class="cmp-sub">让几个 AI 同时改写同一场,看谁写得更好</p>
           </div>
           <button class="cmp-close-btn" @click="handleClose" title="关闭">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
@@ -324,6 +383,39 @@ const ELEMENT_TYPE_LABEL: Record<string, string> = {
 
         <!-- ============== CONFIG STAGE ============== -->
         <section v-if="stage === 'config'" class="cmp-body">
+          <!-- 2026-06-09:运行模式切换 — BYOK vs 平台默认 -->
+          <div class="mode-switcher">
+            <button
+              type="button"
+              class="mode-tab"
+              :class="{ active: mode === 'platform' }"
+              @click="tryToggleMode('platform')"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                   stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+                <path d="M9 12l2 2 4-4" />
+                <circle cx="12" cy="12" r="10" />
+              </svg>
+              用平台模型
+              <span class="mode-tab-sub">消耗你的配额</span>
+            </button>
+            <button
+              type="button"
+              class="mode-tab"
+              :class="{ active: mode === 'byok', locked: !byok.isActive.value }"
+              @click="tryToggleMode('byok')"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                   stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+                <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" />
+              </svg>
+              用我自己的 API key
+              <span class="mode-tab-sub">
+                {{ byok.isActive.value ? "自携密钥已开通" : "需开通自携密钥" }}
+              </span>
+            </button>
+          </div>
+
           <!-- 场景选择 -->
           <div class="cfg-section">
             <label class="cfg-label">目标场景</label>
@@ -333,15 +425,15 @@ const ELEMENT_TYPE_LABEL: Record<string, string> = {
                 {{ opt.label }}
               </option>
             </select>
-            <p class="cfg-hint">
-              选短而对白多的场景效果最明显(角色对峙 / 揭穿 / 告白等)
-            </p>
           </div>
 
           <!-- Provider 配置 -->
-          <div class="cfg-section">
+          <div class="cfg-section cfg-section--grow">
             <div class="cfg-label-row">
-              <label class="cfg-label">Provider 配置({{ providers.length }}/5)</label>
+              <label class="cfg-label">
+                {{ mode === 'platform' ? '挑几个模型' : 'Provider 配置' }}
+                <span class="mono cfg-count">{{ providers.length }} / 5</span>
+              </label>
               <div class="preset-row">
                 <span class="preset-label">快速加:</span>
                 <button
@@ -355,38 +447,39 @@ const ELEMENT_TYPE_LABEL: Record<string, string> = {
                 </button>
               </div>
             </div>
-            <p class="cfg-hint">
-              每个 provider 需要 4 个字段。API key 仅本地存储(localStorage)+ 单次对比时传给后端,后端不持久化。
-            </p>
 
             <ul class="provider-list">
               <li
                 v-for="(p, idx) in providers"
                 :key="idx"
                 class="provider-row"
+                :class="{ 'provider-row--platform': mode === 'platform' }"
               >
                 <div class="prow-idx mono">#{{ idx + 1 }}</div>
-                <div class="prow-fields">
+                <div class="prow-fields" :class="{ 'prow-fields--platform': mode === 'platform' }">
                   <input
                     v-model="p.label"
                     class="prow-input"
-                    placeholder="显示名(DeepSeek V3 / Claude...)"
+                    placeholder=""
                   />
-                  <input
-                    v-model="p.api_key"
-                    class="prow-input"
-                    type="password"
-                    placeholder="API key (sk-xxx...)"
-                  />
-                  <input
-                    v-model="p.base_url"
-                    class="prow-input"
-                    placeholder="Base URL (https://api.xxx.com/v1)"
-                  />
+                  <!-- 2026-06-09:platform 模式隐藏 api_key / base_url 两列(不需要,且不应暴露)-->
+                  <template v-if="mode === 'byok'">
+                    <input
+                      v-model="p.api_key"
+                      class="prow-input"
+                      type="password"
+                      placeholder=""
+                    />
+                    <input
+                      v-model="p.base_url"
+                      class="prow-input"
+                      placeholder=""
+                    />
+                  </template>
                   <input
                     v-model="p.model"
                     class="prow-input"
-                    placeholder="model 名(deepseek-chat / gpt-4o)"
+                    placeholder=""
                   />
                 </div>
                 <button
@@ -408,13 +501,16 @@ const ELEMENT_TYPE_LABEL: Record<string, string> = {
               :disabled="providers.length >= 5"
               @click="addProvider()"
             >
-              + 加 Provider(自填配置)
+              + 加 Provider
             </button>
           </div>
 
+          <!-- 2026-06-09:文案改为用户语言 -->
           <p class="cost-hint">
-            将并行调用 {{ providers.length }} 个 LLM,30-90 秒。
-            每个 vendor 单次成本约 ¥0.01-0.10(因模型而异)。失败的 vendor 不影响其他。
+            {{ mode === 'platform'
+              ? `将让 ${providers.length} 个模型同时写,预计 30-90 秒。失败的模型不影响其他。`
+              : `将让 ${providers.length} 个模型同时写,预计 30-90 秒。失败的不影响其他,API 密钥仅在浏览器存,不上传服务器。`
+            }}
           </p>
 
           <div class="cfg-ftr">
@@ -628,6 +724,21 @@ const ELEMENT_TYPE_LABEL: Record<string, string> = {
         </section>
       </div>
     </div>
+
+    <!-- 2026-06-09:非自携用户尝试切到 byok 模式 → 提示开通(嵌套 modal)-->
+    <div v-if="showBYOKPrompt" class="byok-prompt-overlay" @click.self="closeBYOKPrompt">
+      <div class="byok-prompt screenplay-module">
+        <h3 class="byok-prompt-title">使用自己的 API key 需要开通自携密钥</h3>
+        <p class="byok-prompt-desc">
+          自携密钥让你用自己的 OpenAI / DeepSeek / Claude / Qwen 等账号跑模型,
+          不占用平台配额,适合重度用户。月费透明、随时停用。
+        </p>
+        <div class="byok-prompt-ftr">
+          <button class="btn-cancel" @click="closeBYOKPrompt">暂不开通</button>
+          <button class="btn-primary" @click="goToBYOKActivation">前往开通</button>
+        </div>
+      </div>
+    </div>
   </Teleport>
 </template>
 
@@ -697,11 +808,77 @@ const ELEMENT_TYPE_LABEL: Record<string, string> = {
   flex: 1;
   padding: 20px 24px;
   overflow-y: auto;
+  /* 2026-06-09:用 flex column 让内部 section 撑开,治"底部留白"bug */
+  display: flex;
+  flex-direction: column;
+}
+
+/* 2026-06-09:运行模式切换 */
+.mode-switcher {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 18px;
+  padding: 4px;
+  background: var(--bg-deep);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.mode-tab {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font-size: 12.5px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  flex-wrap: wrap;
+}
+.mode-tab.active {
+  background: var(--card-bg);
+  border-color: var(--border);
+  color: var(--accent-text);
+  box-shadow: var(--shadow-sm);
+}
+.mode-tab:hover:not(.active) {
+  color: var(--text);
+}
+.mode-tab.locked {
+  opacity: 0.7;
+}
+.mode-tab-sub {
+  font-size: 10px;
+  color: var(--text-subtle);
+  letter-spacing: 0.04em;
+  width: 100%;
+  margin-top: 2px;
+  font-weight: 400;
+}
+.mode-tab.active .mode-tab-sub {
+  color: var(--accent-text);
 }
 
 /* config */
 .cfg-section {
   margin-bottom: 20px;
+}
+.cfg-section--grow {
+  /* 2026-06-09:provider 区撑开剩余空间(填底部留白) */
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.cfg-count {
+  font-weight: 400;
+  color: var(--text-muted);
+  font-size: 11px;
+  margin-left: 6px;
 }
 .cfg-label,
 .cfg-label-row label {
@@ -803,6 +980,10 @@ const ELEMENT_TYPE_LABEL: Record<string, string> = {
   grid-template-columns: 1fr 1fr 1fr 1fr;
   gap: 6px;
 }
+/* 2026-06-09:platform 模式只 2 列(label / model)*/
+.prow-fields--platform {
+  grid-template-columns: 1fr 1fr;
+}
 @media (max-width: 1080px) {
   .prow-fields {
     grid-template-columns: 1fr 1fr;
@@ -870,6 +1051,45 @@ const ELEMENT_TYPE_LABEL: Record<string, string> = {
 .add-provider-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+/* 2026-06-09:BYOK 提示嵌套 modal */
+.byok-prompt-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+.byok-prompt {
+  width: 100%;
+  max-width: 420px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  box-shadow: var(--shadow-lg);
+}
+.byok-prompt-title {
+  margin: 0 0 10px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+  font-family: var(--font-serif);
+}
+.byok-prompt-desc {
+  margin: 0 0 18px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+.byok-prompt-ftr {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .cost-hint {

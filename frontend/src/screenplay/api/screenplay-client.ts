@@ -341,10 +341,14 @@ export async function planEpisodesMulti(
 
 export interface ProviderConfigApi {
   label: string;
+  // 2026-06-09:mode=platform 时 api_key / base_url 可空(后端用平台默认填)
   api_key: string;
   base_url: string;
   model: string;
 }
+
+/** 多模型对比运行模式 — 2026-06-09 新增 */
+export type CompareMode = "byok" | "platform";
 
 export interface CompareScoresApi {
   overall: number;
@@ -386,10 +390,11 @@ export async function compareModels(
   screenplayId: string,
   sceneId: string,
   providers: ProviderConfigApi[],
+  mode: CompareMode = "byok",
 ): Promise<ComparisonResultApi> {
   return api.post(
     `/screenplay/screenplays/${encodeURIComponent(screenplayId)}/compare`,
-    { scene_id: sceneId, providers },
+    { scene_id: sceneId, mode, providers },
   );
 }
 
