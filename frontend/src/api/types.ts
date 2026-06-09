@@ -2177,6 +2177,35 @@ export interface SearchSimulationItem {
   project_name: string;
 }
 
+// 2026-06-09 新增 — 剧创态 + 漫创态搜索结果
+
+/** 剧创态小说(sp_novels) */
+export interface SearchNovelItem {
+  id: string;
+  title: string;
+  total_chapters: number;
+  total_chars: number;
+  source_format: string;
+}
+
+/** 剧创态剧本(sp_screenplays)— 通过 novel 关联,展示用 novel_title */
+export interface SearchScreenplayItem {
+  id: string;
+  novel_id: string;
+  novel_title: string;
+  scene_count: number;
+  created_at: string;
+}
+
+/** 漫创态作品(comic_projects) */
+export interface SearchComicItem {
+  id: string;
+  name: string;
+  state: string;
+  progress_percent: number;
+  style_tag: string | null;
+}
+
 export interface GlobalSearchResponse {
   query: string;
   projects: SearchProjectItem[];
@@ -2184,6 +2213,10 @@ export interface GlobalSearchResponse {
   events: SearchEventItem[];
   scenes: SearchSceneItem[];
   simulations: SearchSimulationItem[];
+  // 2026-06-09 新增(后端 schema 加了 default_factory=list,老 server 不会断):
+  novels?: SearchNovelItem[];
+  screenplays?: SearchScreenplayItem[];
+  comics?: SearchComicItem[];
 }
 
 // ========== 错误响应 ==========

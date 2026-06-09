@@ -19,14 +19,18 @@ import {
   ApiError,
   type GlobalSearchResponse,
   type SearchCharacterItem,
+  type SearchComicItem,
   type SearchEventItem,
+  type SearchNovelItem,
   type SearchProjectItem,
   type SearchSceneItem,
+  type SearchScreenplayItem,
   type SearchSimulationItem,
 } from "../api/types";
 import { useGlobalSearch } from "../composables/useGlobalSearch";
 import { useAuthStore } from "../stores/auth";
 import { useLoginModal } from "../composables/useLoginModal";
+import Icon from "./Icon.vue";
 
 const router = useRouter();
 const search = useGlobalSearch();
@@ -129,15 +133,19 @@ async function runSearch() {
 // flat list — 用于键盘上下导航 + Enter 跳转
 // ============================================================
 
-type EntityType = "project" | "character" | "event" | "scene" | "simulation";
+// 2026-06-09 扩展:加 novel / screenplay / comic 三类(覆盖剧创态 + 漫创态)
+type EntityType =
+  | "project" | "character" | "event" | "scene" | "simulation"
+  | "novel" | "screenplay" | "comic";
 
 interface FlatItem {
   type: EntityType;
   raw: SearchProjectItem | SearchCharacterItem
-       | SearchEventItem | SearchSceneItem | SearchSimulationItem;
+       | SearchEventItem | SearchSceneItem | SearchSimulationItem
+       | SearchNovelItem | SearchScreenplayItem | SearchComicItem;
 }
 
-// 类型筛选 tab(默认"全部" — 显所有 5 类)
+// 类型筛选 tab(默认"全部" — 显所有 8 类)
 const typeFilter = ref<"all" | EntityType>("all");
 
 const flatList = computed<FlatItem[]>(() => {
@@ -149,6 +157,10 @@ const flatList = computed<FlatItem[]>(() => {
   r.events.forEach((e) => out.push({ type: "event", raw: e }));
   r.scenes.forEach((s) => out.push({ type: "scene", raw: s }));
   r.simulations.forEach((s) => out.push({ type: "simulation", raw: s }));
+  // 2026-06-09 新增:剧创态 + 漫创态(老 server 返 undefined 兼容)
+  (r.novels ?? []).forEach((n) => out.push({ type: "novel", raw: n }));
+  (r.screenplays ?? []).forEach((s) => out.push({ type: "screenplay", raw: s }));
+  (r.comics ?? []).forEach((c) => out.push({ type: "comic", raw: c }));
   // 按 typeFilter 过滤
   if (typeFilter.value === "all") return out;
   return out.filter((f) => f.type === typeFilter.value);
@@ -164,20 +176,28 @@ interface DisplayGroup {
   items: FlatItem[];
 }
 
+// 2026-06-09 扩展:8 类(原 5 + 剧创态 2 + 漫创态 1)
 const TYPE_META: Record<EntityType, { title: string; icon: string; label: string }> = {
-  project:      { title: "项目",      icon: "📁", label: "项目" },
-  character:    { title: "角色",      icon: "👤", label: "角色" },
-  event:        { title: "事件",      icon: "📅", label: "事件" },
-  scene:        { title: "场景",      icon: "🎬", label: "场景" },
-  simulation:   { title: "推演产物",  icon: "📚", label: "推演" },
+  project:      { title: "项目",      icon: "folder", label: "项目" },
+  character:    { title: "角色",      icon: "character", label: "角色" },
+  event:        { title: "事件",      icon: "event", label: "事件" },
+  scene:        { title: "场景",      icon: "scene", label: "场景" },
+  simulation:   { title: "推演产物",  icon: "book_open", label: "推演" },
+  novel:        { title: "小说",      icon: "book", label: "小说" },
+  screenplay:   { title: "剧本",      icon: "file_text", label: "剧本" },
+  comic:        { title: "漫画",      icon: "grid", label: "漫画" },
 };
 
 // 类型筛选 tab 的 chip 选项(动态计数,让用户一眼看每类多少命中)
 const typeTabOptions = computed<Array<{ value: "all" | EntityType; label: string; count: number }>>(() => {
   const r = results.value;
+  const novelsLen = r?.novels?.length ?? 0;
+  const screenplaysLen = r?.screenplays?.length ?? 0;
+  const comicsLen = r?.comics?.length ?? 0;
   const totalAll = r
     ? r.projects.length + r.characters.length + r.events.length
       + r.scenes.length + r.simulations.length
+      + novelsLen + screenplaysLen + comicsLen
     : 0;
   return [
     { value: "all",        label: "全部", count: totalAll },
@@ -186,14 +206,20 @@ const typeTabOptions = computed<Array<{ value: "all" | EntityType; label: string
     { value: "event",      label: "事件", count: r?.events.length ?? 0 },
     { value: "scene",      label: "场景", count: r?.scenes.length ?? 0 },
     { value: "simulation", label: "推演", count: r?.simulations.length ?? 0 },
+    // 2026-06-09 新增:
+    { value: "novel",      label: "小说", count: novelsLen },
+    { value: "screenplay", label: "剧本", count: screenplaysLen },
+    { value: "comic",      label: "漫画", count: comicsLen },
   ];
 });
 
 const displayGroups = computed<DisplayGroup[]>(() => {
   const r = results.value;
   if (!r) return [];
+  // 顺序:传统项目 5 类 → 剧创态 2 类 → 漫创态 1 类
   const order: EntityType[] = [
     "project", "character", "event", "scene", "simulation",
+    "novel", "screenplay", "comic",
   ];
   return order.map((t) => ({
     type: t,
@@ -285,6 +311,19 @@ function jumpTo(item: FlatItem) {
     case "simulation":
       url = `/simulations/${(item.raw as SearchSimulationItem).id}`;
       break;
+    // 2026-06-09 新增:剧创态 + 漫创态跳转
+    case "novel":
+      // 小说 → 剧创态编辑器主视图(双栏)
+      url = `/screenplay/${(item.raw as SearchNovelItem).id}`;
+      break;
+    case "screenplay":
+      // 剧本 → 跳对应 novel 的编辑器(剧本自动加载最新版本)
+      url = `/screenplay/${(item.raw as SearchScreenplayItem).novel_id}`;
+      break;
+    case "comic":
+      // 漫画 → 漫创态详情页
+      url = `/comics/${(item.raw as SearchComicItem).id}`;
+      break;
   }
   search.close();
   void router.push(url);
@@ -318,14 +357,26 @@ function getItemTitle(item: FlatItem): string {
       return (item.raw as SearchSceneItem).name;
     case "simulation":
       return (item.raw as SearchSimulationItem).divergence || "(无锚点)";
+    // 2026-06-09 新增:
+    case "novel":
+      return (item.raw as SearchNovelItem).title;
+    case "screenplay":
+      return (item.raw as SearchScreenplayItem).novel_title || "(剧本)";
+    case "comic":
+      return (item.raw as SearchComicItem).name;
     default:
       return "?";
   }
 }
 
 function getItemBreadcrumb(item: FlatItem): string {
-  if (item.type === "project") {
-    return ""; // 项目本身就是"顶层",无面包屑
+  if (item.type === "project" || item.type === "novel" || item.type === "comic") {
+    // 顶层实体(没有更上一层),无面包屑
+    return "";
+  }
+  if (item.type === "screenplay") {
+    // 剧本归属其 novel — 显示 "《小说名》" 作面包屑
+    return (item.raw as SearchScreenplayItem).novel_title;
   }
   const r = item.raw as { project_name?: string };
   return r.project_name ?? "";
@@ -347,6 +398,20 @@ function getItemSubText(item: FlatItem): string {
     const s = item.raw as SearchSimulationItem;
     const stateLabel = s.state === "done" ? "✓ 完成" : s.state;
     return stateLabel;
+  }
+  // 2026-06-09 新增 — 剧创态 + 漫创态副信息
+  if (item.type === "novel") {
+    const n = item.raw as SearchNovelItem;
+    return `${n.total_chapters} 章 · ${n.total_chars.toLocaleString()} 字 · ${n.source_format}`;
+  }
+  if (item.type === "screenplay") {
+    const s = item.raw as SearchScreenplayItem;
+    return s.scene_count > 0 ? `${s.scene_count} 场` : "剧本";
+  }
+  if (item.type === "comic") {
+    const c = item.raw as SearchComicItem;
+    const stateLabel = c.state === "done" ? "✓ 完成" : `${c.state} ${c.progress_percent}%`;
+    return c.style_tag ? `${c.style_tag} · ${stateLabel}` : stateLabel;
   }
   return "";
 }
@@ -457,7 +522,9 @@ const canSwitchToCurrent = computed(
                 class="gs-group"
               >
                 <h4 class="gs-group-title">
-                  <span class="gs-group-icon">{{ TYPE_META[group.type].icon }}</span>
+                  <span class="gs-group-icon">
+                    <Icon :name="TYPE_META[group.type].icon" :size="14" />
+                  </span>
                   {{ group.title }}
                   <span class="gs-group-count mono">{{ group.items.length }}</span>
                 </h4>
@@ -697,7 +764,10 @@ const canSwitchToCurrent = computed(
   letter-spacing: 0.06em;
 }
 .gs-group-icon {
-  font-size: var(--text-xs);
+  /* 2026-06-09:从 emoji 字符改 SVG line icon — 用 inline-flex 对齐 */
+  display: inline-flex;
+  align-items: center;
+  color: var(--color-text-muted);
 }
 .gs-group-count {
   color: var(--color-text-subtle);
