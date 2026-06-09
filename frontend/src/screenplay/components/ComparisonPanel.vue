@@ -79,14 +79,52 @@ function goToBYOKActivation() {
 
 const selectedSceneId = ref<string>("");
 
-// 2026-06-09:5 个预设 vendor(label / base_url / model 不变)
-const PRESETS: Array<Omit<ProviderConfigApi, "api_key">> = [
-  { label: "DeepSeek V3", base_url: "https://api.deepseek.com/v1", model: "deepseek-chat" },
-  { label: "OpenAI GPT-4o", base_url: "https://api.openai.com/v1", model: "gpt-4o" },
-  { label: "Anthropic Claude", base_url: "https://api.anthropic.com/v1", model: "claude-sonnet-4-5" },
-  { label: "Qwen Max", base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen-max" },
-  { label: "Moonshot Kimi", base_url: "https://api.moonshot.cn/v1", model: "moonshot-v1-8k" },
+// 2026-06-09:5 个预设 vendor + 每家多个主流模型可下拉选
+// label / base_url 固定(厂商身份),model 用户从下拉选
+interface VendorPreset {
+  label: string;        // 厂商身份(锁定不可编辑)
+  base_url: string;     // 厂商 API endpoint
+  models: string[];     // 该厂商主流模型(下拉)
+  default_model: string;
+}
+
+const PRESETS: VendorPreset[] = [
+  {
+    label: "DeepSeek V3",
+    base_url: "https://api.deepseek.com/v1",
+    models: ["deepseek-chat", "deepseek-reasoner"],
+    default_model: "deepseek-chat",
+  },
+  {
+    label: "OpenAI GPT-4o",
+    base_url: "https://api.openai.com/v1",
+    models: ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "o3-mini"],
+    default_model: "gpt-4o",
+  },
+  {
+    label: "Anthropic Claude",
+    base_url: "https://api.anthropic.com/v1",
+    models: ["claude-sonnet-4-5", "claude-opus-4-1", "claude-haiku-4"],
+    default_model: "claude-sonnet-4-5",
+  },
+  {
+    label: "Qwen Max",
+    base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    models: ["qwen-max", "qwen-plus", "qwen-turbo"],
+    default_model: "qwen-max",
+  },
+  {
+    label: "Moonshot Kimi",
+    base_url: "https://api.moonshot.cn/v1",
+    models: ["moonshot-v1-8k", "moonshot-v1-32k", "moonshot-v1-128k"],
+    default_model: "moonshot-v1-8k",
+  },
 ];
+
+/** 给定 label 找该厂商可用 model 列表 — provider-row 下拉用 */
+function modelsForLabel(label: string): string[] {
+  return PRESETS.find(p => p.label === label)?.models ?? [];
+}
 
 // 2026-06-09:默认选中 DeepSeek V3 + Qwen Max + Moonshot Kimi 三个(用户拍板)
 const DEFAULT_PRESET_LABELS = ["DeepSeek V3", "Qwen Max", "Moonshot Kimi"];
@@ -94,28 +132,40 @@ const DEFAULT_PRESET_LABELS = ["DeepSeek V3", "Qwen Max", "Moonshot Kimi"];
 function buildDefaultProviders(): ProviderConfigApi[] {
   return PRESETS
     .filter(p => DEFAULT_PRESET_LABELS.includes(p.label))
-    .map(p => ({ ...p, api_key: "" }));
+    .map(p => ({
+      label: p.label,
+      base_url: p.base_url,
+      model: p.default_model,
+      api_key: "",
+    }));
 }
 
 const providers = ref<ProviderConfigApi[]>(buildDefaultProviders());
 
 const STORAGE_KEY = "huimeng_screenplay_compare_providers";
 
-function addProvider(preset?: Omit<ProviderConfigApi, "api_key">) {
+/** 2026-06-09:加 provider — 只允许从预设里挑(不再支持自填) */
+function addProviderFromPreset(preset: VendorPreset) {
   if (providers.value.length >= 5) {
-    toast.warning("最多 5 个 provider 同时对比");
+    toast.warning("最多挑 5 个模型同时对比");
     return;
   }
-  if (preset) {
-    providers.value.push({ ...preset, api_key: "" });
-  } else {
-    providers.value.push({ label: "", api_key: "", base_url: "", model: "" });
+  if (providers.value.some(p => p.label === preset.label)) {
+    toast.info(`${preset.label} 已经在列表里了`);
+    return;
   }
+  providers.value.push({
+    label: preset.label,
+    base_url: preset.base_url,
+    model: preset.default_model,
+    api_key: "",
+  });
 }
 
 function removeProvider(idx: number) {
   if (providers.value.length <= 2) {
-    toast.warning("至少需要 2 个 provider 才能对比");
+    // 2026-06-09:剩 2 个就到底线了,弹友好拒绝
+    toast.warning("再少一个就没法对比啦,先从「快速加」里挑一个再来移除");
     return;
   }
   providers.value.splice(idx, 1);
@@ -128,16 +178,29 @@ function loadFromStorage() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return;
     const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed) && parsed.length >= 2) {
-      providers.value = parsed.map((p: Record<string, unknown>) => ({
-        label: String(p.label || ""),
-        api_key: String(p.api_key || ""),
-        base_url: String(p.base_url || ""),
-        model: String(p.model || ""),
-      }));
+    if (!Array.isArray(parsed) || parsed.length < 2) return;
+    // 2026-06-09:sanitize — 只接受 PRESETS 里的 vendor,过滤老版自填
+    // model 也要在该 vendor 支持列表内,否则用 default_model
+    const sanitized: ProviderConfigApi[] = [];
+    for (const raw of parsed) {
+      const label = String((raw as Record<string, unknown>).label || "");
+      const preset = PRESETS.find(p => p.label === label);
+      if (!preset) continue;  // 丢弃旧版自定义 vendor
+      const rawModel = String((raw as Record<string, unknown>).model || "");
+      const model = preset.models.includes(rawModel) ? rawModel : preset.default_model;
+      sanitized.push({
+        label: preset.label,
+        base_url: preset.base_url,    // 用预设的 base_url(防用户老版乱填)
+        model,
+        api_key: String((raw as Record<string, unknown>).api_key || ""),
+      });
     }
+    if (sanitized.length >= 2) {
+      providers.value = sanitized.slice(0, 5);
+    }
+    // 不足 2 个:保留默认值,不动 providers
   } catch {
-    // 解析失败默认配置
+    // 解析失败保留默认
   }
 }
 
@@ -441,7 +504,7 @@ const ELEMENT_TYPE_LABEL: Record<string, string> = {
                   :key="p.label"
                   class="preset-chip"
                   :disabled="providers.length >= 5 || providers.some(x => x.label === p.label)"
-                  @click="addProvider(p)"
+                  @click="addProviderFromPreset(p)"
                 >
                   {{ p.label }}
                 </button>
@@ -457,12 +520,9 @@ const ELEMENT_TYPE_LABEL: Record<string, string> = {
               >
                 <div class="prow-idx mono">#{{ idx + 1 }}</div>
                 <div class="prow-fields" :class="{ 'prow-fields--platform': mode === 'platform' }">
-                  <input
-                    v-model="p.label"
-                    class="prow-input"
-                    placeholder=""
-                  />
-                  <!-- 2026-06-09:platform 模式隐藏 api_key / base_url 两列(不需要,且不应暴露)-->
+                  <!-- 2026-06-09:厂商 label 锁住,不可编辑 -->
+                  <div class="prow-vendor">{{ p.label }}</div>
+                  <!-- 2026-06-09:platform 模式隐藏 api_key / base_url 两列 -->
                   <template v-if="mode === 'byok'">
                     <input
                       v-model="p.api_key"
@@ -476,11 +536,16 @@ const ELEMENT_TYPE_LABEL: Record<string, string> = {
                       placeholder=""
                     />
                   </template>
-                  <input
-                    v-model="p.model"
-                    class="prow-input"
-                    placeholder=""
-                  />
+                  <!-- 2026-06-09:model 改下拉,只在该厂商支持的主流模型里选 -->
+                  <select v-model="p.model" class="prow-input prow-select">
+                    <option
+                      v-for="m in modelsForLabel(p.label)"
+                      :key="m"
+                      :value="m"
+                    >
+                      {{ m }}
+                    </option>
+                  </select>
                 </div>
                 <button
                   class="prow-del-btn"
@@ -496,13 +561,7 @@ const ELEMENT_TYPE_LABEL: Record<string, string> = {
               </li>
             </ul>
 
-            <button
-              class="add-provider-btn"
-              :disabled="providers.length >= 5"
-              @click="addProvider()"
-            >
-              + 加 Provider
-            </button>
+            <!-- 2026-06-09:删 "+ 加 Provider" 自填入口 — 用户只能从「快速加」选 -->
           </div>
 
           <!-- 2026-06-09:文案改为用户语言 -->
@@ -980,7 +1039,7 @@ const ELEMENT_TYPE_LABEL: Record<string, string> = {
   grid-template-columns: 1fr 1fr 1fr 1fr;
   gap: 6px;
 }
-/* 2026-06-09:platform 模式只 2 列(label / model)*/
+/* 2026-06-09:platform 模式只 2 列(vendor / model)*/
 .prow-fields--platform {
   grid-template-columns: 1fr 1fr;
 }
@@ -988,6 +1047,26 @@ const ELEMENT_TYPE_LABEL: Record<string, string> = {
   .prow-fields {
     grid-template-columns: 1fr 1fr;
   }
+}
+/* 2026-06-09:vendor label 显示为只读 chip(不是 input)*/
+.prow-vendor {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 9px;
+  font-size: 12.5px;
+  color: var(--text);
+  font-weight: 500;
+  background: var(--bg-deep);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  letter-spacing: 0.02em;
+  cursor: default;
+  user-select: none;
+}
+/* 2026-06-09:model 下拉跟其他 input 视觉一致 */
+.prow-select {
+  cursor: pointer;
+  appearance: auto;
 }
 .prow-input {
   padding: 6px 9px;

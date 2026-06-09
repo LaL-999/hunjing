@@ -278,8 +278,18 @@ def get_status(
     conn: sqlite3.Connection,
     user_id: str,
 ) -> BYOKStatusResponse:
-    """给 sidebar 入口判断 — 是否已激活 / 是否有未激活的码 / configs 数量"""
+    """给 sidebar 入口判断 — 是否已激活 / 是否有未激活的码 / configs 数量
+
+    2026-06-09:创始人(users.plan='founder')无条件视为已激活,不再要求
+    走 purchase + activate 流程(避免产品方自己被自己的付费墙挡住)。
+    """
     now_iso = _now_iso()
+
+    # 2026-06-09:创始人短路 — 直接读 users.plan 判断
+    plan_row = conn.execute(
+        "SELECT plan FROM users WHERE id = ? LIMIT 1", (user_id,)
+    ).fetchone()
+    is_founder = plan_row is not None and plan_row["plan"] == "founder"
 
     # 当前 active 订阅
     active_row = conn.execute(
@@ -313,7 +323,8 @@ def get_status(
     ).fetchone()
 
     return BYOKStatusResponse(
-        has_active_subscription=active_row is not None,
+        # 创始人或者真有 active 订阅
+        has_active_subscription=is_founder or (active_row is not None),
         has_unused_subscription=unused_row is not None,
         active_subscription_expires_at=active_row["expires_at"] if active_row else None,
         active_code=active_row["code"] if active_row else None,
