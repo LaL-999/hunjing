@@ -19,6 +19,7 @@ import { computed, onMounted, ref, watch } from "vue";
 
 import {
   deleteEpisodePlan,
+  downloadEpisodePlan,
   getEpisodePlan,
   getEpisodePresets,
   listEpisodePlans,
@@ -28,6 +29,7 @@ import {
   type EpisodePlanSummaryApi,
   type EpisodePresetApi,
   type EpisodeWithMetaApi,
+  type ExportFormat,
   type MultiPerspectivePlanApi,
   type PerspectiveDescApi,
   type PerspectivePlanApi,
@@ -312,6 +314,22 @@ function closeRenameDialog() {
   renameDialogOpen.value = false;
   renamingPlan.value = null;
   renameDialogName.value = "";
+}
+
+/** 导出方案 — 弹下拉选格式后下载 */
+const exportingPlanId = ref<string | null>(null);
+
+async function exportPlan(planId: string, fmt: ExportFormat) {
+  exportingPlanId.value = planId;
+  try {
+    await downloadEpisodePlan(planId, fmt);
+    toast.success(`已导出 ${fmt} 文件`);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    toast.error("导出失败:" + msg);
+  } finally {
+    exportingPlanId.value = null;
+  }
 }
 
 async function confirmRename() {
@@ -875,6 +893,31 @@ watch(
                 </div>
               </div>
               <div class="saved-actions">
+                <!-- 导出三按钮(直接点 = 单种格式下载,避免下拉一层)-->
+                <button
+                  class="saved-action-btn saved-action-btn--export"
+                  :disabled="exportingPlanId === p.id"
+                  title="导出 fountain(剧本行业格式)"
+                  @click="exportPlan(p.id, 'fountain')"
+                >
+                  <span class="export-format-text">.fountain</span>
+                </button>
+                <button
+                  class="saved-action-btn saved-action-btn--export"
+                  :disabled="exportingPlanId === p.id"
+                  title="导出 txt(人读纯文本)"
+                  @click="exportPlan(p.id, 'txt')"
+                >
+                  <span class="export-format-text">.txt</span>
+                </button>
+                <button
+                  class="saved-action-btn saved-action-btn--export"
+                  :disabled="exportingPlanId === p.id"
+                  title="导出 yaml(开发者 / 备份)"
+                  @click="exportPlan(p.id, 'yaml')"
+                >
+                  <span class="export-format-text">.yaml</span>
+                </button>
                 <button class="saved-action-btn" @click="openRenameDialog(p)" title="改名">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
                        stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
@@ -1715,6 +1758,21 @@ watch(
   background: var(--danger-soft);
   color: var(--danger);
   border-color: var(--danger);
+}
+/* 2026-06-09 P4:导出格式按钮(文字型,比 svg 按钮窄)*/
+.saved-action-btn--export {
+  width: auto;
+  padding: 0 8px;
+}
+.saved-action-btn--export:hover:not(:disabled) {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--accent-border);
+}
+.export-format-text {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
 }
 
 /* 2026-06-09 P3:保存 / 改名对话框 */

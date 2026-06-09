@@ -411,6 +411,37 @@ export async function deleteEpisodePlan(planId: string): Promise<void> {
   );
 }
 
+/** 下载分集方案为指定格式(fountain / txt / yaml)*/
+export async function downloadEpisodePlan(
+  planId: string,
+  format: ExportFormat,
+): Promise<void> {
+  const { blob, headers } = await api.downloadFile(
+    `/screenplay/episode-plans/${encodeURIComponent(planId)}/export.${format}`,
+  );
+  const disposition = headers.get("Content-Disposition") || "";
+  let filename = `episode-plan.${format}`;
+  const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match) {
+    try {
+      filename = decodeURIComponent(utf8Match[1]);
+    } catch {
+      /* fallback */
+    }
+  } else {
+    const plainMatch = disposition.match(/filename="?([^";]+)"?/i);
+    if (plainMatch) filename = plainMatch[1];
+  }
+  const blobUrl = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = blobUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+}
+
 // ============================================================
 // 阶段 8.5 — 多模型对比
 // ============================================================

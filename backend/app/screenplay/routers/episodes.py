@@ -31,12 +31,15 @@ from app.deps import get_current_user, get_db
 from app.models.user import User
 from app.screenplay.services import (
     episode_planner,
+    episode_plan_exporter,
     episode_plan_store,
     episode_quality_scorer,
     episode_title_writer,
     multi_perspective_planner,
     screenplay_store,
 )
+from fastapi.responses import Response
+from urllib.parse import quote as urlquote
 
 logger = logging.getLogger(__name__)
 
@@ -415,3 +418,72 @@ def api_delete_episode_plan(
             detail={"code": "NOT_FOUND", "message": "方案不存在或无权访问"},
         )
     return {"ok": True}
+
+
+# ============================================================
+# 2026-06-09 P4 — 分集方案导出(fountain / txt / yaml)
+#
+#   GET /episode-plans/{plan_id}/export.{format}
+#
+# 复用现有导出 endpoint 模式(同 /screenplays/{id}/export.{format})。
+# Content-Disposition 用 RFC 5987 UTF-8 编码 filename*= 支持中文。
+# ============================================================
+
+
+_EXPORT_FORMATS = {
+    "fountain": ("application/octet-stream", "fountain"),
+    "txt": ("text/plain; charset=utf-8", "txt"),
+    "yaml": ("application/x-yaml; charset=utf-8", "yaml"),
+}
+
+
+@router.get("/episode-plans/{plan_id}/export.{fmt}")
+def api_export_episode_plan(
+    plan_id: str,
+    fmt: str,
+    user: User = Depends(get_current_user),
+    conn=Depends(get_db),
+):
+    """导出分集方案为指定格式。
+
+    Errors:
+      400 UNSUPPORTED_FORMAT  fmt 不在 fountain/txt/yaml 内
+      404 NOT_FOUND           方案不存在或无权访问
+    """
+    if fmt not in _EXPORT_FORMATS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "code": "UNSUPPORTED_FORMAT",
+                "message": f"不支持的格式: {fmt}(支持:fountain / txt / yaml)",
+            },
+        )
+
+    p = episode_plan_store.get_plan(conn, plan_id=plan_id, user_id=user.id)
+    if not p:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "NOT_FOUND", "message": "方案不存在或无权访问"},
+        )
+
+    summary_dict = episode_plan_store.to_full_dict(p)  # 含全字段
+    plan_data = p.plan_data
+
+    if fmt == "fountain":
+        content = episode_plan_exporter.export_to_fountain(summary_dict, plan_data)
+    elif fmt == "txt":
+        content = episode_plan_exporter.export_to_txt(summary_dict, plan_data)
+    else:  # yaml
+        content = episode_plan_exporter.export_to_yaml(summary_dict, plan_data)
+
+    mime, ext = _EXPORT_FORMATS[fmt]
+    safe_name = episode_plan_exporter.safe_filename(p.scheme_name)
+    # RFC 5987 中文文件名编码
+    filename_utf8 = urlquote(f"{safe_name}.{ext}")
+    disposition = f"attachment; filename*=UTF-8''{filename_utf8}"
+
+    return Response(
+        content=content.encode("utf-8"),
+        media_type=mime,
+        headers={"Content-Disposition": disposition},
+    )
