@@ -12,24 +12,31 @@
 -->
 
 <template>
-  <transition name="modal-fade">
-    <div v-if="isOpen" class="modal-backdrop" @click.self="close">
-      <div class="modal-card">
-        <header class="modal-header">
-          <div class="title-wrap">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="20" height="20" viewBox="0 0 24 24"
-              fill="none" stroke="currentColor" stroke-width="1.8"
-              stroke-linecap="round" stroke-linejoin="round"
-              class="title-icon"
-            >
-              <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" />
-            </svg>
-            <h2 class="modal-title">自携密钥</h2>
-          </div>
-          <button class="close-btn" aria-label="关闭" @click="close">×</button>
-        </header>
+  <!-- 2026-06-09 bug fix:Teleport 到 body 逃出 sidebar 的 transform/overflow 容器
+       根因:本 modal 从 AppSidebar.vue 的 <aside> 内渲染,aside 加了 transform
+       (sidebar 折叠动画)+ overflow:hidden,根据 CSS spec position:fixed 的
+       子元素会以最近的有 transform 的祖先为 containing block — 导致 modal 被
+       压缩到 240px sidebar 内,看着只剩左上角。Teleport 让 modal DOM 渲染到
+       body,position:fixed 重新以 viewport 为参考,恢复全屏覆盖 -->
+  <Teleport to="body">
+    <transition name="modal-fade">
+      <div v-if="isOpen" class="modal-backdrop" @click.self="close">
+        <div class="modal-card">
+          <header class="modal-header">
+            <div class="title-wrap">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="20" height="20" viewBox="0 0 24 24"
+                fill="none" stroke="currentColor" stroke-width="1.8"
+                stroke-linecap="round" stroke-linejoin="round"
+                class="title-icon"
+              >
+                <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" />
+              </svg>
+              <h2 class="modal-title">自携密钥</h2>
+            </div>
+            <button class="close-btn" aria-label="关闭" @click="close">×</button>
+          </header>
 
         <div class="modal-body">
           <!-- 状态:已激活 -->
@@ -151,7 +158,8 @@
         </div>
       </div>
     </div>
-  </transition>
+    </transition>
+  </Teleport>
 
   <!-- 2026-06-05 真支付流程:点购买 → 打开收款码支付流程 -->
   <BYOKPaymentModal
