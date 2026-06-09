@@ -18,8 +18,14 @@
 import { computed, onMounted, ref, watch } from "vue";
 
 import {
+  deleteEpisodePlan,
+  getEpisodePlan,
   getEpisodePresets,
+  listEpisodePlans,
   planEpisodesMulti,
+  renameEpisodePlan,
+  saveEpisodePlan,
+  type EpisodePlanSummaryApi,
   type EpisodePresetApi,
   type EpisodeWithMetaApi,
   type MultiPerspectivePlanApi,
@@ -28,6 +34,7 @@ import {
   type PlanQualityScoresApi,
 } from "../api/screenplay-client";
 import { toast } from "../../composables/useToast";
+import { confirm } from "../../composables/useConfirm";
 
 const props = defineProps<{
   novelId: string;
@@ -48,6 +55,18 @@ const withLlmTitles = ref<boolean>(true);
 
 const plan = ref<MultiPerspectivePlanApi | null>(null);
 const loading = ref<boolean>(false);
+
+// 2026-06-09 P3:tabs(主面板 / 我的方案 列表)+ 已加载方案的 id(对应"覆盖保存")
+type MainTab = "plan" | "saved";
+const mainTab = ref<MainTab>("plan");
+const savedPlans = ref<EpisodePlanSummaryApi[]>([]);
+const savedPlansLoading = ref<boolean>(false);
+const currentLoadedPlanId = ref<string | null>(null);   // 加载历史方案后记下,改名/删除用
+
+// 保存方案 modal state
+const saveDialogOpen = ref<boolean>(false);
+const saveDialogName = ref<string>("");
+const saving = ref<boolean>(false);
 const activePerspective = ref<"rhythm" | "hook" | "arc">("rhythm");
 const expandedEpisode = ref<number>(-1);
 
@@ -151,6 +170,175 @@ async function runPlan() {
 
 function selectPreset(key: string) {
   selectedPreset.value = key;
+}
+
+// =====================================================================
+// 2026-06-09 P3:分集方案持久化操作
+// =====================================================================
+
+/** 打开保存对话框,默认填一个建议名 */
+function openSaveDialog() {
+  if (!plan.value) {
+    toast.warning("先生成一个方案再保存");
+    return;
+  }
+  // 建议名格式:「预设 · 推荐视角 · MM-DD」
+  const presetLabel = presets.value.find(p => p.key === selectedPreset.value)?.label
+    ?? selectedPreset.value;
+  const persp = plan.value.recommended_perspective ?? "rhythm";
+  const perspLabel = perspectiveDescs.value.find(p => p.key === persp)?.label ?? persp;
+  const d = new Date();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  saveDialogName.value = `${presetLabel} · ${perspLabel} · ${mm}-${dd}`;
+  saveDialogOpen.value = true;
+}
+
+function closeSaveDialog() {
+  saveDialogOpen.value = false;
+  saveDialogName.value = "";
+}
+
+/** 真保存 */
+async function confirmSave() {
+  if (!plan.value) return;
+  const name = saveDialogName.value.trim();
+  if (!name) {
+    toast.warning("请输入方案名");
+    return;
+  }
+  if (name.length > 80) {
+    toast.warning("方案名最多 80 字");
+    return;
+  }
+  saving.value = true;
+  try {
+    await saveEpisodePlan(props.novelId, {
+      scheme_name: name,
+      preset: selectedPreset.value,
+      target_minutes: plan.value.target_minutes_per_ep,
+      plan_data: plan.value,
+    });
+    toast.success(`已保存方案「${name}」`);
+    closeSaveDialog();
+    // 刷新列表(让用户回 saved tab 时能看到)
+    await loadSavedPlans();
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    toast.error("保存失败:" + msg);
+  } finally {
+    saving.value = false;
+  }
+}
+
+/** 列表拉取 */
+async function loadSavedPlans() {
+  savedPlansLoading.value = true;
+  try {
+    savedPlans.value = await listEpisodePlans(props.novelId);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    toast.error("拉取方案列表失败:" + msg);
+  } finally {
+    savedPlansLoading.value = false;
+  }
+}
+
+/** 切 tab — 进 saved 时拉列表 */
+function switchMainTab(tab: MainTab) {
+  mainTab.value = tab;
+  if (tab === "saved") {
+    void loadSavedPlans();
+  }
+}
+
+/** 加载历史方案 — 切回主面板,plan/视角 自动回填 */
+async function openSavedPlan(planId: string) {
+  try {
+    const full = await getEpisodePlan(planId);
+    plan.value = full.plan_data;
+    currentLoadedPlanId.value = full.id;
+    selectedPreset.value = full.preset;
+    customMinutes.value = full.target_minutes;
+    // 自动切回推荐视角
+    if (full.plan_data.recommended_perspective) {
+      activePerspective.value = full.plan_data.recommended_perspective;
+    } else if (full.plan_data.perspectives.length > 0) {
+      activePerspective.value = full.plan_data.perspectives[0].perspective;
+    }
+    mainTab.value = "plan";
+    toast.success(`已加载方案「${full.scheme_name}」`);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    toast.error("加载方案失败:" + msg);
+  }
+}
+
+/** 删除方案 — 二次确认 */
+async function deleteSavedPlan(p: EpisodePlanSummaryApi) {
+  const ok = await confirm({
+    title: "删除方案",
+    message: `确定删除「${p.scheme_name}」吗?此操作不可恢复。`,
+    confirmLabel: "删除",
+    cancelLabel: "取消",
+    danger: true,
+  });
+  if (!ok) return;
+  try {
+    await deleteEpisodePlan(p.id);
+    toast.success("已删除");
+    if (currentLoadedPlanId.value === p.id) {
+      currentLoadedPlanId.value = null;
+    }
+    await loadSavedPlans();
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    toast.error("删除失败:" + msg);
+  }
+}
+
+/** 改名 — 复用 saveDialog 受控 input(避免 window.prompt 违反铁律)*/
+const renameDialogOpen = ref<boolean>(false);
+const renamingPlan = ref<EpisodePlanSummaryApi | null>(null);
+const renameDialogName = ref<string>("");
+
+function openRenameDialog(p: EpisodePlanSummaryApi) {
+  renamingPlan.value = p;
+  renameDialogName.value = p.scheme_name;
+  renameDialogOpen.value = true;
+}
+
+function closeRenameDialog() {
+  renameDialogOpen.value = false;
+  renamingPlan.value = null;
+  renameDialogName.value = "";
+}
+
+async function confirmRename() {
+  const target = renamingPlan.value;
+  if (!target) return;
+  const trimmed = renameDialogName.value.trim();
+  if (!trimmed) {
+    toast.warning("方案名不能为空");
+    return;
+  }
+  if (trimmed.length > 80) {
+    toast.warning("方案名最多 80 字");
+    return;
+  }
+  if (trimmed === target.scheme_name) {
+    closeRenameDialog();
+    return;
+  }
+  try {
+    await renameEpisodePlan(target.id, trimmed);
+    toast.success("已改名");
+    closeRenameDialog();
+    await loadSavedPlans();
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    toast.error("改名失败:" + msg);
+  }
 }
 
 function switchPerspective(p: "rhythm" | "hook" | "arc") {
@@ -270,6 +458,29 @@ watch(
           </button>
         </header>
 
+        <!-- 2026-06-09 P3:主 tab 切换 — 主面板 / 我的方案 -->
+        <div class="epp-maintab-row">
+          <button
+            class="epp-maintab"
+            :class="{ active: mainTab === 'plan' }"
+            @click="switchMainTab('plan')"
+          >
+            生成方案
+          </button>
+          <button
+            class="epp-maintab"
+            :class="{ active: mainTab === 'saved' }"
+            @click="switchMainTab('saved')"
+          >
+            我的方案
+            <span v-if="savedPlans.length > 0" class="epp-maintab-count mono">
+              {{ savedPlans.length }}
+            </span>
+          </button>
+        </div>
+
+        <!-- 2026-06-09 P3:主面板内容(生成方案 tab)-->
+        <div v-show="mainTab === 'plan'" class="epp-tab-content">
         <!-- 控制区 -->
         <section class="ctrl-row">
           <!-- 预设档 chip -->
@@ -614,14 +825,115 @@ watch(
           </template>
         </section>
 
-        <!-- 底部说明 -->
+        <!-- 底部说明 + 2026-06-09 P3:保存按钮 -->
         <footer class="epp-ftr" v-if="plan">
           <span class="ftr-meta">
             预设:<strong>{{ plan.preset_label }}</strong> ·
             目标 {{ fmtMin(plan.target_minutes_per_ep) }} 分钟/集 ·
             数据源:{{ plan.bridge_data_source === "sp4_simulation" ? "桥接 SP-4 增强" : "纯规则" }}
           </span>
+          <button class="ftr-save-btn" @click="openSaveDialog">
+            <svg
+              width="14" height="14" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
+            >
+              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+              <polyline points="17 21 17 13 7 13 7 21" />
+              <polyline points="7 3 7 8 15 8" />
+            </svg>
+            保存方案
+          </button>
         </footer>
+
+        </div><!-- /epp-tab-content plan -->
+
+        <!-- 2026-06-09 P3:我的方案 tab -->
+        <div v-show="mainTab === 'saved'" class="epp-tab-content epp-saved-tab">
+          <div v-if="savedPlansLoading" class="epp-saved-loading">加载中…</div>
+          <div v-else-if="savedPlans.length === 0" class="epp-saved-empty">
+            <p>还没保存任何方案</p>
+            <p class="epp-saved-empty-hint">
+              切到「生成方案」tab 跑一次分集,跑完后点底部「保存方案」即可
+            </p>
+          </div>
+          <ul v-else class="saved-list">
+            <li
+              v-for="p in savedPlans"
+              :key="p.id"
+              class="saved-row"
+            >
+              <div class="saved-main" @click="openSavedPlan(p.id)">
+                <div class="saved-name">{{ p.scheme_name }}</div>
+                <div class="saved-meta">
+                  <span>{{ p.preset }}</span>
+                  <span class="meta-sep">·</span>
+                  <span>{{ p.episode_count }} 集 / {{ p.scene_count }} 场</span>
+                  <span class="meta-sep">·</span>
+                  <span>目标 {{ p.target_minutes }} 分钟</span>
+                  <span class="meta-sep">·</span>
+                  <span class="mono">{{ p.created_at.slice(0, 10) }}</span>
+                </div>
+              </div>
+              <div class="saved-actions">
+                <button class="saved-action-btn" @click="openRenameDialog(p)" title="改名">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                       stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 20h9" />
+                    <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+                  </svg>
+                </button>
+                <button class="saved-action-btn saved-action-btn--danger" @click="deleteSavedPlan(p)" title="删除">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                       stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 6h18" />
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                    <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                  </svg>
+                </button>
+              </div>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2026-06-09 P3:保存方案 dialog -->
+    <div v-if="saveDialogOpen" class="epp-dialog-overlay" @click.self="closeSaveDialog">
+      <div class="epp-dialog screenplay-module">
+        <h3 class="epp-dialog-title">保存方案</h3>
+        <p class="epp-dialog-desc">给这套分集起个名字,方便以后从「我的方案」找回</p>
+        <input
+          v-model="saveDialogName"
+          type="text"
+          class="epp-dialog-input"
+          maxlength="80"
+          placeholder=""
+          @keyup.enter="confirmSave"
+        />
+        <div class="epp-dialog-ftr">
+          <button class="btn-cancel" @click="closeSaveDialog" :disabled="saving">取消</button>
+          <button class="btn-primary" @click="confirmSave" :disabled="saving">
+            {{ saving ? "保存中…" : "保存" }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2026-06-09 P3:改名 dialog(复用保存对话框样式)-->
+    <div v-if="renameDialogOpen" class="epp-dialog-overlay" @click.self="closeRenameDialog">
+      <div class="epp-dialog screenplay-module">
+        <h3 class="epp-dialog-title">方案改名</h3>
+        <input
+          v-model="renameDialogName"
+          type="text"
+          class="epp-dialog-input"
+          maxlength="80"
+          @keyup.enter="confirmRename"
+        />
+        <div class="epp-dialog-ftr">
+          <button class="btn-cancel" @click="closeRenameDialog">取消</button>
+          <button class="btn-primary" @click="confirmRename">改名</button>
+        </div>
       </div>
     </div>
   </Teleport>
@@ -1239,10 +1551,255 @@ watch(
   font-size: 11px;
   color: var(--text-muted);
   letter-spacing: 0.04em;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
 }
 .ftr-meta strong {
   color: var(--text);
   font-weight: 600;
+}
+/* 2026-06-09 P3:保存按钮 */
+.ftr-save-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.ftr-save-btn:hover {
+  background: var(--accent-hover);
+}
+
+/* 2026-06-09 P3:主 tab 切换条 */
+.epp-maintab-row {
+  display: flex;
+  gap: 4px;
+  padding: 0 24px;
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--card-bg);
+}
+.epp-maintab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 18px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  margin-bottom: -1px;
+}
+.epp-maintab:hover {
+  color: var(--text);
+}
+.epp-maintab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  font-weight: 500;
+}
+.epp-maintab-count {
+  font-size: 10.5px;
+  padding: 1px 6px;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  border-radius: 9px;
+}
+
+/* tab content wrapper(用 v-show 切,无 transition,避免内部布局重算)*/
+.epp-tab-content {
+  display: contents;
+}
+
+/* 2026-06-09 P3:我的方案 tab */
+.epp-saved-tab {
+  display: block !important;   /* 覆盖 display: contents */
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 24px;
+}
+.epp-saved-loading,
+.epp-saved-empty {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.7;
+}
+.epp-saved-empty-hint {
+  font-size: 11.5px;
+  color: var(--text-subtle);
+  margin-top: 6px;
+  font-style: italic;
+}
+
+.saved-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.saved-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--card-bg);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  transition: all var(--transition-fast);
+}
+.saved-row:hover {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+}
+.saved-main {
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+.saved-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+.saved-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  letter-spacing: 0.04em;
+}
+.meta-sep {
+  color: var(--text-subtle);
+}
+.saved-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.saved-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.saved-action-btn:hover {
+  background: var(--hover-bg);
+  color: var(--text);
+}
+.saved-action-btn--danger:hover {
+  background: var(--danger-soft);
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+/* 2026-06-09 P3:保存 / 改名对话框 */
+.epp-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10001;
+}
+.epp-dialog {
+  width: 100%;
+  max-width: 420px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  box-shadow: var(--shadow-lg);
+}
+.epp-dialog-title {
+  margin: 0 0 8px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+  font-family: var(--font-serif);
+}
+.epp-dialog-desc {
+  margin: 0 0 14px;
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+.epp-dialog-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+  font-family: inherit;
+  margin-bottom: 16px;
+  box-sizing: border-box;
+}
+.epp-dialog-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.epp-dialog-ftr {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.epp-dialog-ftr .btn-cancel,
+.epp-dialog-ftr .btn-primary {
+  padding: 7px 18px;
+  border-radius: var(--radius-md);
+  font-size: 12.5px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  border: 1px solid var(--border);
+}
+.epp-dialog-ftr .btn-cancel {
+  background: var(--card-bg);
+  color: var(--text);
+}
+.epp-dialog-ftr .btn-cancel:hover:not(:disabled) {
+  background: var(--hover-bg);
+}
+.epp-dialog-ftr .btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+.epp-dialog-ftr .btn-primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+.epp-dialog-ftr button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .mono {

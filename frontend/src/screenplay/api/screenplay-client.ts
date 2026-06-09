@@ -336,6 +336,82 @@ export async function planEpisodesMulti(
 }
 
 // ============================================================
+// 2026-06-09:分集方案持久化(P2 后端 CRUD 对应)
+// ============================================================
+
+/** 列表用 — 不含 plan_data,节省带宽 */
+export interface EpisodePlanSummaryApi {
+  id: string;
+  novel_id: string;
+  scheme_name: string;
+  preset: string;
+  target_minutes: number;
+  recommended_perspective: string | null;
+  episode_count: number;
+  scene_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+/** 详情用 — 含完整 plan_data(刚保存的 MultiPerspectivePlan 序列化)*/
+export interface EpisodePlanFullApi extends EpisodePlanSummaryApi {
+  plan_data: MultiPerspectivePlanApi;
+}
+
+/** 保存方案 */
+export async function saveEpisodePlan(
+  novelId: string,
+  body: {
+    scheme_name: string;
+    preset: string;
+    target_minutes: number;
+    plan_data: MultiPerspectivePlanApi;
+  },
+): Promise<{ plan_id: string }> {
+  return api.post(
+    `/screenplay/novels/${encodeURIComponent(novelId)}/episode-plans`,
+    body,
+  );
+}
+
+/** 列出某 novel 下的所有方案 */
+export async function listEpisodePlans(
+  novelId: string,
+): Promise<EpisodePlanSummaryApi[]> {
+  const r = await api.get<{ items: EpisodePlanSummaryApi[] }>(
+    `/screenplay/novels/${encodeURIComponent(novelId)}/episode-plans`,
+  );
+  return r.items ?? [];
+}
+
+/** 拿单个方案完整数据(含 plan_data 快照) */
+export async function getEpisodePlan(
+  planId: string,
+): Promise<EpisodePlanFullApi> {
+  return api.get(
+    `/screenplay/episode-plans/${encodeURIComponent(planId)}`,
+  );
+}
+
+/** 改名 */
+export async function renameEpisodePlan(
+  planId: string,
+  newName: string,
+): Promise<void> {
+  await api.patch(
+    `/screenplay/episode-plans/${encodeURIComponent(planId)}`,
+    { scheme_name: newName },
+  );
+}
+
+/** 删除 */
+export async function deleteEpisodePlan(planId: string): Promise<void> {
+  await api.delete(
+    `/screenplay/episode-plans/${encodeURIComponent(planId)}`,
+  );
+}
+
+// ============================================================
 // 阶段 8.5 — 多模型对比
 // ============================================================
 
