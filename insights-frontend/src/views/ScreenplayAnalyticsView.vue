@@ -91,7 +91,19 @@ async function load() {
       { days: windowDays.value },
     );
   } catch (e) {
-    error.value = String(e);
+    const raw = String(e);
+    // 2026-06-09:Failed to fetch = 网络层失败,99% 是 insights-backend 没起 / 没重启
+    if (raw.includes("Failed to fetch") || raw.includes("NetworkError")) {
+      error.value =
+        "无法连接 insights-backend(http://localhost:8001)。" +
+        "若是首次访问本看板,请重启后端服务加载新端点;" +
+        "若服务正在运行,请检查 CORS 配置(主平台 5173 / 洞察 5174)。";
+    } else if (raw.includes("404")) {
+      error.value =
+        "/admin/screenplay 端点不存在,后端可能未加载最新代码,请重启 insights-backend。";
+    } else {
+      error.value = raw;
+    }
   }
 }
 

@@ -391,9 +391,15 @@ onMounted(() => {
 
 watch(
   () => props.visible,
-  (v) => {
+  async (v) => {
     if (v) {
       stage.value = "config";
+      // 2026-06-09:每次打开主动 refresh BYOK 状态(防 store 缓存过期)
+      // 后端 byok_service 新加了"创始人自动激活",但 store 在登录时拉了一次就不再拉,
+      // 切创始人账号 / 新激活订阅后,这里要主动拉新状态
+      await byok.refreshStatus();
+      // 刷完根据最新 BYOK 状态决定默认模式
+      mode.value = byok.isActive.value ? "byok" : "platform";
       loadFromStorage();
       // 默认选第一个 scene
       if (!selectedSceneId.value && scenes.value.length > 0) {
@@ -927,11 +933,10 @@ const ELEMENT_TYPE_LABEL: Record<string, string> = {
   margin-bottom: 20px;
 }
 .cfg-section--grow {
-  /* 2026-06-09:provider 区撑开剩余空间(填底部留白) */
-  flex: 1;
+  /* 2026-06-09 v2:不再强撑剩余空间(撑开导致 5 行时 focus 边框溢出);
+   * 改用自然高度 + cmp-body overflow-y 已能滚 */
   display: flex;
   flex-direction: column;
-  min-height: 0;
 }
 .cfg-count {
   font-weight: 400;
@@ -1016,6 +1021,9 @@ const ELEMENT_TYPE_LABEL: Record<string, string> = {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  /* 2026-06-09 v2:防 5 行内容溢出 + focus border 泄漏 */
+  position: relative;
+  isolation: isolate;
 }
 .provider-row {
   display: flex;

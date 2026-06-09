@@ -1535,9 +1535,11 @@ async def get_screenplay_analytics(
         # ============================================================
         # 2. 转化漏斗:dashboard 卡片 → 上传 → compose → optimize → compare
         # ============================================================
+        # 2026-06-09 修 bug:events 表字段叫 meta_json 不是 meta;且 LIKE pattern
+        # 含双引号要用 ESCAPE,但用 SQLite 单引号字符串包 + json_extract 更稳
         funnel_steps = [
             ("dashboard_card_click", "Dashboard 剧创态卡点击",
-             "(meta JSON LIKE '%\"card\":\"screenplay\"%')"),
+             "json_extract(meta_json, '$.card') = 'screenplay'"),
             ("screenplay_novel_upload", "上传小说", None),
             ("screenplay_compose_start", "触发剧本生成", None),
             ("screenplay_optimize", "AI 优化重排", None),
