@@ -23,6 +23,7 @@ import type { NovelInfo } from "../types/screenplay";
 import type { Project } from "../../api/types";
 import { confirm } from "../../composables/useConfirm";
 import { toast } from "../../composables/useToast";
+import { track } from "../../composables/useAnalytics";
 
 const router = useRouter();
 
@@ -87,6 +88,11 @@ function openEditor(novelId: string) {
 }
 
 async function handleUploaded(novelId: string) {
+  // 2026-06-09 埋点 — 剧创态小说上传转化(用户决定进入剧创流水线)
+  track("screenplay_novel_upload", {
+    mode: "screenplay",
+    meta: { novel_id: novelId },
+  });
   await loadNovels();
   openEditor(novelId);
 }

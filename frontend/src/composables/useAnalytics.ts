@@ -30,7 +30,9 @@
 // 类型(对齐 insights-backend/app/models/event.py EVENT_TYPES)
 // ============================================================
 
-/** 17 个事件类型 — 加新类型必须同步 backend EVENT_TYPES tuple + migration CHECK */
+/** 27 个事件类型 — 加新类型必须同步 backend EVENT_TYPES tuple + migration CHECK
+ * 2026-06-09 扩展:剧创态 6 个 + 多模型对比 3 个 + dashboard 卡点击 1 个
+ */
 export type AnalyticsEventType =
   // 页面级
   | "page_view"
@@ -42,7 +44,7 @@ export type AnalyticsEventType =
   | "ai_call_failed"
   // 创作态切换
   | "mode_switch"
-  // 业务关键操作
+  // 业务关键操作(传统 4 态)
   | "project_create"
   | "project_delete"
   | "simulation_create"
@@ -53,10 +55,23 @@ export type AnalyticsEventType =
   // 异常 / 会话
   | "error"
   | "session_start"
-  | "session_end";
+  | "session_end"
+  // 2026-06-09 新增 — 剧创态(第 5 态)6 类
+  | "screenplay_novel_upload"      // 上传小说
+  | "screenplay_compose_start"     // 触发剧本生成
+  | "screenplay_compose_done"      // 剧本生成完成(含 bridge_used 元信息)
+  | "screenplay_optimize"          // AI 优化重排(全篇 / 单场)
+  | "screenplay_characters_view"   // 打开角色档案面板
+  | "screenplay_episodes_plan"     // 调用分集规划
+  // 2026-06-09 新增 — 多模型对比(BYOK B5)3 类
+  | "model_compare_start"          // 打开多模型对比配置
+  | "model_compare_run"            // 触发对比执行
+  | "model_compare_winner"         // 用户选定胜出 vendor(导出 / 采用)
+  // 2026-06-09 新增 — Dashboard 入口转化(新手教育价值)
+  | "dashboard_card_click";        // 主页 6 张创作态卡片点击(meta.card = "initial"/"middle"/etc.)
 
-/** 4 态枚举(对齐主平台 project.mode) */
-export type AnalyticsMode = "initial" | "middle" | "tail" | "comic";
+/** 5 态枚举(对齐主平台 project.mode + screenplay 新增) */
+export type AnalyticsMode = "initial" | "middle" | "tail" | "comic" | "screenplay";
 
 /** 单条埋点 payload(对齐 insights-backend TrackRequest) */
 export interface AnalyticsEvent {

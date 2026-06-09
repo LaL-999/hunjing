@@ -22,7 +22,7 @@ EVENT_TYPES: tuple[str, ...] = (
     "ai_call_failed",
     # 创作态切换
     "mode_switch",
-    # 业务关键操作
+    # 业务关键操作(传统 4 态)
     "project_create",
     "project_delete",
     "simulation_create",
@@ -34,6 +34,19 @@ EVENT_TYPES: tuple[str, ...] = (
     "error",
     "session_start",
     "session_end",
+    # 2026-06-09 新增 — 剧创态(第 5 态)6 类
+    "screenplay_novel_upload",
+    "screenplay_compose_start",
+    "screenplay_compose_done",
+    "screenplay_optimize",
+    "screenplay_characters_view",
+    "screenplay_episodes_plan",
+    # 2026-06-09 新增 — 多模型对比 3 类
+    "model_compare_start",
+    "model_compare_run",
+    "model_compare_winner",
+    # 2026-06-09 新增 — Dashboard 入口转化 1 类
+    "dashboard_card_click",
 )
 
 EventType = Literal[
@@ -44,10 +57,15 @@ EventType = Literal[
     "simulation_create", "simulation_done", "simulation_failed",
     "audit_run", "canonical_audit_run",
     "error", "session_start", "session_end",
+    # 2026-06-09 新增:
+    "screenplay_novel_upload", "screenplay_compose_start", "screenplay_compose_done",
+    "screenplay_optimize", "screenplay_characters_view", "screenplay_episodes_plan",
+    "model_compare_start", "model_compare_run", "model_compare_winner",
+    "dashboard_card_click",
 ]
 
-# 4 态枚举(对齐主平台)
-ModeType = Literal["initial", "middle", "tail", "comic"]
+# 5 态枚举(对齐主平台 + 剧创态)
+ModeType = Literal["initial", "middle", "tail", "comic", "screenplay"]
 
 
 @dataclass

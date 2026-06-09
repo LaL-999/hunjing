@@ -21,6 +21,7 @@ import {
 import ComparisonRadarChart from "./ComparisonRadarChart.vue";
 import { useScreenplayStore } from "../stores/screenplay";
 import { toast } from "../../composables/useToast";
+import { track } from "../../composables/useAnalytics";
 import { ApiError } from "../../api/client";
 
 const props = defineProps<{ visible: boolean }>();
@@ -174,6 +175,15 @@ async function handleStart() {
     return;
   }
   saveToStorage();
+  // 2026-06-09 埋点 — 多模型对比触发(N vendors / scene 维度可下钻)
+  track("model_compare_run", {
+    mode: "screenplay",
+    meta: {
+      n_providers: providers.value.length,
+      providers: providers.value.map(p => p.label),
+      scene_id: selectedSceneId.value,
+    },
+  });
   stage.value = "running";
   startElapsedTimer();
   result.value = null;
@@ -186,6 +196,15 @@ async function handleStart() {
     stage.value = "result";
     const success = result.value.candidates.filter(c => c.success).length;
     const total = result.value.candidates.length;
+    // 2026-06-09 埋点 — 对比完成,记录推荐 vendor(收口"哪家模型最强")
+    track("model_compare_winner", {
+      mode: "screenplay",
+      meta: {
+        recommended: result.value.recommended_label ?? null,
+        success_count: success,
+        total_count: total,
+      },
+    });
     if (success === total) {
       toast.success(`${total} 个 vendor 全部成功`);
     } else if (success > 0) {

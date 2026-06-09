@@ -17,6 +17,7 @@
  */
 import { type ProjectMode } from "../api/types";
 import { toast } from "../composables/useToast";
+import { track } from "../composables/useAnalytics";
 
 interface ModeCard {
   mode: ProjectMode;
@@ -179,6 +180,10 @@ const emit = defineEmits<{
 }>();
 
 function handleClick(card: ModeCard) {
+  // 2026-06-09 埋点 — Dashboard 各创作态卡点击转化率追踪(meta.card 区分哪一张)
+  track("dashboard_card_click", {
+    meta: { card: card.mode, status: card.status, title: card.title },
+  });
   if (card.status === "soon") {
     // 漫创态有特殊触发条件:公司注册 + AIGC 备案 + 国内绘图 API 路由 + 读者层验证
     // 都达成后才开发(详见 docs/ADR_漫画创作态架构.md)。toast 给用户清晰预期。

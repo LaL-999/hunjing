@@ -24,6 +24,7 @@ import VersionDiffPanel from "../components/VersionDiffPanel.vue";
 import VersionSwitcher from "../components/VersionSwitcher.vue";
 import { useScreenplayStore } from "../stores/screenplay";
 import type { OptimizeScope } from "../types/screenplay";
+import { track } from "../../composables/useAnalytics";
 
 const props = defineProps<{ id: string }>();
 const router = useRouter();
@@ -93,6 +94,11 @@ function goHome() {
 
 const composeDialogVisible = ref<boolean>(false);
 function openComposeDialog() {
+  // 2026-06-09 埋点 — 剧本生成入口触发(转化前)
+  track("screenplay_compose_start", {
+    mode: "screenplay",
+    meta: { novel_id: props.id, has_screenplay: store.hasScreenplay },
+  });
   composeDialogVisible.value = true;
 }
 function closeComposeDialog() {
@@ -101,7 +107,14 @@ function closeComposeDialog() {
 
 // 阶段 8.2:角色档案 + 关系图 全屏 modal
 const characterPanelVisible = ref<boolean>(false);
-function openCharacterPanel() { characterPanelVisible.value = true; }
+function openCharacterPanel() {
+  // 2026-06-09 埋点 — 角色档案使用率(差异化卖点)
+  track("screenplay_characters_view", {
+    mode: "screenplay",
+    meta: { novel_id: props.id },
+  });
+  characterPanelVisible.value = true;
+}
 function closeCharacterPanel() { characterPanelVisible.value = false; }
 
 // 阶段 8.3 第 3b 张牌:版本树 diff modal
@@ -111,12 +124,26 @@ function closeVersionDiff() { versionDiffVisible.value = false; }
 
 // 阶段 8.4:分集规划 MVP modal
 const episodePanelVisible = ref<boolean>(false);
-function openEpisodePanel() { episodePanelVisible.value = true; }
+function openEpisodePanel() {
+  // 2026-06-09 埋点 — 分集规划功能使用
+  track("screenplay_episodes_plan", {
+    mode: "screenplay",
+    meta: { novel_id: props.id },
+  });
+  episodePanelVisible.value = true;
+}
 function closeEpisodePanel() { episodePanelVisible.value = false; }
 
 // 阶段 8.5:多模型对比 modal
 const comparisonPanelVisible = ref<boolean>(false);
-function openComparisonPanel() { comparisonPanelVisible.value = true; }
+function openComparisonPanel() {
+  // 2026-06-09 埋点 — 多模型对比入口(用户触发"想看不同 LLM 谁更强")
+  track("model_compare_start", {
+    mode: "screenplay",
+    meta: { novel_id: props.id, screenplay_id: store.screenplay?.id ?? null },
+  });
+  comparisonPanelVisible.value = true;
+}
 function closeComparisonPanel() { comparisonPanelVisible.value = false; }
 
 // AI 优化弹窗(A + B 入口共用)

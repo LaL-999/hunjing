@@ -13,6 +13,7 @@ import { computed, ref, watch } from "vue";
 
 import { useScreenplayStore } from "../stores/screenplay";
 import type { OptimizeFocus, OptimizeScope } from "../types/screenplay";
+import { track } from "../../composables/useAnalytics";
 
 const props = defineProps<{
   visible: boolean;
@@ -175,6 +176,16 @@ const actionColor: Record<string, string> = {
 
 async function handleStart() {
   const trimmed = userInstruction.value.trim();
+  // 2026-06-09 埋点 — 剧本优化触发(scope + focus 维度可下钻)
+  track("screenplay_optimize", {
+    mode: "screenplay",
+    meta: {
+      scope: props.scope,
+      target_scene_id: props.targetSceneId ?? null,
+      focus: selectedFocus.value,
+      has_user_instruction: trimmed.length > 0,
+    },
+  });
   await store.runOptimize({
     scope: props.scope,
     target_scene_id: props.targetSceneId,
