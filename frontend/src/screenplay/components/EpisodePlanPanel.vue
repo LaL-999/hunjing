@@ -1928,6 +1928,12 @@ watch(
 .export-format-tabs {
   display: flex;
   gap: 6px;
+  margin-bottom: 18px;     /* 2026-06-09 fix:跟下方「取消/下载」按钮拉开,
+                              不然 fountain/txt/yaml 跟 footer 紧贴会视觉重叠 */
+}
+/* footer 在 export dialog 内独立顶端留白,跟前面格式 tabs 隔开 */
+.epp-export-dialog .epp-dialog-ftr {
+  margin-top: 4px;
 }
 .export-format-tab {
   flex: 1;
