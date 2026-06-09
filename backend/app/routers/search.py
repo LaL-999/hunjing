@@ -1,8 +1,9 @@
 """Sprint 6.A2 路线图 #6(2026-05-23)— 全局搜索 endpoint。
+2026-06-09 扩展:加 novels / screenplays / comics(覆盖新增创作态)。
 
 GET /api/search?q=xxx&project_id=xxx(可选)&limit=10(每类)
-跨用户所有项目模糊搜 6 类实体(projects / characters / relationships / events /
-scenes / simulations)。
+跨用户所有项目模糊搜 8 类实体(projects / characters / events / scenes /
+simulations / novels / screenplays / comics)。
 """
 from __future__ import annotations
 
@@ -63,6 +64,36 @@ class SearchSimulationItem(BaseModel):
     project_name: str
 
 
+# 2026-06-09 新增 — 剧创态 + 漫创态
+
+
+class SearchNovelItem(BaseModel):
+    """剧创态小说(sp_novels)"""
+    id: str
+    title: str
+    total_chapters: int
+    total_chars: int
+    source_format: str
+
+
+class SearchScreenplayItem(BaseModel):
+    """剧创态剧本(sp_screenplays)— 通过 novel 关联,展示用 novel_title"""
+    id: str
+    novel_id: str
+    novel_title: str
+    scene_count: int
+    created_at: str
+
+
+class SearchComicItem(BaseModel):
+    """漫创态作品(comic_projects)"""
+    id: str
+    name: str
+    state: str
+    progress_percent: int
+    style_tag: Optional[str] = None
+
+
 class GlobalSearchResponse(BaseModel):
     query: str
     projects: list[SearchProjectItem]
@@ -70,6 +101,10 @@ class GlobalSearchResponse(BaseModel):
     events: list[SearchEventItem]
     scenes: list[SearchSceneItem]
     simulations: list[SearchSimulationItem]
+    # 2026-06-09 新增:
+    novels: list[SearchNovelItem] = Field(default_factory=list)
+    screenplays: list[SearchScreenplayItem] = Field(default_factory=list)
+    comics: list[SearchComicItem] = Field(default_factory=list)
 
 
 # ============================================================

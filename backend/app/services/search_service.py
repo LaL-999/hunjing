@@ -1,20 +1,30 @@
 """Sprint 6.A2 路线图 #6(2026-05-23)— 全局搜索 service。
+2026-06-09 扩展:加 sp_novels / sp_screenplays / comic_projects(覆盖新增创作态)。
 
-跨用户所有项目搜 5 类实体(模糊匹配,精度版 2026-05-23):
+跨用户所有项目搜 8 类实体(模糊匹配):
+  原 5 类(精度版 2026-05-23):
   - projects(name)
-  - characters(只 name — 不搜 identity / aliases,避免角色描述含某词就被命中)
-  - events(只 description — 事件没独立 name 字段;不搜 time_anchor)
-  - scenes / project_scenes(只 name — 不搜 description / aliases)
+  - characters(只 name)
+  - events(只 description)
+  - scenes / project_scenes(只 name)
   - simulations(divergence)
 
-  ⚠️ 关系(relationships)**不搜** — 用户决策:搜出来一条关系但跳不到具体编辑位置
-  意义不大;待"精确定位到实体"feature 做完后再加回来。
+  新增 3 类(2026-06-09):
+  - sp_novels(title)— 剧创态小说
+  - sp_screenplays(JOIN sp_novels.title)— 剧本(无独立标题,继承小说)
+  - comic_projects(name)— 漫创态作品
+
+  ⚠️ 关系(relationships)**不搜** — 跳不到具体编辑位置,待定位 feature 完善后加回来。
+
+  ⚠️ 反事实组合(counterfactual_combination_runs)**不搜** — 内部技术构造,无用户可
+  搜索的语义标签;用户搜推演分支已经通过 simulations.divergence 覆盖。
 
 设计:
-  - SQLite LIKE '%q%' — 数据量 (中型项目 20+ 角色 / 50+ 事件) 毫秒级,无需 FTS
-  - 每条返回 project_id + project_name(给前端面包屑显"老奶奶 · 《项目 A》")
-  - 跨用户隔离:所有查询 JOIN projects ON projects.user_id = ?
-  - 可选 project_id 参数:给了就限当前项目(PyCharm 风范围 tab"当前项目")
+  - SQLite LIKE '%q%' — 数据量毫秒级,无需 FTS
+  - 每条返回 project_id + project_name(剧创态特殊:novel_id + novel_title)
+  - 跨用户隔离:projects/characters/events/scenes/simulations JOIN projects ON user_id = ?
+  - 剧创态隔离:sp_novels.user_id / comic_projects.user_id 直接过滤
+  - 可选 project_id:给了限当前项目(剧创态不受影响,因为它跟 projects 是平行域)
 """
 from __future__ import annotations
 
@@ -55,6 +65,10 @@ def search(
           "events": [{id, project_id, project_name, description, time_anchor}, ...],
           "scenes": [{id, project_id, project_name, name, description}, ...],
           "simulations": [{id, project_id, project_name, divergence, state, created_at}, ...],
+          # 2026-06-09 新增:
+          "novels": [{id, title, total_chapters, total_chars, source_format}, ...],
+          "screenplays": [{id, novel_id, novel_title, scene_count, ready_state}, ...],
+          "comics": [{id, name, state, progress_percent, style_tag}, ...],
         }
     """
     pattern = f"%{q}%"
@@ -204,6 +218,97 @@ def search(
         for r in sim_rows
     ]
 
+    # ============================================================
+    # 7. 剧创态小说(2026-06-09 新增)
+    # 跟 projects 是平行域 — 不受 project_id 过滤影响(用户在某项目搜框里
+    # 输入小说名也能搜到,因为剧创态跟传统项目没关联)
+    #
+    # 表不存在时降级(老库未运行 migration 085 的兜底):try/except 兜
+    # ============================================================
+    novels: list[dict[str, Any]] = []
+    try:
+        novel_rows = fetch_all(
+            conn,
+            """SELECT id, title, total_chapters, total_chars, source_format
+               FROM sp_novels
+               WHERE user_id = ? AND title LIKE ?
+               ORDER BY uploaded_at DESC
+               LIMIT ?""",
+            (user_id, pattern, limit),
+        )
+        novels = [
+            {
+                "id": r["id"],
+                "title": r["title"],
+                "total_chapters": r["total_chapters"],
+                "total_chars": r["total_chars"],
+                "source_format": r["source_format"],
+            }
+            for r in novel_rows
+        ]
+    except sqlite3.OperationalError as exc:
+        # 表不存在 → 该用户的 DB 未跑 sp_ migrations,降级返空
+        logger.debug("sp_novels search skipped: %s", exc)
+
+    # ============================================================
+    # 8. 剧创态剧本(2026-06-09 新增)
+    # 剧本没独立标题 — 通过 JOIN sp_novels 拿继承的 title 搜
+    # 这样用户搜书名能定位到剧本(剧本在 editor 视图打开)
+    # ============================================================
+    screenplays: list[dict[str, Any]] = []
+    try:
+        # sp_screenplays 表只有 created_at,没 composed_at;scene_count 也没,要 JSON 解析 stats_json
+        screenplay_rows = fetch_all(
+            conn,
+            """SELECT s.id, s.novel_id, s.stats_json, s.created_at, n.title AS novel_title
+               FROM sp_screenplays s
+               JOIN sp_novels n ON s.novel_id = n.id
+               WHERE n.user_id = ? AND n.title LIKE ?
+               ORDER BY s.created_at DESC
+               LIMIT ?""",
+            (user_id, pattern, limit),
+        )
+        screenplays = [
+            {
+                "id": r["id"],
+                "novel_id": r["novel_id"],
+                "novel_title": r["novel_title"],
+                "scene_count": _extract_scene_count(r["stats_json"]),
+                "created_at": r["created_at"],
+            }
+            for r in screenplay_rows
+        ]
+    except sqlite3.OperationalError as exc:
+        logger.debug("sp_screenplays search skipped: %s", exc)
+
+    # ============================================================
+    # 9. 漫创态作品(2026-06-09 新增)
+    # 表不存在时降级(老库未运行 migration 024 的兜底)
+    # ============================================================
+    comics: list[dict[str, Any]] = []
+    try:
+        comic_rows = fetch_all(
+            conn,
+            """SELECT id, name, state, progress_percent, style_tag
+               FROM comic_projects
+               WHERE user_id = ? AND name LIKE ?
+               ORDER BY created_at DESC
+               LIMIT ?""",
+            (user_id, pattern, limit),
+        )
+        comics = [
+            {
+                "id": r["id"],
+                "name": r["name"],
+                "state": r["state"],
+                "progress_percent": r["progress_percent"],
+                "style_tag": r["style_tag"],
+            }
+            for r in comic_rows
+        ]
+    except sqlite3.OperationalError as exc:
+        logger.debug("comic_projects search skipped: %s", exc)
+
     return {
         "query": q,
         "projects": projects,
@@ -211,6 +316,10 @@ def search(
         "events": events,
         "scenes": scenes,
         "simulations": simulations,
+        # 2026-06-09 新增:
+        "novels": novels,
+        "screenplays": screenplays,
+        "comics": comics,
     }
 
 
@@ -225,6 +334,21 @@ def _parse_tags(raw: Optional[str]) -> list[str]:
     except (json.JSONDecodeError, TypeError):
         pass
     return []
+
+
+def _extract_scene_count(stats_json: Optional[str]) -> int:
+    """sp_screenplays.stats_json 是 compose 阶段生成的统计,有 scene_count 字段。
+    脏数据 fallback 0。
+    """
+    if not stats_json:
+        return 0
+    try:
+        parsed = json.loads(stats_json)
+        if isinstance(parsed, dict):
+            return int(parsed.get("scene_count", 0))
+    except (json.JSONDecodeError, TypeError, ValueError):
+        pass
+    return 0
 
 
 __all__ = ["search", "DEFAULT_LIMIT_PER_TYPE"]
