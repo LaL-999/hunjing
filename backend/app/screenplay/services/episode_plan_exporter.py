@@ -237,25 +237,29 @@ def export_to_txt(
 
         for idx, ep in enumerate(episodes, start=1):
             title = ep.get("title") or f"第 {idx} 集"
-            est_min = ep.get("est_minutes", 0)
             scene_ids = ep.get("scene_ids") or []
-            scene_count = len(scene_ids)
-            ch_first = ep.get("first_chapter")
-            ch_last = ep.get("last_chapter")
-            ch_range = (
-                f"第 {ch_first}-{ch_last} 章"
-                if ch_first is not None and ch_last is not None
-                else "(未知章节)"
-            )
 
-            # 集标题
+            # 集标题 — 三模式都有
             lines.append("")
             lines.append(f"  ━━━ 【第 {idx} 集】 {title} ━━━")
-            lines.append(f"      时长 {est_min} 分钟 · {scene_count} 场 · {ch_range}")
+
+            # 元信息(时长/场数/章节范围)— 仅 outline / full
+            if mode != "script":
+                est_min = ep.get("est_minutes", 0)
+                scene_count = len(scene_ids)
+                ch_first = ep.get("first_chapter")
+                ch_last = ep.get("last_chapter")
+                ch_range = (
+                    f"第 {ch_first}-{ch_last} 章"
+                    if ch_first is not None and ch_last is not None
+                    else "(未知章节)"
+                )
+                lines.append(f"      时长 {est_min} 分钟 · {scene_count} 场 · {ch_range}")
+
             lines.append("")
 
-            # 集头 logline(用户拍板)
-            if ep.get("logline"):
+            # 集头 logline — 仅 outline / full(script 是纯剧本无注释)
+            if mode != "script" and ep.get("logline"):
                 lines.append(f"  📖 本集梗概:{ep['logline']}")
                 lines.append("")
 
@@ -276,13 +280,14 @@ def export_to_txt(
                         lines.append(f"    (场景 {sid} 在剧本中未找到)")
                         lines.append("")
 
-            # 集尾钩子 + 下集预告(用户拍板)
-            if ep.get("cliffhanger_text"):
-                lines.append(f"  🎬 集尾钩子:{ep['cliffhanger_text']}")
-                lines.append("")
-            if ep.get("next_episode_preview"):
-                lines.append(f"  📺 下集预告:{ep['next_episode_preview']}")
-                lines.append("")
+            # 集尾钩子 + 下集预告 — 仅 outline / full(script 无任何分集元数据)
+            if mode != "script":
+                if ep.get("cliffhanger_text"):
+                    lines.append(f"  🎬 集尾钩子:{ep['cliffhanger_text']}")
+                    lines.append("")
+                if ep.get("next_episode_preview"):
+                    lines.append(f"  📺 下集预告:{ep['next_episode_preview']}")
+                    lines.append("")
 
     # 其他视角参考(script 模式不要)
     if mode != "script" and target:
@@ -362,24 +367,24 @@ def export_to_fountain(
     episodes = target.get("episodes") or []
     for idx, ep in enumerate(episodes, start=1):
         ep_title = ep.get("title") or f"Episode {idx}"
-        # Fountain section heading
+        # Fountain section heading — 三模式都有
         lines.append(f"# Episode {idx} · {ep_title}")
         lines.append("")
 
-        # 元信息(script 模式跳过)
+        scene_ids = ep.get("scene_ids") or []
+
+        # 元信息 + logline + 钩子 — 仅 outline / full(script 是纯剧本)
         if mode != "script":
             est_min = ep.get("est_minutes", 0)
-            scene_count = len(ep.get("scene_ids") or [])
+            scene_count = len(scene_ids)
             lines.append(f"_约 {est_min} 分钟 · {scene_count} 场_")
             lines.append("")
 
-        # 集头 logline(集间过渡 — 用户拍板)
-        if ep.get("logline"):
-            lines.append(ep["logline"])
-            lines.append("")
+            if ep.get("logline"):
+                lines.append(ep["logline"])
+                lines.append("")
 
         # 主体
-        scene_ids = ep.get("scene_ids") or []
         if mode == "outline":
             # 只列 scene id(boneyard 注释格式)
             if scene_ids:
@@ -395,13 +400,14 @@ def export_to_fountain(
                     lines.append(f"[[ MISSING SCENE: {sid} ]]")
                     lines.append("")
 
-        # 集尾过渡(集间过渡 — 用户拍板)
-        if ep.get("cliffhanger_text"):
-            lines.append(f"**集尾钩子:** {ep['cliffhanger_text']}")
-            lines.append("")
-        if ep.get("next_episode_preview"):
-            lines.append(f"_下集预告:{ep['next_episode_preview']}_")
-            lines.append("")
+        # 集尾过渡 — 仅 outline / full
+        if mode != "script":
+            if ep.get("cliffhanger_text"):
+                lines.append(f"**集尾钩子:** {ep['cliffhanger_text']}")
+                lines.append("")
+            if ep.get("next_episode_preview"):
+                lines.append(f"_下集预告:{ep['next_episode_preview']}_")
+                lines.append("")
 
     return "\n".join(lines)
 

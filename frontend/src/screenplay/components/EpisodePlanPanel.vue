@@ -1001,28 +1001,27 @@ watch(
           {{ exportingPlan?.scheme_name }}
         </p>
 
-        <!-- 模式选择(垂直 3 选 1)-->
+        <!-- 模式选择(2 选 1)— 2026-06-09 v3:
+             删「仅剧本」(跟顶栏「导出」剧本本体职能重叠);
+             文案简化,删 .export-mode-use 提示行 -->
         <div class="export-section-label">导出内容</div>
         <div class="export-mode-list">
           <label class="export-mode-item" :class="{ active: exportMode === 'outline' }">
             <input type="radio" v-model="exportMode" value="outline" />
             <div class="export-mode-main">
               <div class="export-mode-name">仅大纲</div>
-              <div class="export-mode-hint">集标题 + 钩子 + scene_id 列表,文件最轻</div>
+              <div class="export-mode-hint">
+                <strong>无剧本内容</strong> · 集标题 + logline 概要 + scene ID 列表 + 钩子 + 预告 · 文件最轻
+              </div>
             </div>
           </label>
           <label class="export-mode-item" :class="{ active: exportMode === 'full' }">
             <input type="radio" v-model="exportMode" value="full" />
             <div class="export-mode-main">
-              <div class="export-mode-name">大纲 + 完整剧本 <span class="recommended-tag">推荐</span></div>
-              <div class="export-mode-hint">每集嵌入对应场景的动作 + 对白,适合给制片人 / 团队</div>
-            </div>
-          </label>
-          <label class="export-mode-item" :class="{ active: exportMode === 'script' }">
-            <input type="radio" v-model="exportMode" value="script" />
-            <div class="export-mode-main">
-              <div class="export-mode-name">仅剧本</div>
-              <div class="export-mode-hint">每集 # Episode N 标题下直接放场景内容,无元信息</div>
+              <div class="export-mode-name">大纲 + 剧本 <span class="recommended-tag">推荐</span></div>
+              <div class="export-mode-hint">
+                <strong>大纲 + 剧本全都有</strong> · 每集嵌入对应场景的动作 + 对白 + 集间过渡 logline / 钩子
+              </div>
             </div>
           </label>
         </div>
