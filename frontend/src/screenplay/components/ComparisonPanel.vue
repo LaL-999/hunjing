@@ -43,12 +43,21 @@ const mode = ref<CompareMode>(byok.isActive.value ? "byok" : "platform");
 /** BYOK 解锁弹窗触发(切到 byok 模式但用户没开通时显示) */
 const showBYOKPrompt = ref(false);
 
-function tryToggleMode(target: CompareMode) {
+async function tryToggleMode(target: CompareMode) {
   if (target === mode.value) return;
-  if (target === "byok" && !byok.isActive.value) {
-    // 非自携用户尝试切到 byok 模式 → 弹窗提示开通
-    showBYOKPrompt.value = true;
-    return;
+  if (target === "byok") {
+    // 2026-06-09 bug fix:点击瞬间实时校验,不信任 store 缓存。
+    // 根因:watch(visible) 的 `await refreshStatus()` 是异步的,面板渲染
+    // 后用户立刻点 tab 时,isActive 可能还是 stale 的 false(创始人/刚激活
+    // 订阅的用户会被误判)。这里点击时若缓存显示未开通,先拉一次最新状态,
+    // 确认后端也说没开通才弹提示 —— 杜绝时序竞态。
+    if (!byok.isActive.value) {
+      await byok.refreshStatus();
+    }
+    if (!byok.isActive.value) {
+      showBYOKPrompt.value = true;
+      return;
+    }
   }
   mode.value = target;
   // 切到 platform 时清空可能历史填的 api_key(避免后端误认)
@@ -823,7 +832,12 @@ const ELEMENT_TYPE_LABEL: Record<string, string> = {
   border-radius: var(--radius-lg);
   width: 96vw;
   max-width: 1400px;
-  height: 92vh;
+  /* 2026-06-09 bug fix:固定 height: 92vh → 自适应内容高度 + 上限封顶。
+   * 根因:config 阶段只有 3 个模型,内容短,但面板强撑 92vh,footer
+   * 跟在内容后,下方一大片空白。改 auto 后:短内容 → 面板贴合内容,
+   * footer 自然到底;result 阶段内容高 → 撞 max-height,cmp-body 内部滚。*/
+  height: auto;
+  max-height: 92vh;
   display: flex;
   flex-direction: column;
   box-shadow: var(--shadow-lg);
