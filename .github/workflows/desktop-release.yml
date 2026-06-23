@@ -1,0 +1,90 @@
+# 浑晶桌面客户端 — 云端出三平台安装包(商业化重塑 Phase 3)
+#
+# 触发:推送 desktop-v* 标签(如 desktop-v0.1.0),或手动 workflow_dispatch。
+# 产物:Windows(.msi/.exe)、macOS(.dmg, universal)、Linux(.AppImage/.deb)
+#        自动上传到一个【草稿】Release,你审阅后点 Publish 即对外可下载。
+#
+# 本机不需要装 Rust —— 编译全在 GitHub 的 runner 上跑。
+#
+# 必配(否则桌面端连不上后端):
+#   仓库 Settings → Secrets and variables → Actions → Variables 加
+#   PROD_API_BASE = https://api.<你的域名>   (壳化版 SPA 的 API 基址)
+#
+# 可选(开启自动更新签名后才需,见 DESKTOP_CLIENT.md):
+#   Secrets: TAURI_SIGNING_PRIVATE_KEY / TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+name: desktop-release
+
+on:
+  push:
+    tags:
+      - "desktop-v*"
+  workflow_dispatch: {}
+
+jobs:
+  publish-tauri:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            args: "--target universal-apple-darwin"
+          - platform: ubuntu-22.04
+            args: ""
+          - platform: windows-latest
+            args: ""
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./frontend/src-tauri -> target"
+
+      - name: Install Linux build deps
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Warn if PROD_API_BASE unset
+        shell: bash
+        run: |
+          if [ -z "${{ vars.PROD_API_BASE }}" ]; then
+            echo "::warning::PROD_API_BASE 仓库变量未设置 —— 打出的桌面端将以相对 /api 请求,连不上远程后端。请在 Settings → Variables 配置后重新发布。"
+          fi
+
+      - name: Build & release (tauri-action)
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # 壳化版 SPA 的后端基址(空 → 相对 /api,桌面端连不上)
+          VITE_API_BASE: ${{ vars.PROD_API_BASE }}
+          # 自动更新签名(未配则忽略;updater 未在 conf 启用时本就无效)
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: frontend
+          tagName: ${{ github.ref_name }}
+          releaseName: "浑晶桌面客户端 ${{ github.ref_name }}"
+          releaseBody: "在下方 Assets 里下载对应系统的安装包。Windows: .msi / .exe · macOS: .dmg · Linux: .AppImage / .deb"
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}
