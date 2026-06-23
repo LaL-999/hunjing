@@ -253,6 +253,11 @@ def create_app() -> FastAPI:
     from app.routers import byok_payment
     app.include_router(byok_payment.router, prefix="/api", tags=["byok_payment"])
 
+    # 商业化重塑 第一期(2026-06-09):统一支付内核 — 订单中心 + SKU 目录 + 履约路由
+    # 订阅 / BYOK / 配额包 全收敛到一套订单 + 审核 + 发货流程
+    from app.routers import payments
+    app.include_router(payments.router, prefix="/api", tags=["payments"])
+
     # BYOK admin 后台(2026-06-05):founder 邮箱可审批 manual_review 订单 + 看截图
     from app.routers import byok_admin
     app.include_router(byok_admin.router, prefix="/api", tags=["byok_admin"])
