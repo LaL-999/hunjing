@@ -65,7 +65,7 @@ async function handleDelete(novel: NovelInfo, e: Event) {
   const ok = await confirm({
     title: "删除作品",
     message: `确定删除《${novel.title}》及其所有剧本数据?`,
-    confirmText: "删除",
+    confirmLabel: "删除",
     danger: true,
   });
   if (!ok) return;

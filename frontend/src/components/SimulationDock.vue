@@ -37,6 +37,7 @@ import {
   type SimulationSummary,
   type ProjectForeshadow,
   type ProjectForeshadowsResponse,
+  type ProjectMode,
 } from "../api/types";
 import CreditEstimate from "./CreditEstimate.vue";
 import NarrativeStream from "./NarrativeStream.vue";
@@ -102,7 +103,9 @@ const props = defineProps<{
    *   end     → AI 续写(从原作末尾接,不动原作)
    *   cycle   → AI 长篇(在已有产物上累积新章 — 暂同 middle)
    */
-  projectMode?: "initial" | "middle" | "end" | "cycle";
+  // ProjectMode 含 screenplay/more,但本 dock 仅对经典态(initial/middle/end/cycle)
+  // 有意义;screenplay/more 项目不会打开此 dock,落 dockHeaderConfig 默认分支即可。
+  projectMode?: ProjectMode;
   /**
    * 2.C+ 父传"打开反事实工作台"回调 — 中间态 dock 摘要区会有 [✎ 编辑反事实] 按钮调它
    */

@@ -45,7 +45,6 @@ const optionTypeMicro: Record<string, string> = {
 function sortedOptions(d: AdaptationDecision): AdaptationOption[] {
   // 推荐项排第一,其他按 V.O. / 动作 / 删除 顺序
   const order = ["voiceover", "action_externalize", "subtext", "symbolism", "delete"];
-  const rec = d.options.find((o) => o.type === d.chosen);
   const sorted = [...d.options].sort(
     (a, b) => order.indexOf(a.type) - order.indexOf(b.type),
   );
@@ -53,7 +52,7 @@ function sortedOptions(d: AdaptationDecision): AdaptationOption[] {
   return sorted;
 }
 
-function recommendedType(d: AdaptationDecision): string {
+function recommendedType(_d: AdaptationDecision): string {
   // PR#9 后端把推荐 LLM 推荐放在了哪里?当前 schema 里 decision 没有 recommended
   // 字段(adaptation_decision 只有 chosen 是作者选的)。
   // V.O. 是默认推荐 — 与 PR#9 prompt 一致(adaptation_decision.md)

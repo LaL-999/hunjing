@@ -118,16 +118,6 @@ const perspectivesMatchCurrent = computed<string[]>(() => {
 
 const isCustomPreset = computed(() => selectedPreset.value === "custom");
 
-const effectiveTarget = computed<number>(() => {
-  if (!plan.value) {
-    // 还没运行,显示当前 preset 默认值或 custom 滑块值
-    if (isCustomPreset.value) return customMinutes.value;
-    const p = presets.value.find((p) => p.key === selectedPreset.value);
-    return p?.default_minutes ?? 3.0;
-  }
-  return plan.value.target_minutes_per_ep;
-});
-
 // ===== actions =====
 
 async function loadPresets() {
@@ -397,11 +387,6 @@ function toggleEpisode(num: number) {
 function perspectiveLabel(key: string): string {
   const p = perspectiveDescs.value.find((p) => p.key === key);
   return p?.label || key;
-}
-
-function perspectiveDescription(key: string): string {
-  const p = perspectiveDescs.value.find((p) => p.key === key);
-  return p?.description || "";
 }
 
 function perspectiveAggregate(key: string): number | null {

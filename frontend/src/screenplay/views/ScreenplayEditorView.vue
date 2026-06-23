@@ -140,7 +140,7 @@ function openComparisonPanel() {
   // 2026-06-09 埋点 — 多模型对比入口(用户触发"想看不同 LLM 谁更强")
   track("model_compare_start", {
     mode: "screenplay",
-    meta: { novel_id: props.id, screenplay_id: store.screenplay?.id ?? null },
+    meta: { novel_id: props.id, screenplay_id: store.screenplayId ?? null },
   });
   comparisonPanelVisible.value = true;
 }

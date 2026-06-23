@@ -109,10 +109,13 @@ function handleBackdrop(e: MouseEvent) {
 
 // UI 优化(2026-05-21 九轮):删除 tagline + flowHint — 首页 4 态卡已说明,modal 内重复就是噪音
 const MODE_META: Record<ProjectMode, { label: string }> = {
-  initial: { label: "初始态" },
-  middle:  { label: "中间态" },
-  end:     { label: "末尾态" },
-  cycle:   { label: "漫创态" },
+  initial:    { label: "初始态" },
+  middle:     { label: "中间态" },
+  end:        { label: "末尾态" },
+  cycle:      { label: "漫创态" },
+  // 剧创态 / 更多有各自的入口,不经本 modal 创建;此处仅补全 ProjectMode 键。
+  screenplay: { label: "剧创态" },
+  more:       { label: "更多" },
 };
 
 const modeMeta = computed(() => MODE_META[props.mode]);

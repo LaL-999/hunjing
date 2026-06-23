@@ -48,8 +48,8 @@ const events = useEventBus();
 const loginModal = useLoginModal();
 const docViewer = useDocumentViewer();
 const theme = useTheme();
-// 2026-06-08:sidebar 折叠展开
-const { collapsed: sidebarCollapsed, toggle: toggleSidebar } = useSidebarLayout();
+// 2026-06-08:sidebar 折叠展开(toggle 按钮已挪到 App.vue 贴边浮动,这里只读 collapsed)
+const { collapsed: sidebarCollapsed } = useSidebarLayout();
 
 /** 用户菜单子菜单 — "切换主题"展开后用 */
 const themeSubmenuOpen = ref(false);

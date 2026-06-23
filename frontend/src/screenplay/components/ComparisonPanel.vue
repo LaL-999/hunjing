@@ -38,7 +38,7 @@ const stage = ref<Stage>("config");
 // =====================================================================
 // 2026-06-09:运行模式 — byok / platform
 // =====================================================================
-const mode = ref<CompareMode>(byok.isActive.value ? "byok" : "platform");
+const mode = ref<CompareMode>(byok.isActive ? "byok" : "platform");
 
 /** BYOK 解锁弹窗触发(切到 byok 模式但用户没开通时显示) */
 const showBYOKPrompt = ref(false);
@@ -51,10 +51,10 @@ async function tryToggleMode(target: CompareMode) {
     // 后用户立刻点 tab 时,isActive 可能还是 stale 的 false(创始人/刚激活
     // 订阅的用户会被误判)。这里点击时若缓存显示未开通,先拉一次最新状态,
     // 确认后端也说没开通才弹提示 —— 杜绝时序竞态。
-    if (!byok.isActive.value) {
+    if (!byok.isActive) {
       await byok.refreshStatus();
     }
-    if (!byok.isActive.value) {
+    if (!byok.isActive) {
       showBYOKPrompt.value = true;
       return;
     }
@@ -408,7 +408,7 @@ watch(
       // 切创始人账号 / 新激活订阅后,这里要主动拉新状态
       await byok.refreshStatus();
       // 刷完根据最新 BYOK 状态决定默认模式
-      mode.value = byok.isActive.value ? "byok" : "platform";
+      mode.value = byok.isActive ? "byok" : "platform";
       loadFromStorage();
       // 默认选第一个 scene
       if (!selectedSceneId.value && scenes.value.length > 0) {
@@ -480,7 +480,7 @@ const ELEMENT_TYPE_LABEL: Record<string, string> = {
             <button
               type="button"
               class="mode-tab"
-              :class="{ active: mode === 'byok', locked: !byok.isActive.value }"
+              :class="{ active: mode === 'byok', locked: !byok.isActive }"
               @click="tryToggleMode('byok')"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
@@ -489,7 +489,7 @@ const ELEMENT_TYPE_LABEL: Record<string, string> = {
               </svg>
               用我自己的 API key
               <span class="mode-tab-sub">
-                {{ byok.isActive.value ? "自携密钥已开通" : "需开通自携密钥" }}
+                {{ byok.isActive ? "自携密钥已开通" : "需开通自携密钥" }}
               </span>
             </button>
           </div>
