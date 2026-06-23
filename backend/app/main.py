@@ -89,10 +89,18 @@ def create_app() -> FastAPI:
     # —— 主平台 frontend / 洞察后台 frontend / vite fallback 端口都自动通过
     # 与 allow_origins 是 OR 关系,任一匹配即放行
     # 生产环境 origin 走 settings.cors_origins(env 配置),regex 仅 dev 兜底
+    # 2026-06-09:加 tauri 壳化客户端 origin —— 桌面端打包后 SPA 跑在
+    #   tauri://localhost(mac/Linux WKWebView)或 http://tauri.localhost
+    #   (Windows WebView2),不放行则桌面端所有跨域 API 被浏览器内核拦。
+    #   这两个是固定字面量,Web 攻击者无法伪造,安全。
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
-        allow_origin_regex=r"^http://(localhost|127\.0\.0\.1):\d+$",
+        allow_origin_regex=(
+            r"^(http://(localhost|127\.0\.0\.1):\d+"
+            r"|tauri://localhost"
+            r"|http://tauri\.localhost)$"
+        ),
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

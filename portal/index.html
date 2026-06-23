@@ -340,7 +340,9 @@ var PORTAL_CONFIG = {
   webAppUrl: "/app",
   // 后端 API 基址(取定价用;留空 = 同源 /api)
   apiBase: "",
-  // 桌面客户端下载链接(Phase 3 Tauri 出包后填;留空 = 显示"即将上线")
+  // GitHub 仓库(自动发现最新桌面客户端 Release;格式 owner/repo)
+  githubRepo: "LaL-999/hunjing",
+  // 手动覆盖下载链接(一般留空 —— 默认走 githubRepo 自动发现最新 Release)
   downloads: { windows: "", mac: "", linux: "" },
   // 联系邮箱(给我真实的,替换占位)
   contactEmail: "hi@huimeng.example",
@@ -423,23 +425,69 @@ function loadLivePricing() {
     .catch(function () { /* 用 fallback,静默 */ });
 }
 
-/* OS 检测 → 推荐对应安装包 */
-function setupDownload() {
+/* OS 检测 */
+function detectOS() {
   var ua = navigator.userAgent;
-  var os = "windows", label = "下载 Windows 版";
-  if (/Mac/i.test(ua)) { os = "mac"; label = "下载 macOS 版"; }
-  else if (/Linux/i.test(ua) && !/Android/i.test(ua)) { os = "linux"; label = "下载 Linux 版"; }
-  var url = PORTAL_CONFIG.downloads[os];
+  if (/Mac/i.test(ua)) return { os: "mac", label: "macOS", exts: [".dmg", ".app.tar.gz"] };
+  if (/Linux/i.test(ua) && !/Android/i.test(ua)) return { os: "linux", label: "Linux", exts: [".AppImage", ".deb"] };
+  return { os: "windows", label: "Windows", exts: [".msi", ".exe", "-setup.exe"] };
+}
+
+/* 自动发现最新 GitHub Release → 推荐对应系统安装包(优雅降级)*/
+function setupDownload() {
+  var d = detectOS();
   var autoBtn = document.getElementById("dl-auto");
   var autoLabel = document.getElementById("dl-auto-label");
-  if (url) {
-    autoLabel.textContent = label;
-    autoBtn.href = url;
-    document.getElementById("dl-note").textContent = "已为你的系统推荐 · 其它平台版本请在群内获取";
-  } else {
+  var note = document.getElementById("dl-note");
+  var releasesPage = PORTAL_CONFIG.githubRepo
+    ? "https://github.com/" + PORTAL_CONFIG.githubRepo + "/releases/latest"
+    : PORTAL_CONFIG.webAppUrl;
+
+  // 1) 手动覆盖优先
+  var manual = PORTAL_CONFIG.downloads[d.os];
+  if (manual) {
+    autoLabel.textContent = "下载 " + d.label + " 版";
+    autoBtn.href = manual;
+    note.textContent = "已为你的系统推荐 · 其它平台见全部版本";
+    return;
+  }
+
+  // 2) 无 repo → 即将上线
+  if (!PORTAL_CONFIG.githubRepo) {
     autoLabel.textContent = "桌面客户端即将上线";
     autoBtn.href = PORTAL_CONFIG.webAppUrl;
+    return;
   }
+
+  // 3) 拉最新 Release,匹配本系统资产
+  fetch("https://api.github.com/repos/" + PORTAL_CONFIG.githubRepo + "/releases/latest")
+    .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
+    .then(function (rel) {
+      var assets = (rel && rel.assets) || [];
+      var hit = null;
+      for (var i = 0; i < assets.length && !hit; i++) {
+        var name = (assets[i].name || "").toLowerCase();
+        for (var j = 0; j < d.exts.length; j++) {
+          if (name.indexOf(d.exts[j].toLowerCase()) !== -1) { hit = assets[i]; break; }
+        }
+      }
+      var ver = rel.tag_name ? " " + rel.tag_name.replace(/^desktop-/, "") : "";
+      if (hit) {
+        autoLabel.textContent = "下载 " + d.label + " 版" + ver;
+        autoBtn.href = hit.browser_download_url;
+        note.textContent = "已为你的系统推荐 · 其它平台见 全部版本 →";
+      } else {
+        autoLabel.textContent = "前往下载" + ver;
+        autoBtn.href = releasesPage;
+        note.textContent = "未匹配到你系统的安装包,点击查看全部版本";
+      }
+    })
+    .catch(function () {
+      // 还没发布 Release / API 限流 → 即将上线
+      autoLabel.textContent = "桌面客户端即将上线";
+      autoBtn.href = PORTAL_CONFIG.webAppUrl;
+      note.textContent = "桌面客户端即将上线 · 当前可先用功能完整的在线版";
+    });
 }
 
 /* 接线 */

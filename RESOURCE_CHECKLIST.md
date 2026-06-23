@@ -54,20 +54,38 @@
 
 ---
 
-## 🟢 P2 — 桌面客户端(Phase 3,可后置)
+## 🟢 P2 — 桌面客户端(Phase 3,脚手架 + CI 已就位)
 
-### 9. 代码签名证书(可选,但不签体验差)
+> 完整操作手册见 `DESKTOP_CLIENT.md`。下面只列**需要你提供的东西**。
+
+### 9. ⭐ 后端基址 `PROD_API_BASE`(出包必需,否则桌面端连不上服务器)
+- 桌面端是壳,API 要走远程后端。GitHub 仓库 → Settings → Secrets and
+  variables → Actions → **Variables** 加 `PROD_API_BASE = https://api.<你的域名>`
+- 这取决于第 4 项(域名)+ 第 5 项(服务器)定下来
+
+### 10. 应用图标源图(没有先用 Tauri 默认图标占位)
+- **1024×1024 PNG**(透明底最佳)→ 我跑 `npx tauri icon` 自动生成全套尺寸
+- 就是第 7 项的 Logo,给高清方形版即可
+
+### 11. 代码签名证书(可选,但不签体验差)
 - **Windows**:不签名用户下载会被 SmartScreen 拦"未知发布者"吓退
   - EV 代码签名证书 ~$300+/年(DigiCert / GlobalSign 等)
   - 短期可先不签,告诉用户"点'仍要运行'"
 - **macOS**:不公证**直接打不开**(必须 Apple Developer $99/年)
   - 如果要出 Mac 版,这个绕不开
-- 决策:先出 Windows 版(免签或自签)够不够?要不要 Mac 版?
+- 我的建议:**先只出 Windows 版**(自签或让用户点"仍要运行")验证流程跑通,
+  Mac 版等有量了再上。要出 Mac 必须买 Apple Developer。
 
-### 10. 客户端分发托管
-- 我推荐用 **GitHub Releases**(免费 CDN,放安装包)
-- 需要你的 GitHub 仓库是 public,或配一个 release 专用仓库
-- 也可以放你自己的 OSS / 服务器,看你
+### 12. 自动更新签名密钥(开启自动更新才需,我给你一条命令)
+- 需要一对签名密钥:**私钥是机密**(进 GitHub Secrets,永不入库),公钥进配置
+- 生成命令(`DESKTOP_CLIENT.md` 第 7 节有完整步骤):
+  `cd frontend && npx tauri signer generate -w ~/.tauri/huimeng-updater.key`
+- 然后把私钥内容存成 GitHub Secret `TAURI_SIGNING_PRIVATE_KEY`
+- 不开自动更新也能正常出包发布,只是用户得手动来官网下新版
+
+### 13. 客户端分发托管
+- 默认用 **GitHub Releases**(免费 CDN,门户已接好自动发现最新版)
+- 推 `desktop-v*` 标签即触发 CI 出包;仓库 public 即可直接下载
 
 ---
 
@@ -76,8 +94,9 @@
 - ✅ 统一支付内核(订单中心 + SKU + 履约 + 审核)— 已上线
 - ✅ 订阅/配额接入统一支付 — 已上线
 - ✅ insights 统一订单审核页 — 已上线
-- 🔜 门户页(静态高级营销站)— 进行中
-- 🔜 Tauri 桌面客户端壳化 + 自动更新 — 排队中
+- ✅ 门户页(静态高级营销站,自动拉定价 + 自动发现下载)— 已上线
+- ✅ Tauri 桌面客户端脚手架 + 云端 CI 出三平台包 + 自动更新通道 — 已就位
+  (等你配 `PROD_API_BASE` + 推标签即可出包;签名/图标/更新密钥见上)
 
 ---
 
