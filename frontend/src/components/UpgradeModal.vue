@@ -14,11 +14,13 @@ import { computed, ref } from "vue";
 
 import { useAuthStore } from "../stores/auth";
 import { useUpgradeModal } from "../composables/useUpgradeModal";
+import { usePayment } from "../composables/usePayment";
 import { toast } from "../composables/useToast";
 import type { Plan } from "../api/types";
 
 const auth = useAuthStore();
 const upgradeModal = useUpgradeModal();
+const pay = usePayment();
 
 // 月付 / 年付切换 — 默认显月付(用户更易接受门槛低)
 const billingCycle = ref<"monthly" | "yearly">("monthly");
@@ -144,10 +146,17 @@ const reasonText = computed<string | null>(() => {
 function handleSubscribe(plan: PlanCard) {
   if (plan.key === auth.plan) return;
   if (plan.key === "free") return;   // 免费档无需"订阅"
-  toast.info(
-    `「${plan.name}」${billingCycle.value === "yearly" ? "年付" : "月付"}订阅功能正在开发,敬请期待 · 早鸟内测联系 hi@huimeng.example`,
-    6000,
-  );
+  // 2026-06-09 商业化重塑:接入统一支付。SKU code = sub_<plan>_<cycle>
+  // plan.key ∈ pro/max/super_max,billingCycle ∈ monthly/yearly
+  const skuCode = `sub_${plan.key}_${billingCycle.value}`;
+  upgradeModal.close();
+  pay.open(skuCode, {
+    onFulfilled: () => {
+      // 订阅发放后刷新用户档位 + 配额
+      void auth.fetchMe();
+      toast.success(`已升级到「${plan.name}」`);
+    },
+  });
 }
 
 function handleBackdrop(e: MouseEvent) {

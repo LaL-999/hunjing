@@ -16,22 +16,21 @@
  */
 import { onBeforeUnmount, onMounted, ref } from "vue";
 
-import { api } from "../api/client";
 import {
   ADDON_PACKAGES,
-  ApiError,
   type AddonPackageDef,
   type AddonPackageSize,
-  type AddonPurchaseResponse,
 } from "../api/types";
 import { useAddonModal } from "../composables/useAddonModal";
 import { useQuotaStore } from "../stores/quota";
 import { useUpgradeModal } from "../composables/useUpgradeModal";
+import { usePayment } from "../composables/usePayment";
 import { toast } from "../composables/useToast";
 
 const addonModal = useAddonModal();
 const upgradeModal = useUpgradeModal();
 const quota = useQuotaStore();
+const pay = usePayment();
 
 const selectedSize = ref<AddonPackageSize | null>(null);
 const purchasing = ref(false);
@@ -41,26 +40,19 @@ function selectPackage(pkg: AddonPackageDef) {
   selectedSize.value = pkg.size;
 }
 
-async function handlePurchase() {
+function handlePurchase() {
   if (!selectedSize.value || purchasing.value) return;
-  purchasing.value = true;
-  try {
-    const resp = await api.post<AddonPurchaseResponse>(
-      "/credit/addon/purchase",
-      { package_size: selectedSize.value },
-    );
-    toast.success(
-      `加购成功 · 已发放 ${resp.purchased_credits} credit(1 年有效)`,
-      5000,
-    );
-    await quota.refresh();
-    handleClose();
-  } catch (err) {
-    const msg = err instanceof ApiError ? err.message : "加购失败,请重试";
-    toast.error(msg);
-  } finally {
-    purchasing.value = false;
-  }
+  // 2026-06-09 商业化重塑:加购走统一支付(原 mock 即时发放 → 真实订单 + 人工核验)
+  // SKU code = credit_<size>(small/medium/large)
+  const skuCode = `credit_${selectedSize.value}`;
+  addonModal.close();
+  selectedSize.value = null;
+  pay.open(skuCode, {
+    onFulfilled: () => {
+      void quota.refresh();
+      toast.success("配额已到账");
+    },
+  });
 }
 
 function handleClose() {
