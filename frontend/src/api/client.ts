@@ -20,7 +20,13 @@ import { ApiError, type ApiErrorBody } from "./types";
 // vue-tsc 漏抓:把 ApiError 当 type-only 引用通过(实际它是运行时 class).
 export { ApiError };
 
-const API_BASE = "/api";   // 走 vite proxy → http://localhost:8000
+// API 基址。
+//   - Web 版(浏览器 / 服务器部署):VITE_API_BASE 未设 → "" → "/api" 相对路径,
+//     dev 走 vite proxy、prod 同源,行为不变。
+//   - 桌面客户端(Tauri 壳化):打包时设 VITE_API_BASE=https://api.<域名>,
+//     因为 app origin 是 tauri://localhost,相对 /api 会打到 app 自身而非远程后端。
+// 与 PaymentModal.vue 的 VITE_API_BASE 取值口径一致。
+const API_BASE = `${import.meta.env.VITE_API_BASE || ""}/api`;
 
 /** auth store 在 client 之后初始化,用 setter 注入,避免循环 import */
 let getToken: () => string | null = () => null;
