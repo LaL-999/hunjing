@@ -23,6 +23,7 @@ import DocumentViewer from "./components/DocumentViewer.vue";
 import GlobalSearchModal from "./components/GlobalSearchModal.vue";
 import LoginModal from "./components/LoginModal.vue";
 import NewProjectModal from "./components/NewProjectModal.vue";
+import PaymentModal from "./components/PaymentModal.vue";
 import ToastHost from "./components/ToastHost.vue";
 import UpgradeModal from "./components/UpgradeModal.vue";
 import { useDocumentViewer } from "./composables/useDocumentViewer";
@@ -149,6 +150,8 @@ function handleProjectCreated(p: Project, mode: ProjectMode) {
     <ToastHost />
     <!-- Sprint 6.A2 路线图 #6(2026-05-23):全局 Cmd+K 搜索弹窗 -->
     <GlobalSearchModal />
+    <!-- 商业化重塑 P1(2026-06-09):全局统一支付弹窗 — 任意购买按钮 usePayment().open() 唤起 -->
+    <PaymentModal />
   </div>
 </template>
 
