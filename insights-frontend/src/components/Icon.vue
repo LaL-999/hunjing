@@ -136,6 +136,19 @@ withDefaults(
       <circle cx="12" cy="12" r="10" />
       <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" />
     </template>
+    <template v-else-if="name === 'receipt'">
+      <!-- 统一订单审核(2026-06-09)— 收据 -->
+      <path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1z" />
+      <line x1="8" y1="7" x2="16" y2="7" />
+      <line x1="8" y1="11" x2="16" y2="11" />
+      <line x1="8" y1="15" x2="13" y2="15" />
+    </template>
+    <template v-else-if="name === 'image'">
+      <!-- 截图预览(2026-06-09)-->
+      <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+      <circle cx="8.5" cy="8.5" r="1.5" />
+      <path d="M21 15l-5-5L5 21" />
+    </template>
     <template v-else-if="name === 'film'">
       <!-- 剧创态洞察(2026-06-09)— 胶片矩形 + 两侧齿孔 -->
       <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18" />

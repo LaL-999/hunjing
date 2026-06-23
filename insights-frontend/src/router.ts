@@ -19,6 +19,8 @@ import UsersListView from "./views/UsersListView.vue";
 import BYOKReviewView from "./views/BYOKReviewView.vue";
 // 2026-06-09 — 剧创态(第 5 态)使用洞察
 import ScreenplayAnalyticsView from "./views/ScreenplayAnalyticsView.vue";
+// 2026-06-09 — 统一订单审核(商业化重塑 P1)
+import OrderReviewView from "./views/OrderReviewView.vue";
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -48,5 +50,7 @@ export const router = createRouter({
     { path: "/byok-review", name: "byok-review", component: BYOKReviewView },
     // 2026-06-09:剧创态使用洞察
     { path: "/screenplay", name: "screenplay-analytics", component: ScreenplayAnalyticsView },
+    // 2026-06-09:统一订单审核(订阅 / BYOK / 配额)
+    { path: "/orders", name: "order-review", component: OrderReviewView },
   ],
 });

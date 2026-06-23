@@ -186,3 +186,35 @@ def api_admin_reject(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={"code": e.code, "message": e.message},
         )
+
+
+@router.get("/payments/admin/orders/{order_id}/proof-image")
+def api_admin_proof_image(
+    order_id: str,
+    admin: User = Depends(require_founder_or_admin_token),
+    conn: sqlite3.Connection = Depends(get_db),
+):
+    """返付款截图文件给审核员 <img> 加载(私有目录,admin-only)。"""
+    from pathlib import Path
+    from fastapi.responses import FileResponse
+    from app.db import fetch_one
+
+    row = fetch_one(
+        conn,
+        "SELECT proof_image_path FROM payment_orders WHERE id = ?",
+        (order_id,),
+    )
+    rel = row["proof_image_path"] if row else None
+    if not rel:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "PROOF_NOT_FOUND", "message": "截图不存在或未上传"},
+        )
+    # proof_image_path = 'payment_proofs/{user}/{order}.ext',相对 data/ 根
+    abs_path = settings.uploads_abs_dir.parent / rel
+    if not abs_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "PROOF_NOT_FOUND", "message": "截图文件已丢失"},
+        )
+    return FileResponse(Path(abs_path))

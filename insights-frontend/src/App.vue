@@ -69,12 +69,16 @@ import Icon from "./components/Icon.vue";
             <span>事件流</span>
           </router-link>
         </div>
-        <!-- BYOK 审核(2026-06-05):自携密钥订单人工审核 -->
+        <!-- 订单审核(2026-06-05 BYOK / 2026-06-09 统一订单)-->
         <div class="nav-group">
           <div class="group-label">订单审核</div>
+          <router-link to="/orders" active-class="active" class="nav-link">
+            <Icon name="receipt" :size="16" />
+            <span>订单审核(统一)</span>
+          </router-link>
           <router-link to="/byok-review" active-class="active" class="nav-link">
             <Icon name="key" :size="16" />
-            <span>BYOK 审核</span>
+            <span>BYOK 审核(旧)</span>
           </router-link>
         </div>
         <div class="nav-group">
