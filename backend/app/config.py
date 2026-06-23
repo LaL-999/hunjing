@@ -170,8 +170,12 @@ def load_settings() -> Settings:
             for o in os.getenv(
                 # 2026-06-05:洞察后台 frontend 调主平台 admin endpoint 用
                 # 5173 主平台 / 5174 洞察后台默认 / 5175-5176 fallback(端口被占时 vite 自动跳)
+                # 2026-06-09:加生产域名 shuangdayeye.cn(门户 + app 子域),
+                #   门户跨域拉定价 / app 调 api 都要放行;env 可整体覆盖。
+                #   桌面端 tauri:// origin 走 main.py 的 allow_origin_regex,不在这里。
                 "HUIMENG_CORS_ORIGINS",
-                "http://localhost:5173,http://localhost:5174,http://localhost:5175,http://localhost:5176",
+                "http://localhost:5173,http://localhost:5174,http://localhost:5175,http://localhost:5176"
+                ",https://shuangdayeye.cn,https://www.shuangdayeye.cn,https://app.shuangdayeye.cn",
             ).split(",")
             if o.strip()
         ],

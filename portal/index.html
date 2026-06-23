@@ -336,16 +336,16 @@ footer { border-top: 1px solid var(--border); padding: 40px 0 30px; margin-top: 
    门户页配置 — 部署时改这里(集中一处)
    ============================================================ */
 var PORTAL_CONFIG = {
-  // 在线创作平台地址(部署后改成正式域名,如 https://app.huimeng.com)
-  webAppUrl: "/app",
-  // 后端 API 基址(取定价用;留空 = 同源 /api)
-  apiBase: "",
+  // 在线创作平台地址(域名:shuangdayeye.cn,app 子域跑 Vue 创作平台)
+  webAppUrl: "https://app.shuangdayeye.cn",
+  // 后端 API 基址(取定价用;门户在 shuangdayeye.cn,跨域拉 api 子域)
+  apiBase: "https://api.shuangdayeye.cn",
   // GitHub 仓库(自动发现最新桌面客户端 Release;格式 owner/repo)
   githubRepo: "LaL-999/hunjing",
   // 手动覆盖下载链接(一般留空 —— 默认走 githubRepo 自动发现最新 Release)
   downloads: { windows: "", mac: "", linux: "" },
-  // 联系邮箱(给我真实的,替换占位)
-  contactEmail: "hi@huimeng.example",
+  // 联系邮箱(域名邮箱;若没开通邮箱服务记得换成你常用邮箱)
+  contactEmail: "hi@shuangdayeye.cn",
 };
 
 /* 静态兜底定价(API 拉不到时用)— 与 billing_service.PLAN_PRICE_CENTS 对齐 */
