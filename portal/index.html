@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>浑晶 — AI 创作平台 · 小说 / 剧本 / 漫画一站生成</title>
+<meta name="description" content="浑晶是 AI 驱动的多态创作平台:5 种创作态,小说一键转剧本/分集/漫画,多模型并排对比 + 3D 人物关系图谱。在线即用,也可下载桌面客户端。" />
+<meta name="keywords" content="AI 创作,小说转剧本,AI 编剧,多模型对比,创作平台,浑晶" />
+<!-- Open Graph(分享卡)-->
+<meta property="og:title" content="浑晶 — AI 创作平台" />
+<meta property="og:description" content="5 种创作态,小说一键转剧本 / 分集 / 漫画。多模型并排对比 + 3D 关系图谱。" />
+<meta property="og:type" content="website" />
+<style>
+/* ============================================================
+   浑晶门户页 — 零依赖静态站(2026-06-09 商业化重塑 Phase 2)
+   设计:沿用平台浑晶暖紫质感(米白底 + #7C3AED + 衬线标题 + 大留白)
+   ============================================================ */
+:root {
+  --bg: #FAF7F2;
+  --bg-2: #F4F0E8;
+  --surface: #FFFFFF;
+  --text: #1F1F1E;
+  --muted: #6B6862;
+  --subtle: #9A968D;
+  --border: #E5E1D8;
+  --accent: #7C3AED;
+  --accent-hover: #6D28D9;
+  --accent-soft: #F3EFFE;
+  --accent-text: #5B21B6;
+  --radius: 14px;
+  --serif: "Source Han Serif SC", "Noto Serif SC", "Songti SC", Georgia, serif;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: var(--sans);
+  color: var(--text);
+  background: var(--bg);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: inherit; text-decoration: none; }
+.wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+
+/* ===== Nav ===== */
+.nav {
+  position: sticky; top: 0; z-index: 50;
+  background: rgba(250, 247, 242, 0.82);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border);
+}
+.nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; }
+.brand { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 18px; letter-spacing: 0.04em; }
+.brand .dot { width: 10px; height: 10px; background: var(--accent); border-radius: 3px; transform: rotate(45deg); }
+.nav-links { display: flex; align-items: center; gap: 26px; font-size: 14px; color: var(--muted); }
+.nav-links a:hover { color: var(--text); }
+.btn {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 9px 20px; border-radius: 10px; font-size: 14px; font-weight: 500;
+  cursor: pointer; transition: all .18s cubic-bezier(.16,1,.3,1); border: 1px solid transparent;
+}
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover { background: var(--accent-hover); transform: translateY(-1px); box-shadow: 0 6px 18px rgba(124,58,237,.22); }
+.btn-ghost { background: transparent; color: var(--text); border-color: var(--border); }
+.btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ===== Hero ===== */
+.hero { text-align: center; padding: 96px 0 72px; position: relative; overflow: hidden; }
+.hero-glow {
+  position: absolute; top: -120px; left: 50%; transform: translateX(-50%);
+  width: 680px; height: 420px;
+  background: radial-gradient(ellipse at center, rgba(124,58,237,.10), transparent 70%);
+  pointer-events: none;
+}
+.hero .eyebrow {
+  display: inline-block; font-size: 12.5px; letter-spacing: .22em; color: var(--accent-text);
+  background: var(--accent-soft); padding: 5px 14px; border-radius: 20px; margin-bottom: 26px;
+}
+.hero h1 {
+  font-family: var(--serif); font-weight: 600; font-size: 58px; line-height: 1.15;
+  letter-spacing: .01em; margin-bottom: 22px;
+}
+.hero h1 .accent { color: var(--accent); }
+.hero p.sub { font-size: 19px; color: var(--muted); max-width: 660px; margin: 0 auto 38px; }
+.hero-cta { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+.hero-cta .btn { padding: 13px 28px; font-size: 15px; }
+.hero-note { margin-top: 18px; font-size: 12.5px; color: var(--subtle); }
+
+/* ===== Section ===== */
+section.block { padding: 72px 0; }
+.section-head { text-align: center; margin-bottom: 52px; }
+.section-head h2 { font-family: var(--serif); font-size: 36px; font-weight: 600; margin-bottom: 12px; }
+.section-head p { color: var(--muted); font-size: 16px; max-width: 560px; margin: 0 auto; }
+
+/* ===== 创作态 grid ===== */
+.modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+.mode-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 28px 24px; transition: all .2s cubic-bezier(.16,1,.3,1);
+}
+.mode-card:hover { transform: translateY(-3px); box-shadow: 0 10px 30px rgba(50,40,20,.07); border-color: #d8d2c4; }
+.mode-num { font-family: var(--serif); font-size: 13px; color: var(--subtle); letter-spacing: .1em; }
+.mode-icon { width: 28px; height: 28px; color: var(--accent); margin: 6px 0 14px; }
+.mode-card h3 { font-family: var(--serif); font-size: 21px; font-weight: 600; margin-bottom: 8px; }
+.mode-card p { font-size: 14px; color: var(--muted); }
+.mode-card.soon { opacity: .6; }
+.mode-tag { display:inline-block; font-size: 11px; padding: 2px 9px; border-radius: 10px; background: var(--accent-soft); color: var(--accent-text); margin-left: 8px; vertical-align: middle; }
+
+/* ===== 差异化 ===== */
+.features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; }
+.feat { padding: 8px; }
+.feat-icon { width: 34px; height: 34px; color: var(--accent); margin-bottom: 14px; }
+.feat h3 { font-size: 18px; font-weight: 600; margin-bottom: 8px; }
+.feat p { font-size: 14px; color: var(--muted); }
+.block-alt { background: var(--bg-2); }
+
+/* ===== 定价 ===== */
+.cycle-toggle { display: flex; justify-content: center; gap: 0; margin-bottom: 40px; }
+.cycle-toggle button {
+  padding: 8px 22px; border: 1px solid var(--border); background: var(--surface);
+  font-size: 14px; cursor: pointer; color: var(--muted);
+}
+.cycle-toggle button:first-child { border-radius: 10px 0 0 10px; }
+.cycle-toggle button:last-child { border-radius: 0 10px 10px 0; border-left: none; }
+.cycle-toggle button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.pricing { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; align-items: stretch; }
+.price-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 32px 26px; display: flex; flex-direction: column;
+}
+.price-card.featured { border-color: var(--accent); box-shadow: 0 8px 28px rgba(124,58,237,.12); position: relative; }
+.price-badge { position: absolute; top: -11px; left: 26px; background: var(--accent); color: #fff; font-size: 11px; padding: 3px 12px; border-radius: 10px; }
+.price-name { font-family: var(--serif); font-size: 22px; font-weight: 600; margin-bottom: 4px; }
+.price-amount { font-size: 38px; font-weight: 700; margin: 12px 0 2px; }
+.price-amount span { font-size: 15px; font-weight: 400; color: var(--muted); }
+.price-eq { font-size: 12.5px; color: var(--subtle); min-height: 18px; margin-bottom: 18px; }
+.price-feats { list-style: none; flex: 1; margin-bottom: 22px; }
+.price-feats li { font-size: 13.5px; color: var(--muted); padding: 6px 0 6px 24px; position: relative; }
+.price-feats li::before { content: ""; position: absolute; left: 0; top: 11px; width: 14px; height: 8px; border-left: 2px solid var(--accent); border-bottom: 2px solid var(--accent); transform: rotate(-45deg); }
+
+/* ===== 下载 ===== */
+.download-card {
+  background: linear-gradient(135deg, #2a2440, #1b1730); color: #fff;
+  border-radius: 20px; padding: 56px 48px; text-align: center;
+}
+.download-card h2 { font-family: var(--serif); font-size: 34px; margin-bottom: 12px; color: #fff; }
+.download-card p { color: rgba(255,255,255,.7); margin-bottom: 30px; font-size: 16px; }
+.download-btns { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+.dl-btn {
+  display: inline-flex; align-items: center; gap: 9px; padding: 13px 26px; border-radius: 11px;
+  background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.2); color: #fff;
+  font-size: 14.5px; cursor: pointer; transition: all .18s;
+}
+.dl-btn:hover { background: rgba(255,255,255,.18); }
+.dl-btn.primary { background: #fff; color: var(--accent-text); border-color: #fff; }
+.dl-btn.primary:hover { background: #f0ebfb; }
+.dl-note { margin-top: 18px; font-size: 12.5px; color: rgba(255,255,255,.5); }
+
+/* ===== Footer ===== */
+footer { border-top: 1px solid var(--border); padding: 40px 0 30px; margin-top: 40px; }
+.foot-inner { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 20px; align-items: center; }
+.foot-links { display: flex; gap: 22px; font-size: 13px; color: var(--muted); }
+.foot-links a:hover { color: var(--accent); }
+.foot-beian { font-size: 12px; color: var(--subtle); text-align: center; width: 100%; margin-top: 22px; }
+
+@media (max-width: 860px) {
+  .hero h1 { font-size: 40px; }
+  .modes, .features, .pricing { grid-template-columns: 1fr; }
+  .nav-links a:not(.btn) { display: none; }
+}
+</style>
+</head>
+<body>
+
+<!-- ===== Nav ===== -->
+<nav class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand"><span class="dot"></span> 浑晶</div>
+    <div class="nav-links">
+      <a href="#modes">创作态</a>
+      <a href="#features">差异化</a>
+      <a href="#pricing">定价</a>
+      <a href="#download">下载</a>
+      <a class="btn btn-primary" id="nav-enter">进入创作 →</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ===== Hero ===== -->
+<header class="hero">
+  <div class="hero-glow"></div>
+  <div class="wrap">
+    <span class="eyebrow">AI 创作平台 · 5 种创作态</span>
+    <h1>让每个故事<br>都有 <span class="accent">AI 创作搭子</span></h1>
+    <p class="sub">从零写世界,或导入已有作品 —— 浑晶帮你把小说一键转成剧本、分集、漫画,还能让多个大模型同台竞写,挑出最好的那版。</p>
+    <div class="hero-cta">
+      <a class="btn btn-primary" id="hero-enter">进入在线创作</a>
+      <a class="btn btn-ghost" href="#download">下载桌面客户端</a>
+    </div>
+    <div class="hero-note">浏览器即开即用 · 也可下载客户端沉浸创作 · 已备案合规运营</div>
+  </div>
+</header>
+
+<!-- ===== 创作态 ===== -->
+<section class="block" id="modes">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>五种创作态,覆盖你的每一步</h2>
+      <p>不同的创作起点,对应不同的 AI 协作姿势。选一个开始。</p>
+    </div>
+    <div class="modes">
+      <div class="mode-card">
+        <div class="mode-num">01</div>
+        <svg class="mode-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>
+        <h3>初始态</h3>
+        <p>我从零创造一个世界 —— 角色、关系、事件全自己定,AI 陪你推演。</p>
+      </div>
+      <div class="mode-card">
+        <div class="mode-num">02</div>
+        <svg class="mode-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        <h3>中间态</h3>
+        <p>导入已有作品,AI 自动拆解人物 / 关系 / 事件,你在 3D 图谱里触发剧情重塑。</p>
+      </div>
+      <div class="mode-card">
+        <div class="mode-num">03</div>
+        <svg class="mode-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 22V4M4 4a5 5 0 018 0 5 5 0 008 0v10a5 5 0 01-8 0 5 5 0 00-8 0z"/></svg>
+        <h3>末尾态</h3>
+        <p>导入已有作品,不改原剧情,从末尾一键续写,延展你的世界。</p>
+      </div>
+      <div class="mode-card soon">
+        <div class="mode-num">04</div>
+        <svg class="mode-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        <h3>漫创态 <span class="mode-tag">实验中</span></h3>
+        <p>已有文本 → AI 漫画分格,把文字变成画面。</p>
+      </div>
+      <div class="mode-card">
+        <div class="mode-num">05</div>
+        <svg class="mode-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/></svg>
+        <h3>剧创态 <span class="mode-tag">新</span></h3>
+        <p>导入小说 → AI 转剧本 YAML,5 种改编手法 + 版本树 + 张力曲线 + 智能分集。</p>
+      </div>
+      <div class="mode-card soon">
+        <div class="mode-num">06</div>
+        <svg class="mode-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+        <h3>更多玩法 <span class="mode-tag">开发中</span></h3>
+        <p>我们还在思考下一种创作姿势 —— 欢迎告诉我们你想要的。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== 差异化 ===== -->
+<section class="block block-alt" id="features">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>别家没有的三件事</h2>
+      <p>不是又一个套壳 ChatGPT,而是为创作者深度打造的差异化能力。</p>
+    </div>
+    <div class="features">
+      <div class="feat">
+        <svg class="feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v6M12 16v6M2 12h6M16 12h6"/><circle cx="12" cy="12" r="3"/></svg>
+        <h3>多模型并排竞写</h3>
+        <p>同一场戏,DeepSeek / GPT / Claude / Qwen / Kimi 同时改写,4 维可解释打分告诉你「为什么 A 比 B 好」,不再黑盒。</p>
+      </div>
+      <div class="feat">
+        <svg class="feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2"/><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="5" cy="18" r="2"/><circle cx="19" cy="18" r="2"/><path d="M7 7l3 3M17 7l-3 3M7 17l3-3M17 17l-3-3"/></svg>
+        <h3>3D 人物关系图谱</h3>
+        <p>把角色、关系、事件渲染成可旋转的三维星图,正负极一目了然,拖一拖就能重塑剧情走向。</p>
+      </div>
+      <div class="feat">
+        <svg class="feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 007.5.5l3-3a5 5 0 00-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 00-7.5-.5l-3 3a5 5 0 007 7l1.7-1.7"/></svg>
+        <h3>跨创作态资产桥接</h3>
+        <p>在初始态/中间态建好的角色驱动力、知识边界、状态时间线,剧创态直接接通复用 —— 一份心血,多处生效。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== 定价 ===== -->
+<section class="block" id="pricing">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>透明定价,按需选择</h2>
+      <p>免费起步,随时升级。老用户老规则,价格保护。</p>
+    </div>
+    <div class="cycle-toggle">
+      <button id="cyc-monthly" class="active" onclick="setCycle('monthly')">按月付</button>
+      <button id="cyc-yearly" onclick="setCycle('yearly')">按年付 · 省 15%</button>
+    </div>
+    <div class="pricing" id="pricing-grid">
+      <!-- JS 注入,下面是 noscript / fallback 静态版 -->
+    </div>
+  </div>
+</section>
+
+<!-- ===== 下载 ===== -->
+<section class="block" id="download">
+  <div class="wrap">
+    <div class="download-card">
+      <h2>把浑晶装进你的桌面</h2>
+      <p>独立窗口沉浸创作,系统级体验 —— 也可以继续用浏览器在线版,数据云端同步。</p>
+      <div class="download-btns">
+        <a class="dl-btn primary" id="dl-auto">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          <span id="dl-auto-label">下载桌面客户端</span>
+        </a>
+        <a class="dl-btn" id="dl-web">先用在线版</a>
+      </div>
+      <div class="dl-note" id="dl-note">桌面客户端即将上线 · 当前可先用功能完整的在线版</div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== Footer ===== -->
+<footer>
+  <div class="wrap">
+    <div class="foot-inner">
+      <div class="brand"><span class="dot"></span> 浑晶</div>
+      <div class="foot-links">
+        <a href="#modes">创作态</a>
+        <a href="#features">差异化</a>
+        <a href="#pricing">定价</a>
+        <a id="foot-contact" href="#">联系我们</a>
+      </div>
+    </div>
+    <div class="foot-beian">
+      © 浑晶 · AI 创作平台 ·
+      <a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener" style="color:var(--subtle)">黔ICP备2026004840号-1</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+/* ============================================================
+   门户页配置 — 部署时改这里(集中一处)
+   ============================================================ */
+var PORTAL_CONFIG = {
+  // 在线创作平台地址(部署后改成正式域名,如 https://app.huimeng.com)
+  webAppUrl: "/app",
+  // 后端 API 基址(取定价用;留空 = 同源 /api)
+  apiBase: "",
+  // 桌面客户端下载链接(Phase 3 Tauri 出包后填;留空 = 显示"即将上线")
+  downloads: { windows: "", mac: "", linux: "" },
+  // 联系邮箱(给我真实的,替换占位)
+  contactEmail: "hi@huimeng.example",
+};
+
+/* 静态兜底定价(API 拉不到时用)— 与 billing_service.PLAN_PRICE_CENTS 对齐 */
+var FALLBACK_PRICING = {
+  monthly: [
+    { name: "免费", amount: 0, eq: "尝鲜起步", feats: ["20 credit / 月", "项目 2 个 · 角色 10/项", "体验初始/中间/末尾态"], featured: false, free: true },
+    { name: "Pro", amount: 138, eq: "约 600 credit / 月", feats: ["全创作态解锁", "600 credit / 月", "多模型对比", "3D 关系图谱"], featured: true },
+    { name: "Max", amount: 438, eq: "约 2000 credit / 月", feats: ["Pro 全部能力", "2000 credit / 月", "更高项目 / 角色上限", "优先生成队列"], featured: false },
+  ],
+  yearly: [
+    { name: "免费", amount: 0, eq: "尝鲜起步", feats: ["20 credit / 月", "项目 2 个 · 角色 10/项", "体验初始/中间/末尾态"], featured: false, free: true },
+    { name: "Pro", amount: 1407.6, eq: "月均 ¥117 · 省 15%", feats: ["全创作态解锁", "600 credit / 月", "多模型对比", "3D 关系图谱"], featured: true },
+    { name: "Max", amount: 4467.6, eq: "月均 ¥372 · 省 15%", feats: ["Pro 全部能力", "2000 credit / 月", "更高项目 / 角色上限", "优先生成队列"], featured: false },
+  ],
+};
+
+var currentCycle = "monthly";
+var pricingData = FALLBACK_PRICING;
+
+function renderPricing() {
+  var rows = pricingData[currentCycle] || [];
+  var html = rows.map(function (p) {
+    var amt = p.free ? "¥0"
+      : "¥" + (Number.isInteger(p.amount) ? p.amount : p.amount.toFixed(1));
+    var unit = currentCycle === "yearly" ? "/年" : "/月";
+    var feats = p.feats.map(function (f) { return "<li>" + f + "</li>"; }).join("");
+    var badge = p.featured ? '<div class="price-badge">最受欢迎</div>' : "";
+    var btnLabel = p.free ? "免费开始" : "选择 " + p.name;
+    return '<div class="price-card' + (p.featured ? " featured" : "") + '">' + badge +
+      '<div class="price-name">' + p.name + '</div>' +
+      '<div class="price-amount">' + amt + (p.free ? "" : '<span>' + unit + '</span>') + '</div>' +
+      '<div class="price-eq">' + (p.eq || "") + '</div>' +
+      '<ul class="price-feats">' + feats + '</ul>' +
+      '<a class="btn ' + (p.featured ? "btn-primary" : "btn-ghost") + '" href="' + PORTAL_CONFIG.webAppUrl + '" style="justify-content:center">' + btnLabel + '</a>' +
+      '</div>';
+  }).join("");
+  document.getElementById("pricing-grid").innerHTML = html;
+}
+
+function setCycle(c) {
+  currentCycle = c;
+  document.getElementById("cyc-monthly").classList.toggle("active", c === "monthly");
+  document.getElementById("cyc-yearly").classList.toggle("active", c === "yearly");
+  renderPricing();
+}
+
+/* 尝试从后端拉真实定价(优雅降级到 fallback)*/
+function loadLivePricing() {
+  var base = PORTAL_CONFIG.apiBase || "";
+  fetch(base + "/api/payments/catalog?category=subscription")
+    .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
+    .then(function (data) {
+      var items = (data && data.items) || [];
+      if (!items.length) return;
+      // 按 plan 聚合 monthly/yearly
+      var byCycle = { monthly: [], yearly: [] };
+      var planMeta = {
+        pro: { name: "Pro", featured: true, feats: ["全创作态解锁", "多模型对比", "3D 关系图谱"] },
+        max: { name: "Max", featured: false, feats: ["Pro 全部能力", "更高项目 / 角色上限", "优先生成队列"] },
+        super_max: { name: "Super Max", featured: false, feats: ["Max 全部能力", "最高配额", "团队协作(规划中)"] },
+      };
+      // 免费档置顶
+      byCycle.monthly.push(FALLBACK_PRICING.monthly[0]);
+      byCycle.yearly.push(FALLBACK_PRICING.yearly[0]);
+      items.forEach(function (sku) {
+        var plan = sku.meta && sku.meta.plan;
+        var cycle = sku.meta && sku.meta.billing_cycle;
+        var m = planMeta[plan];
+        if (!m || !byCycle[cycle]) return;
+        byCycle[cycle].push({
+          name: m.name, amount: sku.amount_yuan, featured: m.featured, feats: m.feats,
+          eq: cycle === "yearly" ? "月均 ¥" + Math.round(sku.amount_yuan / 12) + " · 省 15%" : "",
+        });
+      });
+      if (byCycle.monthly.length > 1) { pricingData = byCycle; renderPricing(); }
+    })
+    .catch(function () { /* 用 fallback,静默 */ });
+}
+
+/* OS 检测 → 推荐对应安装包 */
+function setupDownload() {
+  var ua = navigator.userAgent;
+  var os = "windows", label = "下载 Windows 版";
+  if (/Mac/i.test(ua)) { os = "mac"; label = "下载 macOS 版"; }
+  else if (/Linux/i.test(ua) && !/Android/i.test(ua)) { os = "linux"; label = "下载 Linux 版"; }
+  var url = PORTAL_CONFIG.downloads[os];
+  var autoBtn = document.getElementById("dl-auto");
+  var autoLabel = document.getElementById("dl-auto-label");
+  if (url) {
+    autoLabel.textContent = label;
+    autoBtn.href = url;
+    document.getElementById("dl-note").textContent = "已为你的系统推荐 · 其它平台版本请在群内获取";
+  } else {
+    autoLabel.textContent = "桌面客户端即将上线";
+    autoBtn.href = PORTAL_CONFIG.webAppUrl;
+  }
+}
+
+/* 接线 */
+document.getElementById("nav-enter").href = PORTAL_CONFIG.webAppUrl;
+document.getElementById("hero-enter").href = PORTAL_CONFIG.webAppUrl;
+document.getElementById("dl-web").href = PORTAL_CONFIG.webAppUrl;
+document.getElementById("foot-contact").href = "mailto:" + PORTAL_CONFIG.contactEmail;
+
+renderPricing();
+loadLivePricing();
+setupDownload();
+</script>
+</body>
+</html>
