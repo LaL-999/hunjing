@@ -108,71 +108,177 @@ npx tauri icon path/to/Hunjing.png   # 1024×1024 PNG,方形,透明或实底都�
 
 ---
 
-## 6. 代码签名(强烈建议,否则用户被吓退)
+## 6. 代码签名(2026 现状 —— 已查证,别踩旧坑)
 
-| 平台 | 不签名的后果 | 怎么签 |
-|---|---|---|
-| **Windows** | SmartScreen 拦"未知发布者",用户要点"仍要运行" | EV 代码签名证书(DigiCert 等,~$300+/年);短期可先不签 |
-| **macOS** | **直接打不开**(Gatekeeper 拦) | Apple Developer($99/年)+ 公证;要出 Mac 版绕不开 |
-| **Linux** | 无影响 | 不需要 |
+> 这节的结论经过联网核验(微软官方文档 2026-05 + CA/B Forum 规则 + 多家 CA),
+> 推翻了网上大量过期教程。**先读"一句话":验证期别买证书。**
 
-签名证书配好后,在 CI 里加对应 secrets(参见 tauri-action 文档的 Windows/macOS 签名节)。
-**建议先只出 Windows 版**(自签或让用户点"仍要运行"),验证 workflow 跑通,再上 Mac。
+### 一句话
+
+**验证期直接发"未签名"包,先别买证书。** 等种子用户跑通、要扩量了,再买
+**Certum 开源代码签名(云 SimplySign 版,首年约 $58–104)**。
+**绝对不要为了过 SmartScreen 去买 EV** —— 这条 2026 年已经失效。
+
+### ⚠️ 三个最容易踩的旧坑(都已查证)
+
+1. **EV 证书不再免 SmartScreen。** 微软官方(learn.microsoft.com,2026-05 更新)
+   原话:"EV 证书不再绕过 SmartScreen……这个行为已不存在。" 大约 2024-03 生效。
+   现在 OV 和 EV 在 SmartScreen 面前一样,都靠下载量慢慢攒信誉。EV 贵 2-3 倍纯浪费。
+2. **Azure Trusted Signing(2026 改名 Azure Artifact Signing)对你出局。** 价格最香
+   ($9.99/月、无硬件 token、原生 GitHub Action),但官方 FAQ:个人开发者**仅限美/加**,
+   组织仅限美/加/欧/英。**中国个人两条路都走不通**,别把 CI 架在它上面。
+3. **便宜的可下载 .pfx 证书已绝迹。** 2023-06 起 CA/B 规定私钥必须存硬件(FIPS),
+   交付只有 USB token(寄中国清关慢)或**云 HSM / 云签名**。→ 选云签名,绕开物流。
+   另:2026-03-01 起证书有效期上限砍到 ~458 天,多年期要每 400 多天用同一身份重签。
+
+### 个人主体到底买得到什么 + 怎么选
+
+可以买。证书以 **IV(个人验证)/ Sole-Proprietor** 形式签发在你**真实姓名**下,
+等同 OV 信任。身份核验:护照/身份证 + 手持自拍 + 视频(护照适合中国申请)。
+
+| 方案 | 价格 | 中国个人可用 | 适合 |
+|---|---|---|---|
+| **Certum 开源代码签名(云)** ⭐ | 首年 ~$58–104,续费 ~$32 | 是 | **若浑晶开源**,最便宜正路(需仓库+license+一张水电账单) |
+| **SSL.com IV + eSigner 云签** | ~$129/年 | 是 | 闭源 / 想在 CI 里免 USB 直接签 |
+| Sectigo/Comodo IV | ~$210+/年 | 是 | 同效更贵,不推荐 |
+
+> 买了 OV/IV 也**不会立刻免警告**:首批下载仍弹一次,但显示你的**真实姓名**(不再"未知
+> 发布者"),信誉随下载量积累(通常几周 + 数百次干净安装)。唯一零首警告路径是上架
+> Microsoft Store(微软重签)。
+
+### macOS / Linux
+
+- **macOS**:不公证**直接打不开**(Gatekeeper)。必须 Apple Developer($99/年)+ 公证。
+  → 出 Mac 版前绕不开,**这也是先只出 Windows 的原因**。
+- **Linux**:无需签名。
+
+### 验证期未签名包 —— 把这段写进 Release notes 给种子用户
+
+```
+1. 双击 Huimeng_<版本>_x64-setup.exe
+2. 弹"Windows 已保护你的电脑" → 点左下角"更多信息(More info)"
+3. 显示"未知发布者" → 点"仍要运行(Run anyway)"→ 开始安装
+（备选:右键 .exe → 属性 → 勾"解除锁定(Unblock)" → 确定,再运行）
+```
+
+> - SmartScreen **没有任何 tauri.conf 开关能关掉**,别浪费时间找。
+> - Win11 的 **Smart App Control** 更狠,可能连"仍要运行"都不给 —— 但只影响开了 SAC
+>   的设备(默认很多是关的),验证期可接受。
 
 ---
 
-## 7. 开启自动更新(需要一次性生成签名密钥)
+## 7. 开启自动更新(教学 —— 已查证 Tauri v2 确切步骤)
 
 更新器需要一对 **minisign 密钥**:私钥是机密(进 GitHub Secrets),公钥进配置。
-代码里**暂未启用**(保证首个版本零配置即可出包)。要开启:
+代码里**暂未启用**(保证首版零配置出包)。下面 7 步开启。
 
-### 7.1 生成密钥对
+> 🔴 **头号坑(漏了白忙)**:`bundle.createUpdaterArtifacts: true` 是 v2 新增硬要求
+> (v1 没有)。漏了它 → 不生成 `.sig` 签名产物 → 构建照样成功,但**更新永远装不上且
+> 不报错**。紧随其后两个运行时坑:`pubkey` 缺/写错 → 运行时 `InvalidSignature`
+> (v2 签名校验无法关闭;pubkey 要粘**内容**不是路径);capabilities 少权限 →
+> `check()`/`relaunch()` 运行时抛错。
+
+### 7.1 生成密钥对(在 frontend 目录跑)
 
 ```bash
 cd frontend
-npx tauri signer generate -w ~/.tauri/huimeng-updater.key
-# 输出公钥(一长串 base64)。私钥写到 ~/.tauri/huimeng-updater.key
+npm run tauri signer generate -- -w ~/.tauri/huimeng.key
+# 私钥 → ~/.tauri/huimeng.key(喂 CI,绝不外泄 + 务必备份)
+# 公钥 → ~/.tauri/huimeng.key.pub(把内容填进 7.4 的 pubkey)
 ```
+
+> ⚠️ 重新生成密钥 = 所有已发出去的客户端(持旧 pubkey)会**拒绝**新版本,永久失联。
+> 密钥对要稳定 + 备份。
 
 ### 7.2 加 GitHub Secrets
 
 | Secret | 值 |
 |---|---|
-| `TAURI_SIGNING_PRIVATE_KEY` | `~/.tauri/huimeng-updater.key` 文件内容 |
-| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | 生成时设的口令(没设留空) |
+| `TAURI_SIGNING_PRIVATE_KEY` | `~/.tauri/huimeng.key` 私钥**全部内容** |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | 生成时设的口令(没设留空,但 CI 里仍要传这个 env) |
 
-> CI workflow 已预留这两个 env,配好即生效。**私钥永不入库**。
+> ⚠️ 私钥**不能放 `.env`**,官方明确说对签名 key 无效 —— 必须是真环境变量(CI 里就是
+> 上面 secrets,放 job 的 `env:` 下)。CI workflow 已预留这两个 env。
 
-### 7.3 改 `frontend/src-tauri/Cargo.toml` 加依赖
+### 7.3 加 Rust 插件依赖(在 frontend/src-tauri 跑)
 
-```toml
-[dependencies]
-tauri-plugin-updater = "2"
+```bash
+cargo add tauri-plugin-updater --target 'cfg(any(target_os = "macos", windows, target_os = "linux"))'
 ```
 
-### 7.4 改 `frontend/src-tauri/src/lib.rs` 注册插件
+### 7.4 改 `frontend/src-tauri/src/lib.rs` 注册(必须 `#[cfg(desktop)]` 守卫)
 
 ```rust
-tauri::Builder::default()
-    .plugin(tauri_plugin_updater::Builder::new().build())   // ← 加这行
-    .setup(|app| { /* ... 原样 ... */ })
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    tauri::Builder::default()
+        .setup(|app| {
+            #[cfg(desktop)]
+            app.handle().plugin(tauri_plugin_updater::Builder::new().build());
+            if cfg!(debug_assertions) { /* ...原有 log 插件保留... */ }
+            Ok(())
+        })
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}
 ```
 
-### 7.5 改 `frontend/src-tauri/tauri.conf.json` 加 updater 配置块
+> 不加 `#[cfg(desktop)]` 会破坏 mobile 构建。
+
+### 7.5 改 `frontend/src-tauri/tauri.conf.json`
+
+`createUpdaterArtifacts` 在 **bundle** 下;`pubkey` 放**内容**;`endpoints` 是**数组**:
 
 ```jsonc
-"plugins": {
-  "updater": {
-    "endpoints": [
-      "https://github.com/LaL-999/hunjing/releases/latest/download/latest.json"
-    ],
-    "pubkey": "<第 7.1 步输出的公钥>"
+{
+  "bundle": {
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "把 ~/.tauri/huimeng.key.pub 的全部内容粘到这里",
+      "endpoints": [
+        "https://github.com/LaL-999/hunjing/releases/latest/download/latest.json"
+      ]
+    }
   }
 }
 ```
 
-`tauri-action` 发布时会自动生成 `latest.json` 并签名。之后客户端启动会静默检查更新。
-前端如需「有新版」提示弹窗,装 `@tauri-apps/plugin-updater` 调 `check()`(可后做)。
+### 7.6 加 capabilities 权限 + JS 包
+
+`frontend/src-tauri/capabilities/default.json` 的 `permissions` 加两项:
+`"updater:default"`、`"process:allow-restart"`。然后在 frontend 装 JS 包:
+
+```bash
+npm install @tauri-apps/plugin-updater @tauri-apps/plugin-process
+```
+
+最小调用(可放 App.vue onMounted):
+
+```javascript
+import { check } from "@tauri-apps/plugin-updater";
+import { relaunch } from "@tauri-apps/plugin-process";
+
+const update = await check();
+if (update) {
+  await update.downloadAndInstall();
+  await relaunch();
+}
+```
+
+### 7.7 发布
+
+照常推 `desktop-v*` 标签即可。**只要 `TAURI_SIGNING_PRIVATE_KEY` 在,`tauri-action`
+就自动构建 updater 产物、签 `.sig`、生成带各平台 url+signature 的 `latest.json` 并上传
+到 Release** —— 你不用手写 latest.json。
+
+> 📌 网上很多写 `includeUpdaterJson: true` —— **这个 input 不存在**,会被静默忽略。
+> 真名是 `uploadUpdaterJson`,而且**默认就是 true**,所以根本不用写。endpoint 那条静态
+> URL 只在 latest.json 真上传后才有效,否则 `check()` 会 404。
+>
+> 📌 updater 签名密钥(`TAURI_SIGNING_PRIVATE_KEY`)和第 6 节的 Authenticode 代码签名
+> **是两码事**:前者保证更新包完整性,后者是 Windows 信任。两者独立,可分别上。
 
 ---
 

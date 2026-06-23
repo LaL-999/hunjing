@@ -59,29 +59,35 @@
 > 完整操作手册见 `DESKTOP_CLIENT.md`。下面只列**需要你提供的东西**。
 
 ### 9. ⭐ 后端基址 `PROD_API_BASE`(出包必需,否则桌面端连不上服务器)
-- 桌面端是壳,API 要走远程后端。GitHub 仓库 → Settings → Secrets and
-  variables → Actions → **Variables** 加 `PROD_API_BASE = https://api.<你的域名>`
-- 这取决于第 4 项(域名)+ 第 5 项(服务器)定下来
+- 域名已定 **shuangdayeye.cn**,我已按子域拓扑接好(门户根 / app. 创作 / api. 后端)
+- 你要做:仓库 → Settings → Secrets and variables → Actions → **Variables** 加
+  `PROD_API_BASE = https://api.shuangdayeye.cn`
+- ⚠️ **备案核对**:确认 `黔ICP备2026004840号-1` 是否已绑定 shuangdayeye.cn;
+  若该备案是别的域名,需在工信部把 shuangdayeye.cn 加进备案,否则国内打不开
 
-### 10. 应用图标源图(没有先用 Tauri 默认图标占位)
-- **1024×1024 PNG**(透明底最佳)→ 我跑 `npx tauri icon` 自动生成全套尺寸
-- 就是第 7 项的 Logo,给高清方形版即可
+### 10. 应用图标源图(我已用临时品牌图占位,等你的真图)
+- 你说的 `Hunjing.png` 我在项目根/桌面/Downloads/Temp 都没找到 —— 没真正落盘
+- 现在先用我生成的临时图标(暖紫圆角 + 白「晶」字)顶着,不影响出包
+- 你重新把图放到 **`C:\Users\Administrator\Desktop\huimeng\Hunjing.png`**(1024×1024
+  方形 PNG),告诉我一声,我跑 `npx tauri icon` 一键替换全套尺寸
 
-### 11. 代码签名证书(可选,但不签体验差)
-- **Windows**:不签名用户下载会被 SmartScreen 拦"未知发布者"吓退
-  - EV 代码签名证书 ~$300+/年(DigiCert / GlobalSign 等)
-  - 短期可先不签,告诉用户"点'仍要运行'"
-- **macOS**:不公证**直接打不开**(必须 Apple Developer $99/年)
-  - 如果要出 Mac 版,这个绕不开
-- 我的建议:**先只出 Windows 版**(自签或让用户点"仍要运行")验证流程跑通,
-  Mac 版等有量了再上。要出 Mac 必须买 Apple Developer。
+### 11. 代码签名证书 —— 我已查证 2026 现状(你说"能帮就帮":我帮你定方案,买证要你本人)
+> 证书绑你**真实身份**(护照/身份证 + 视频核验)+ 要付费,只能你本人申请;我把
+> 最省钱的正路定好,你照着买,买完证书发我我接进 CI。完整版见 `DESKTOP_CLIENT.md` 第 6 节。
+- **验证期:别买,直接发未签名包**(给用户"更多信息 → 仍要运行"的指引,我已写好)
+- **千万别买 EV** —— 2024 起 EV 也不再免 SmartScreen,贵 2-3 倍纯浪费(已查证微软官方)
+- **Azure Trusted Signing(最便宜 $9.99/月)对中国个人资格出局**,别考虑
+- 要扩量了再买:**Certum 开源代码签名云版(首年 ~$58–104,若浑晶开源最划算)**
+  或 **SSL.com IV + eSigner 云签(~$129/年,闭源/想 CI 直签选它)** —— 都走**云签名**
+  (2023 起私钥必须存硬件,云签名免 USB token 寄中国的清关麻烦)
+- **macOS**:要出 Mac 版必须 Apple Developer($99/年)+ 公证,所以先只出 Windows
 
-### 12. 自动更新签名密钥(开启自动更新才需,我给你一条命令)
-- 需要一对签名密钥:**私钥是机密**(进 GitHub Secrets,永不入库),公钥进配置
-- 生成命令(`DESKTOP_CLIENT.md` 第 7 节有完整步骤):
-  `cd frontend && npx tauri signer generate -w ~/.tauri/huimeng-updater.key`
-- 然后把私钥内容存成 GitHub Secret `TAURI_SIGNING_PRIVATE_KEY`
-- 不开自动更新也能正常出包发布,只是用户得手动来官网下新版
+### 12. 自动更新签名密钥(你说"教我操作":步骤已写全,跑 1 条命令 + 填 2 个 Secret)
+- 完整 7 步教学在 `DESKTOP_CLIENT.md` 第 7 节(已按 Tauri v2 现状查证更正)
+- 核心:① `cd frontend && npm run tauri signer generate -- -w ~/.tauri/huimeng.key`
+  ② 私钥内容 → GitHub Secret `TAURI_SIGNING_PRIVATE_KEY` ③ 公钥内容 → 我填进 conf
+- ⚠️ 头号坑我已在文档标红:`bundle.createUpdaterArtifacts: true` 漏了更新永远装不上
+- 不开自动更新也能正常发版,只是用户得手动来官网下新版(门户已自动发现最新版)
 
 ### 13. 客户端分发托管
 - 默认用 **GitHub Releases**(免费 CDN,门户已接好自动发现最新版)
@@ -94,9 +100,10 @@
 - ✅ 统一支付内核(订单中心 + SKU + 履约 + 审核)— 已上线
 - ✅ 订阅/配额接入统一支付 — 已上线
 - ✅ insights 统一订单审核页 — 已上线
-- ✅ 门户页(静态高级营销站,自动拉定价 + 自动发现下载)— 已上线
-- ✅ Tauri 桌面客户端脚手架 + 云端 CI 出三平台包 + 自动更新通道 — 已就位
-  (等你配 `PROD_API_BASE` + 推标签即可出包;签名/图标/更新密钥见上)
+- ✅ 门户页(静态高级营销站,自动拉定价 + 自动发现下载)— 已接 shuangdayeye.cn
+- ✅ Tauri 桌面客户端脚手架 + 云端 CI(已收窄为 **Windows-only 验证版**)— 已就位
+- ✅ 域名 shuangdayeye.cn 接线(门户/CORS/文档)+ 临时品牌图标 + 签名/更新器查证 — 已做
+  (你只剩:配 `PROD_API_BASE` 变量 + 重放 `Hunjing.png` + 推 `desktop-v0.1.0` 标签)
 
 ---
 
