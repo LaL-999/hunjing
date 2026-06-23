@@ -62,10 +62,12 @@ GitHub 仓库 → **Settings → Secrets and variables → Actions → Variables
 
 | 变量名 | 值 | 说明 |
 |---|---|---|
-| `PROD_API_BASE` | `https://api.<你的域名>` | **必填**。壳化版后端基址,不填桌面端连不上服务器 |
+| `PROD_API_BASE` | `https://api.shuangdayeye.cn` | **必填**。壳化版后端基址,不填桌面端连不上服务器 |
 
-> 后端已放行 Tauri origin 的 CORS(`tauri://localhost` / `http://tauri.localhost`),
-> 见 `backend/app/main.py` 的 `allow_origin_regex`。无需额外配置。
+> 域名已定 `shuangdayeye.cn`,推荐子域:`shuangdayeye.cn` 门户 / `app.` 在线创作 /
+> `api.` 后端。后端已放行 Tauri origin 的 CORS(`tauri://localhost` /
+> `http://tauri.localhost`,见 `backend/app/main.py`)+ 门户/app 子域(`config.py`)。
+> 部署时把生产 `HUIMENG_CORS_ORIGINS` 设成这三个域名(见 `backend/.env.example`)。
 
 ### 4.2 出包
 
@@ -75,12 +77,15 @@ git tag desktop-v0.1.0
 git push origin desktop-v0.1.0
 ```
 
-CI 自动在 Windows / macOS / Linux runner 上编译,产物上传到一个**草稿 Release**。
+CI 自动编译,产物上传到一个**草稿 Release**。
+
+> **当前验证阶段只出 Windows 版**(`desktop-release.yml` 矩阵已注释 mac/Linux)。
+> 流程跑通、备好 Apple Developer 后,取消注释那两行即可三平台齐出。
 
 ### 4.3 发布
 
-进 GitHub **Releases**,检查草稿里的安装包(Windows `.msi`/`.exe`、macOS `.dmg`、
-Linux `.AppImage`/`.deb`),点 **Publish release**。
+进 GitHub **Releases**,检查草稿里的安装包(Windows `.msi` / `.exe` setup),
+点 **Publish release**。
 
 发布后,**门户下载按钮自动生效** —— `portal/index.html` 会调 GitHub API 发现最新
 Release,按访客系统推荐对应安装包。无需改门户代码。
@@ -89,14 +94,17 @@ Release,按访客系统推荐对应安装包。无需改门户代码。
 
 ## 5. 替换应用图标
 
-当前用的是 Tauri 默认图标。拿到品牌 logo 后:
+当前用的是**临时品牌图标**(暖紫圆角 + 白「晶」字,源图
+`frontend/src-tauri/icon-source-placeholder.png`)。你的 `Hunjing.png` 之前没落到
+仓库能访问的位置,所以先用了占位图。拿到真 logo 后一条命令替换:
 
 ```bash
 cd frontend
-npx tauri icon path/to/logo-1024.png   # 1024×1024 PNG,透明底最佳
+npx tauri icon path/to/Hunjing.png   # 1024×1024 PNG,方形,透明或实底都行
 ```
 
-会自动生成 `src-tauri/icons/` 下全套尺寸(.ico/.icns/.png),提交即可。
+会自动重生成 `src-tauri/icons/` 全套尺寸(.ico/.icns/.png),提交即可。
+(我跑这条命令时顺手删了它生成的 `android/` `ios/` 目录,桌面端用不到。)
 
 ---
 
