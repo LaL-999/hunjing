@@ -14,8 +14,12 @@
 -->
 
 <template>
-  <transition name="modal-fade">
-    <div v-if="isOpen" class="modal-backdrop" @click.self="handleClose">
+  <!-- 2026-06-24 fix:Teleport 到 body —— 本弹窗挂在 AppSidebar 内,sidebar 折叠用了
+       translateX transform,会让内部 position:fixed 相对 sidebar 定位(弹窗被困在左侧栏)。
+       传送到 body 即脱离该 transform 上下文,fixed 才真正铺满全屏居中。 -->
+  <Teleport to="body">
+    <transition name="modal-fade">
+      <div v-if="isOpen" class="modal-backdrop" @click.self="handleClose">
       <div class="modal-card">
         <header class="modal-header">
           <div class="title-wrap">
@@ -253,7 +257,8 @@
         </div>
       </div>
     </div>
-  </transition>
+    </transition>
+  </Teleport>
 </template>
 
 <script setup lang="ts">
