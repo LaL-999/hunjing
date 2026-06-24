@@ -1,0 +1,24 @@
+# 浑晶后端 systemd 服务
+# 放到 /etc/systemd/system/huimeng-backend.service
+# 然后:systemctl daemon-reload && systemctl enable --now huimeng-backend
+[Unit]
+Description=Huimeng (浑晶) FastAPI backend
+After=network.target
+
+[Service]
+Type=simple
+User=huimeng
+Group=huimeng
+WorkingDirectory=/opt/huimeng/app/backend
+# config.py 会自动读 /opt/huimeng/app/.env;这里再显式注入一份保险
+EnvironmentFile=/opt/huimeng/app/.env
+# 单 worker —— SQLite 写锁友好;并发上来再加 worker / 换 Postgres
+ExecStart=/opt/huimeng/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=3
+# 日志走 journald:journalctl -u huimeng-backend -f
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
