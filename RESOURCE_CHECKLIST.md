@@ -58,18 +58,16 @@
 
 > 完整操作手册见 `DESKTOP_CLIENT.md`。下面只列**需要你提供的东西**。
 
-### 9. ⭐ 后端基址 `PROD_API_BASE`(出包必需,否则桌面端连不上服务器)
-- 域名已定 **shuangdayeye.cn**,我已按子域拓扑接好(门户根 / app. 创作 / api. 后端)
-- 你要做:仓库 → Settings → Secrets and variables → Actions → **Variables** 加
-  `PROD_API_BASE = https://api.shuangdayeye.cn`
+### 9. ⭐ 后端基址 `PROD_API_BASE` —— ⚠️ 改放到【公开】发布仓库
+- 闭源后构建改在公开仓库 `huimeng-desktop` 跑,所以这个变量要配在那边:
+  `huimeng-desktop` → Settings → Secrets and variables → Actions → **Variables** 加
+  `PROD_API_BASE = https://api.shuangdayeye.cn`(你之前加在私有 hunjing 的那个可删/留着没用)
 - ⚠️ **备案核对**:确认 `黔ICP备2026004840号-1` 是否已绑定 shuangdayeye.cn;
   若该备案是别的域名,需在工信部把 shuangdayeye.cn 加进备案,否则国内打不开
 
-### 10. 应用图标源图(我已用临时品牌图占位,等你的真图)
-- 你说的 `Hunjing.png` 我在项目根/桌面/Downloads/Temp 都没找到 —— 没真正落盘
-- 现在先用我生成的临时图标(暖紫圆角 + 白「晶」字)顶着,不影响出包
-- 你重新把图放到 **`C:\Users\Administrator\Desktop\huimeng\Hunjing.png`**(1024×1024
-  方形 PNG),告诉我一声,我跑 `npx tauri icon` 一键替换全套尺寸
+### 10. ✅ 应用图标 —— 已完成(从你的 Hunjing.png 抠水晶球)
+- 你重放的 Hunjing.png 已收到;我从中抠出绿色水晶球图标,生成了全套尺寸,
+  替掉了临时占位图。装好后任务栏/开始菜单就是这颗水晶。无需你再做什么。
 
 ### 11. 代码签名证书 —— 我已查证 2026 现状(你说"能帮就帮":我帮你定方案,买证要你本人)
 > 证书绑你**真实身份**(护照/身份证 + 视频核验)+ 要付费,只能你本人申请;我把
@@ -89,9 +87,13 @@
 - ⚠️ 头号坑我已在文档标红:`bundle.createUpdaterArtifacts: true` 漏了更新永远装不上
 - 不开自动更新也能正常发版,只是用户得手动来官网下新版(门户已自动发现最新版)
 
-### 13. 客户端分发托管
-- 默认用 **GitHub Releases**(免费 CDN,门户已接好自动发现最新版)
-- 推 `desktop-v*` 标签即触发 CI 出包;仓库 public 即可直接下载
+### 13. ✅ 客户端分发托管 —— 已建好(两仓库,代码闭源)
+- 我已建公开发布仓库 **`LaL-999/huimeng-desktop`**(只放安装包,源码不入)
+- CI 在公开仓库里 sparse-checkout 私有 `hunjing/frontend` 编译,产物发布到公开仓库
+- 门户 + 自动更新已指向它;用户免登录直接下载,源码一行不外泄
+- **你只需做一次**(详见 `DESKTOP_CLIENT.md` 4.1):在 `huimeng-desktop` 仓库加
+  ① Secret `SOURCE_REPO_TOKEN`(细粒度 PAT,对 hunjing 仅 Contents: Read)
+  ② Variable `PROD_API_BASE`(见第 9 项)③ 推 `desktop-v0.1.0` 标签触发首次出包
 
 ---
 

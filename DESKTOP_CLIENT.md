@@ -31,9 +31,14 @@
 |---|---|
 | `frontend/src-tauri/` | Tauri 工程(Cargo + 配置 + 图标 + Rust 入口) |
 | `frontend/src-tauri/tauri.conf.json` | 应用配置(窗口 / 包元数据 / 标识符) |
-| `.github/workflows/desktop-release.yml` | 云端出三平台安装包的 CI |
 | `frontend/src/api/client.ts` | `API_BASE = (VITE_API_BASE \|\| "") + "/api"` |
 | `portal/index.html` | 门户下载区(自动发现最新 Release) |
+| **公开仓库** `LaL-999/huimeng-desktop` | 发布流水线 + 安装包托管(源码不入此仓) |
+
+> **两仓库架构(代码闭源)**:源码全在私有 `LaL-999/hunjing`;公开
+> `LaL-999/huimeng-desktop` 只放编译产物。CI 在公开仓库里 sparse-checkout 私有
+> 仓库的 `frontend/`(用只读 PAT)来编译,产物发布到公开仓库的 Release。
+> 门户 + 自动更新都指向公开仓库,用户免登录直接下载;源码一行不外泄。
 
 ---
 
@@ -54,38 +59,53 @@ npm run tauri:dev
 
 ---
 
-## 4. 发布(推荐路径 —— 零本地 Rust,云端编译)
+## 4. 发布(零本地 Rust,云端编译 —— 在公开发布仓库操作)
 
-### 4.1 一次性配置
+### 4.1 一次性配置(都在【公开】仓库 `huimeng-desktop` 里设)
 
-GitHub 仓库 → **Settings → Secrets and variables → Actions → Variables** 新建:
+进 `LaL-999/huimeng-desktop` → **Settings → Secrets and variables → Actions**:
 
-| 变量名 | 值 | 说明 |
+**Secrets**:
+
+| 名称 | 值 | 必填? |
 |---|---|---|
-| `PROD_API_BASE` | `https://api.shuangdayeye.cn` | **必填**。壳化版后端基址,不填桌面端连不上服务器 |
+| `SOURCE_REPO_TOKEN` | 细粒度 PAT,对私有仓库 `hunjing` 仅 **Contents: Read-only** | ✅ 必填(否则拉不到源码) |
+| `TAURI_SIGNING_PRIVATE_KEY` | 更新器私钥内容 | 开自动更新后才需 |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | 私钥口令(没设留空) | 开自动更新后才需 |
 
-> 域名已定 `shuangdayeye.cn`,推荐子域:`shuangdayeye.cn` 门户 / `app.` 在线创作 /
-> `api.` 后端。后端已放行 Tauri origin 的 CORS(`tauri://localhost` /
-> `http://tauri.localhost`,见 `backend/app/main.py`)+ 门户/app 子域(`config.py`)。
-> 部署时把生产 `HUIMENG_CORS_ORIGINS` 设成这三个域名(见 `backend/.env.example`)。
+**Variables**:
 
-### 4.2 出包
+| 名称 | 值 |
+|---|---|
+| `PROD_API_BASE` | `https://api.shuangdayeye.cn` |
+
+> **PAT 怎么建**:GitHub 头像 → Settings → Developer settings → Fine-grained tokens
+> → Generate new token → Repository access 选 `hunjing` → Permissions 只勾
+> **Contents: Read-only** → 生成 → 复制,存成上面的 `SOURCE_REPO_TOKEN`。
+>
+> 后端已放行 Tauri origin 的 CORS + 门户/app 子域;部署时把生产
+> `HUIMENG_CORS_ORIGINS` 设成 shuangdayeye.cn 三域名(见 `backend/.env.example`)。
+
+### 4.2 出包(版本号在私有仓库改,标签推到【公开】仓库)
 
 ```bash
-# 改版本号(可选):frontend/src-tauri/tauri.conf.json 的 "version"
+# 1) 版本号在私有仓库改:frontend/src-tauri/tauri.conf.json 的 "version",push 私有 main
+# 2) 到公开仓库推标签触发构建:
+git clone https://github.com/LaL-999/huimeng-desktop.git
+cd huimeng-desktop
 git tag desktop-v0.1.0
 git push origin desktop-v0.1.0
 ```
 
-CI 自动编译,产物上传到一个**草稿 Release**。
+CI 在公开仓库里拉私有源码编译,产物上传到公开仓库的**草稿 Release**。
 
-> **当前验证阶段只出 Windows 版**(`desktop-release.yml` 矩阵已注释 mac/Linux)。
-> 流程跑通、备好 Apple Developer 后,取消注释那两行即可三平台齐出。
+> **当前验证阶段只出 Windows 版**。要加 Mac/Linux:在公开仓库的
+> `desktop-release.yml` 把 `runs-on` 改成矩阵(模板在 git 历史里)。
 
 ### 4.3 发布
 
-进 GitHub **Releases**,检查草稿里的安装包(Windows `.msi` / `.exe` setup),
-点 **Publish release**。
+进公开仓库 **Releases**,检查草稿里的安装包(Windows `.msi` / `.exe` setup),
+点 **Publish release**。发布后门户下载按钮自动生效。
 
 发布后,**门户下载按钮自动生效** —— `portal/index.html` 会调 GitHub API 发现最新
 Release,按访客系统推荐对应安装包。无需改门户代码。
@@ -238,7 +258,7 @@ pub fn run() {
     "updater": {
       "pubkey": "把 ~/.tauri/huimeng.key.pub 的全部内容粘到这里",
       "endpoints": [
-        "https://github.com/LaL-999/hunjing/releases/latest/download/latest.json"
+        "https://github.com/LaL-999/huimeng-desktop/releases/latest/download/latest.json"
       ]
     }
   }
