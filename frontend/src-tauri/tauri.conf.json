@@ -29,6 +29,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": true,
     "publisher": "浑晶 Huimeng",
     "copyright": "© 浑晶 · AI 创作平台",
     "category": "Productivity",
@@ -43,6 +44,14 @@
     ],
     "android": {
       "debugApplicationIdSuffix": ".debug"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDMyMTNEREI1M0Q1OUJFNDQKUldSRXZsazl0ZDBUTWljWElUcnFOUTFadGgwQmxNWUc2UTN0M2dlUVNza0RZNSt2TGFmLzlndEUK",
+      "endpoints": [
+        "https://github.com/LaL-999/huimeng-desktop/releases/latest/download/latest.json"
+      ]
     }
   }
 }

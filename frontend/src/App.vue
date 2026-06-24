@@ -12,7 +12,7 @@
  *
  * Quota 联动:auth 变化时自动 refresh quota,确保 sidebar QuotaIndicator 数据新鲜。
  */
-import { computed, ref, watch } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
 import AddonPurchaseModal from "./components/AddonPurchaseModal.vue";
@@ -26,10 +26,12 @@ import NewProjectModal from "./components/NewProjectModal.vue";
 import PaymentModal from "./components/PaymentModal.vue";
 import ToastHost from "./components/ToastHost.vue";
 import UpgradeModal from "./components/UpgradeModal.vue";
+import { confirm } from "./composables/useConfirm";
 import { useDocumentViewer } from "./composables/useDocumentViewer";
 import { registerGlobalSearchShortcut } from "./composables/useGlobalSearch";
 import { useNewProjectModal } from "./composables/useNewProjectModal";
 import { useSidebarLayout } from "./composables/useSidebarLayout";
+import { toast } from "./composables/useToast";
 import { useAuthStore } from "./stores/auth";
 import { useQuotaStore } from "./stores/quota";
 import type { Project, ProjectMode } from "./api/types";
@@ -74,6 +76,31 @@ watch(
   },
   { immediate: true },
 );
+
+// 2026-06-24:桌面客户端(Tauri 壳)自动更新检查 —— Web 版完全跳过。
+// 仅当运行在 Tauri 内(window.__TAURI_INTERNALS__ 存在)才执行;updater/process
+// 插件走动态 import,不进 Web 包。任何失败静默吞掉,绝不阻断使用。
+onMounted(async () => {
+  if (!("__TAURI_INTERNALS__" in window)) return;
+  try {
+    const { check } = await import("@tauri-apps/plugin-updater");
+    const update = await check();
+    if (!update) return;
+    toast.info(`正在下载新版本 ${update.version}…`);
+    await update.downloadAndInstall();
+    const ok = await confirm({
+      title: "更新已就绪",
+      message: `新版本 ${update.version} 已安装,重启后生效。现在重启?`,
+      confirmLabel: "立即重启",
+    });
+    if (ok) {
+      const { relaunch } = await import("@tauri-apps/plugin-process");
+      await relaunch();
+    }
+  } catch (e) {
+    if (import.meta.env.DEV) console.warn("[updater] 检查更新失败", e);
+  }
+});
 
 function handleProjectCreated(p: Project, mode: ProjectMode) {
   newProjectModal.close();
