@@ -63,6 +63,7 @@ curl -s https://api.shuangdayeye.cn/api/health
    sudo rm -rf dist && sudo mkdir dist
    sudo unzip -o huimeng-dist.zip -d dist
    sudo chown -R huimeng:huimeng dist
+   sudo chmod -R u=rwX,go=rX dist     # nginx(www-data)要能读,漏了会 403 Forbidden
    sudo rm huimeng-dist.zip
    ```
 4. 浏览器 **Ctrl+Shift+R** 强刷。前端不用重启任何服务。
