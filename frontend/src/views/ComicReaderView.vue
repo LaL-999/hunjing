@@ -25,6 +25,8 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
+import { apiAssetUrl } from "../api/client";
+
 import { type ComicPageRecord } from "../api/types";
 import { useComic } from "../composables/useComic";
 import { toast } from "../composables/useToast";
@@ -487,7 +489,7 @@ watch(isReadyToRead, (ready) => {
           :data-page-index="currentPage.page_index"
         >
           <img
-            :src="currentPage.composed_url"
+            :src="apiAssetUrl(currentPage.composed_url)"
             :alt="`第 ${currentPage.page_index} 页(整页排版)`"
             class="composed-page-img"
             draggable="false"
@@ -509,7 +511,7 @@ watch(isReadyToRead, (ready) => {
             >
               <img
                 v-if="panel.image_url"
-                :src="panel.image_url"
+                :src="apiAssetUrl(panel.image_url)"
                 :alt="`第 ${currentPage.page_index} 页第 ${panel.panel_index} 格`"
                 draggable="false"
               />

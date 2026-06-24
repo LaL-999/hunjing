@@ -26,7 +26,7 @@
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useRouter } from "vue-router";
 
-import { api } from "../api/client";
+import { api, apiAssetUrl } from "../api/client";
 import { ApiError } from "../api/types";
 import type {
   Comic,
@@ -392,7 +392,7 @@ const empty = computed<boolean>(() => !loading.value && comics.value.length === 
         <div class="card-cover">
           <img
             v-if="comic.style_anchor_image_url"
-            :src="comic.style_anchor_image_url"
+            :src="apiAssetUrl(comic.style_anchor_image_url)"
             :alt="`${comic.name} 封面`"
             loading="lazy"
           />

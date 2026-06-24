@@ -16,6 +16,7 @@
  */
 import { computed, ref, watch } from "vue";
 
+import { apiAssetUrl } from "../api/client";
 import type { ComicCandidateImage } from "../api/types";
 import { toast } from "../composables/useToast";
 
@@ -166,7 +167,7 @@ function onKeydown(e: KeyboardEvent) {
                 <div class="card-image-box">
                   <img
                     v-if="cand.image_url"
-                    :src="cand.image_url"
+                    :src="apiAssetUrl(cand.image_url)"
                     :alt="`候选 ${cand.index}`"
                     class="card-image"
                     loading="lazy"

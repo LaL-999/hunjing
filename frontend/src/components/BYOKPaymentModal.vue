@@ -265,7 +265,7 @@
 import { onUnmounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 
-import { api } from "../api/client";
+import { api, apiAssetUrl } from "../api/client";
 import { ApiError } from "../api/client";
 import type {
   BYOKOrderStatus,
@@ -391,7 +391,7 @@ async function handleSubmitProof() {
     // 用原生 fetch — api 客户端可能不支持 multipart
     const token = localStorage.getItem("auth_token") || "";
     const resp = await fetch(
-      `/api/byok/payment/orders/${currentOrder.value.order_id}/submit_proof`,
+      apiAssetUrl(`/api/byok/payment/orders/${currentOrder.value.order_id}/submit_proof`),
       {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },

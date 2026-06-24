@@ -28,6 +28,21 @@ export { ApiError };
 // 与 PaymentModal.vue 的 VITE_API_BASE 取值口径一致。
 const API_BASE = `${import.meta.env.VITE_API_BASE || ""}/api`;
 
+/**
+ * 把后端返回的相对资源地址拼成绝对地址(供绕过 api() 客户端的场景用:
+ * `<img :src>`、`<a :href>`、原生 fetch / EventSource 等)。
+ *
+ * 后端常返相对路径(如 `/api/comic-files/...`、`/api/payment-qrcodes/...`);
+ * 拆子域部署时前端跑在 app.子域,裸相对路径会让浏览器打到 app.子域(那里只有
+ * 静态文件、没后端 → 兜底返 index.html / 404 → 破图 / 上传失败)。这里统一拼上
+ * VITE_API_BASE(指向 api.子域)。已是 http(s) 绝对地址则原样返回。
+ */
+export function apiAssetUrl(url: string | null | undefined): string {
+  if (!url) return "";
+  if (/^https?:\/\//i.test(url)) return url;
+  return `${import.meta.env.VITE_API_BASE || ""}${url}`;
+}
+
 /** auth store 在 client 之后初始化,用 setter 注入,避免循环 import */
 let getToken: () => string | null = () => null;
 let onUnauthorized: () => void = () => {};

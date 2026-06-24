@@ -19,6 +19,8 @@
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
+import { apiAssetUrl } from "../api/client";
+
 import RefImageUploadDialog from "../components/RefImageUploadDialog.vue";
 import StyleVotingDialog from "../components/StyleVotingDialog.vue";
 import { COMIC_STATE_LABEL, type ComicPageRecord } from "../api/types";
@@ -450,7 +452,7 @@ watch(
             </div>
             <div v-if="comic.style_anchor_image_url" class="preview-row">
               <span class="preview-label">画风锚:</span>
-              <a :href="comic.style_anchor_image_url" target="_blank" rel="noopener">查看</a>
+              <a :href="apiAssetUrl(comic.style_anchor_image_url)" target="_blank" rel="noopener">查看</a>
             </div>
             <div class="preview-row">
               <span class="preview-label">详细 prompt:</span>
@@ -520,7 +522,7 @@ watch(
                 >
                   <img
                     v-if="panel.image_url"
-                    :src="panel.image_url"
+                    :src="apiAssetUrl(panel.image_url)"
                     :alt="`第 ${page.page_index} 页第 ${panel.panel_index} 格`"
                     loading="lazy"
                   />
