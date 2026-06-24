@@ -52,7 +52,7 @@
             <div class="qr-wrap">
               <div v-if="currentOrder.wechat_qr_url" class="qr-block">
                 <div class="qr-label">微信收款码</div>
-                <img :src="currentOrder.wechat_qr_url" alt="微信收款码" class="qr-image" />
+                <img :src="qrSrc(currentOrder.wechat_qr_url)" alt="微信收款码" class="qr-image" />
                 <div class="qr-payee">收款人:{{ currentOrder.payee_name }}</div>
               </div>
               <div v-else class="qr-block qr-block--missing">
@@ -66,7 +66,7 @@
 
               <div v-if="currentOrder.alipay_qr_url" class="qr-block">
                 <div class="qr-label">支付宝收款码</div>
-                <img :src="currentOrder.alipay_qr_url" alt="支付宝收款码" class="qr-image" />
+                <img :src="qrSrc(currentOrder.alipay_qr_url)" alt="支付宝收款码" class="qr-image" />
               </div>
             </div>
 
@@ -286,6 +286,15 @@ const emit = defineEmits<{
 
 const router = useRouter();
 const byok = useBYOKStore();
+
+// 收款码图地址:后端返相对 /api/payment-qrcodes/xxx;拆子域部署时前端在 app.子域,
+// 裸相对路径会让 <img> 去 app 子域取图(无后端 → 兜底返 index.html → 破图)。
+// 必须拼 VITE_API_BASE 指向 api.子域。与 PaymentModal / client.ts 口径一致。
+const API_ORIGIN = (import.meta.env.VITE_API_BASE as string | undefined) || "";
+function qrSrc(url: string | null | undefined): string {
+  if (!url) return "";
+  return url.startsWith("http") ? url : `${API_ORIGIN}${url}`;
+}
 
 type Stage =
   | "init"
