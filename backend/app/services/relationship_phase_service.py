@@ -192,6 +192,28 @@ def list_phases(
     return [RelationshipPhase.from_row(r) for r in rows]
 
 
+def count_phases_by_project(
+    conn: sqlite3.Connection, project_id: str,
+) -> dict[str, int]:
+    """一次查出项目内所有 relationship 的 phase 计数({relationship_id: count})。
+
+    2026-06-24 性能:替代前端 ProtagonistWall 逐条 GET .../phases 的 N+1
+    (一个项目 30-80 条关系 = 30-80 个并发请求 → 1 个)。
+    纯只读、不触发自动迁移;无 phase 行的老关系不在结果里,调用方按隐式 1 阶段补
+    (与 list_phases 首访自动建 phase[0] 的语义一致)。
+    """
+    rows = fetch_all(
+        conn,
+        """SELECT rp.relationship_id AS rid, COUNT(*) AS cnt
+           FROM relationship_phases rp
+           JOIN relationships r ON rp.relationship_id = r.id
+           WHERE r.project_id = ?
+           GROUP BY rp.relationship_id""",
+        (project_id,),
+    )
+    return {row["rid"]: row["cnt"] for row in rows}
+
+
 def delete_phase(
     conn: sqlite3.Connection, phase_id: str,
 ) -> None:

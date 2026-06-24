@@ -153,21 +153,21 @@ async function loadAll() {
     allCharacters.value = chars;
     allRelationships.value = rels;
 
-    // 仅给展开过的卡片对应的关系拉 phase 数(性能优化:不全拉)
-    // 简化:先全部并发拉(<= 100 条关系级别都能秒级完成)
+    // 2026-06-24 性能:批量一次拉 phase 计数,替代原来逐条 N+1
+    // (一个项目 30-80 条关系 = 30-80 个并发请求 → 1 个;这是"点什么都加载一会"的主因)
     const counts = new Map<string, number>();
-    await Promise.all(
-      rels.map(async (r) => {
-        try {
-          const phases = await api.get<unknown[]>(
-            `/relationships/${r.id}/phases`,
-          );
-          counts.set(r.id, phases.length);
-        } catch {
-          counts.set(r.id, 0);
-        }
-      }),
-    );
+    try {
+      const bulk = await api.get<Record<string, number>>(
+        `/projects/${props.projectId}/relationship_phase_counts`,
+      );
+      // 无 phase 行的老关系不在结果里 → 按隐式 1 阶段补(与后端首访自动迁移语义一致)
+      for (const r of rels) {
+        counts.set(r.id, bulk[r.id] ?? 1);
+      }
+    } catch {
+      // 批量失败也不再 N+1:全部按 1 兜底
+      for (const r of rels) counts.set(r.id, 1);
+    }
     phaseCounts.value = counts;
   } catch (e) {
     error.value = e instanceof ApiError ? e.message : "加载角色列表失败";

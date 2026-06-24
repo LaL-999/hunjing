@@ -703,8 +703,11 @@ export function useSimulation(getProjectId: () => string) {
       return;
     }
 
-    // 2. 创建 EventSource(走 vite /api proxy 同源)
-    const url = `/api/simulations/${simId}/stream?token=${encodeURIComponent(
+    // 2. 创建 EventSource
+    // ⚠️ 必须带 VITE_API_BASE 前缀:拆子域部署时前端在 app.子域,裸相对 /api 会打到
+    // app 子域(无后端 → 兜底 index.html → SSE 挂)。同 client.ts / useExtractJob 口径。
+    const apiBase = (import.meta.env.VITE_API_BASE as string | undefined) || "";
+    const url = `${apiBase}/api/simulations/${simId}/stream?token=${encodeURIComponent(
       sseToken,
     )}`;
     const es = new EventSource(url);

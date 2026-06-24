@@ -30,6 +30,10 @@ def _connect(db_path: Path) -> sqlite3.Connection:
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
     conn.execute("PRAGMA synchronous=NORMAL")  # WAL 下的合理选择
+    # 2026-06-24:WAL 允许多读 + 单写并存,但默认 busy_timeout=0 → 第二个并发写者
+    # (后台推断线程 / BYOK 审单线程 与请求处理器同时写)会瞬间 SQLITE_BUSY 报
+    # "database is locked" 500。设 5s 让阻塞写者自旋重试,几乎消除该错误。
+    conn.execute("PRAGMA busy_timeout=5000")
     return conn
 
 

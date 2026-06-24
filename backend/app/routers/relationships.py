@@ -198,6 +198,21 @@ def api_delete_relationship(
 #
 # 老数据自动迁移:首次 GET phases 时自动建 phase[0](type/strength 同步 relationship 字段)。
 
+@router.get("/projects/{project_id}/relationship_phase_counts")
+def api_relationship_phase_counts(
+    project_id: str,
+    user: User = Depends(get_current_user),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict[str, int]:
+    """批量返回项目内每条 relationship 的 phase 数({relId: count}),替代前端 N+1。
+
+    无 phase 行的关系不在返回里;前端按隐式 1 阶段补(与单条 GET 自动迁移语义一致)。
+    """
+    get_project_or_403(conn, project_id, user.id)
+    from app.services.relationship_phase_service import count_phases_by_project
+    return count_phases_by_project(conn, project_id)
+
+
 @router.get(
     "/relationships/{relationship_id}/phases",
     response_model=list[RelationshipPhaseResponse],
