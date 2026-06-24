@@ -10,7 +10,7 @@
 
 ### 代码冻结
 - [ ] git tag 当前 commit 为 `v1.0.0-launch`,后续 patch 走 `v1.0.x`
-- [ ] frontend 跑 `npm run build`(注意:vite build 需要 8GB heap,先 `export NODE_OPTIONS=--max-old-space-size=8192`)
+- [ ] frontend 跑 `npm run build`(2G 机用 `export NODE_OPTIONS=--max-old-space-size=3072` + swap;**别用 8192,2G 机会 OOM**。服务器部署以 `DEPLOY.md` 为权威)
 - [ ] 全量 pytest 902 passed 验证通过(最后一次)
 - [ ] vue-tsc 0 错验证通过
 

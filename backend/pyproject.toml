@@ -1,3 +1,15 @@
+# 2026-06-24:加 build-system —— 生产用 `pip install -e backend` 部署必需。
+# 缺它时 setuptools flat-layout 会同时发现 app/ 和 tests/ 两个顶层包而报
+# "Multiple top-level packages discovered" 装不上 → 后端起不来。
+# [tool.setuptools] 显式只打包 app/(排除 tests/)。本机 uv 工作流不受影响
+# (uv 读 [tool.uv] package=false,pip 读 [build-system],各走各的)。
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["app"]
+
 [project]
 name = "huimeng-backend"
 version = "0.1.0"
