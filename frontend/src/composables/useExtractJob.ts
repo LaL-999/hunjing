@@ -332,7 +332,11 @@ export function useExtractJob() {
     }
 
     // 2. 创建 EventSource
-    const url = `/api/extract_jobs/${jobId}/stream?token=${encodeURIComponent(
+    // ⚠️ 必须带 VITE_API_BASE 前缀:壳化/拆子域部署时前端在 app.子域、后端在 api.子域,
+    // 裸相对 /api 会打到 app 子域(只有静态文件 → 兜底返 index.html,非 event-stream → SSE 挂)。
+    // 与 client.ts 的 API_BASE 取值口径一致。
+    const apiBase = (import.meta.env.VITE_API_BASE as string | undefined) || "";
+    const url = `${apiBase}/api/extract_jobs/${jobId}/stream?token=${encodeURIComponent(
       sseToken,
     )}`;
     const es = new EventSource(url);
