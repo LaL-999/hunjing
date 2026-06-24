@@ -5,6 +5,13 @@
 backend/.env
 insights-backend/.env
 
+# Tauri 更新器签名私钥 — 绝不入库(.key 是私钥;.key.pub 公钥也不放文件,直接进 conf)
+**/.tauri/
+*.key
+# PowerShell 没解析 ~ 时误建的字面量目录(私钥可能落这)
+/frontend/~/
+/~/
+
 # Python 虚拟环境与缓存
 .venv/
 venv/
