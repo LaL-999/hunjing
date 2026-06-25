@@ -258,23 +258,29 @@ async def get_funnel(
         steps_list.append({"name": "注册", "count": r["c"] if r else 0})
 
         # 步骤 3:上传作品
+        # 修复(2026-06-25):uploads 真实时间列是 uploaded_at,不是 created_at
+        # (见 migrations/011_uploads.sql)。旧代码拼 up.created_at + 一段永远救不了的
+        # .replace 兜底,选时间窗口时直接打到不存在的列 → 整页 HTTP 500。
         sql3 = (
             "SELECT COUNT(DISTINCT up.user_id) AS c FROM huimeng.uploads up "
             "JOIN huimeng.users u ON u.id = up.user_id WHERE 1=1 " + plan_clause
         )
-        sql3 = add_window(sql3, "up.created_at" if mode != "cycle" else "up.created_at")
-        # NOTE: uploads 没 created_at? 用最早字段 — 查 schema 有 storage_path 但没看到 created_at
-        # 用 state 是 ready / uploaded 当过滤
-        r = fetch_one(conn, sql3.replace("AND up.created_at", "AND 1=1") if "created_at" not in sql3 else sql3)
-        steps_list.append({"name": "上传作品", "count": r["c"] if r else 0})
+        sql3 = add_window(sql3, "up.uploaded_at")
+        try:
+            r = fetch_one(conn, sql3)
+            steps_list.append({"name": "上传作品", "count": r["c"] if r else 0})
+        except Exception:  # noqa: BLE001
+            steps_list.append({"name": "上传作品", "count": None})
 
         # 步骤 4:抽取完成
+        # 修复(2026-06-25):表名是 graph_extraction_jobs(不是 extract_jobs),
+        # 且该表无 created_at,时间列用 started_at(见 migrations/012_extract_jobs.sql)。
         sql4 = (
-            "SELECT COUNT(DISTINCT ej.user_id) AS c FROM huimeng.extract_jobs ej "
+            "SELECT COUNT(DISTINCT ej.user_id) AS c FROM huimeng.graph_extraction_jobs ej "
             "JOIN huimeng.users u ON u.id = ej.user_id "
             "WHERE ej.state='done' " + plan_clause
         )
-        sql4 = add_window(sql4, "ej.created_at")
+        sql4 = add_window(sql4, "ej.started_at")
         try:
             r = fetch_one(conn, sql4)
             steps_list.append({"name": "抽取完成", "count": r["c"] if r else 0})
@@ -363,6 +369,15 @@ async def get_funnel(
                 "漫创态(cycle)不计入主漏斗(用户偏好 5.0a);"
                 "如需查漫创专项,mode=cycle"
             ) if mode == "all" else None,
+        }
+    except Exception as e:  # noqa: BLE001
+        # 兜底(2026-06-25):任一步意外抛错(如未来又有 schema 漂移)不再整页 HTTP 500,
+        # 降级返回已算出的步骤 + 错误说明,看板至少不白屏。
+        return {
+            "window": window, "mode": mode, "plan": plan,
+            "huimeng_attached": True,
+            "steps": steps_list,
+            "error": f"漏斗部分步骤计算失败,已降级显示: {str(e)[:160]}",
         }
     finally:
         conn.close()
@@ -547,6 +562,12 @@ async def get_users_list(
           (SELECT COUNT(*) FROM huimeng.violation_logs v WHERE v.user_id=u.id) AS violation_count,
           (SELECT COALESCE(SUM(cost_yuan), 0) FROM huimeng.credit_transactions ct
              WHERE ct.user_id=u.id AND ct.kind='consume') AS total_consumed_yuan,
+          -- 2026-06-25:补"已消耗额度(credit)"+"当前余额",让运营一眼看清谁烧了多少额度。
+          -- delta 负数=消耗,故 SUM(-delta) = 累计消耗的 credit 数。
+          (SELECT COALESCE(SUM(-ct.delta), 0) FROM huimeng.credit_transactions ct
+             WHERE ct.user_id=u.id AND ct.kind='consume') AS consumed_credits,
+          (SELECT COALESCE(b.subscription_credits + b.addon_credits, 0)
+             FROM huimeng.user_credit_balances b WHERE b.user_id=u.id) AS current_credits,
           (SELECT MAX(timestamp_ms) FROM events e WHERE e.user_id=u.id) AS last_event_ms
         FROM huimeng.users u
         WHERE {where_sql}
@@ -582,6 +603,8 @@ async def get_users_list(
                 "simulations_count": r["simulations_count"],
                 "violation_count": r["violation_count"],
                 "total_consumed_yuan": round(float(r["total_consumed_yuan"] or 0), 2),
+                "consumed_credits": int(r["consumed_credits"] or 0),
+                "current_credits": int(r["current_credits"] or 0),
                 "last_event_ms": r["last_event_ms"],
                 "is_high_risk": (r["violation_count"] or 0) >= 3,
             }

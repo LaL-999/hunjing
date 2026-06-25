@@ -28,6 +28,8 @@ interface UserRow {
   simulations_count: number;
   violation_count: number;
   total_consumed_yuan: number;
+  consumed_credits: number;
+  current_credits: number;
   last_event_ms: number | null;
   is_high_risk: boolean;
 }
@@ -230,6 +232,7 @@ function resetFilters() {
             <th>订阅档</th>
             <th class="r">项目 · 推演</th>
             <th class="r">累计消费</th>
+            <th class="r">额度 耗 / 余</th>
             <th class="r">红旗</th>
             <th>最近活跃</th>
             <th>注册时间</th>
@@ -256,6 +259,9 @@ function resetFilters() {
             </td>
             <td class="r">
               <b>¥{{ u.total_consumed_yuan.toFixed(2) }}</b>
+            </td>
+            <td class="r">
+              <b>{{ u.consumed_credits }}</b><span class="muted"> / </span><span class="muted-small">{{ u.current_credits }}</span>
             </td>
             <td class="r">
               <span v-if="u.violation_count > 0" class="violation-num" :class="{ critical: u.is_high_risk }">
