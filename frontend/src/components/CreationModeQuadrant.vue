@@ -152,20 +152,20 @@ const MODE_CARDS: ModeCard[] = [
     // 桥接增益在剧创态内部场景(BridgeGainBanner / 分集面板)展示更合适
   },
   {
-    // Sprint SP-S 占位卡 — 给未来的第 6/7 态留个 hint,UI 上的"我们还没停下来"承诺
-    // 触发 toast 提示,不进入流程
+    // 2026-06-25:「更多玩法」从占位卡升级为真入口 — 点击进入 /playground
+    //   网易云式 banner 主视图:作品广场(社区发布)+ 未来的创作大赛等
     mode: "more",
     index: 6,
     title: "更多玩法",
-    description: "我们还在思考下一种创作姿势 — 欢迎在群里告诉我们你想要的。",
-    status: "soon",
-    statusLabel: "开发中",
-    // 三个点 — 暗示"待续"
+    description: "作品广场 · 把你的创作上架,免费分享给所有人在线阅读、点赞。",
+    status: "available",
+    statusLabel: "可用",
+    // 四宫格 + 中心点 — 暗示"多种玩法聚合"
     iconPaths: [
-      "M5 12h.01",
-      "M12 12h.01",
-      "M19 12h.01",
-      "M3 12a9 9 0 1 0 18 0 9 9 0 0 0 -18 0",
+      "M4 4h6v6H4z",
+      "M14 4h6v6h-6z",
+      "M4 14h6v6H4z",
+      "M14 14h6v6h-6z",
     ],
   },
 ];

@@ -175,6 +175,30 @@ const routes: RouteRecordRaw[] = [
     props: true,
   },
   {
+    // 2026-06-25:「更多玩法」主视图(网易云式 banner 入口)
+    // Dashboard 第 6 张卡「更多玩法」点击 → 进此独立右主视图(非弹窗)
+    path: "/playground",
+    name: "playground",
+    component: () => import("./views/PlaygroundView.vue"),
+    meta: { requiresAuth: false, depth: 1 },
+  },
+  {
+    // 2026-06-25:作品广场(社区发布画廊)
+    // 游客也能逛 + 阅读;上架 / 点赞需登录(view 内部触发 LoginModal)
+    path: "/plaza",
+    name: "plaza",
+    component: () => import("./views/PlazaView.vue"),
+    meta: { requiresAuth: false, depth: 2 },
+  },
+  {
+    // 2026-06-25:作品在线阅读页
+    path: "/plaza/works/:id",
+    name: "plaza-read",
+    component: () => import("./views/PlazaReadView.vue"),
+    meta: { requiresAuth: false, depth: 3 },
+    props: true,
+  },
+  {
     // 兜底:未匹配的 → /dashboard
     path: "/:pathMatch(.*)*",
     redirect: "/",

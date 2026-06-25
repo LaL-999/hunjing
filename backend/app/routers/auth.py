@@ -82,6 +82,8 @@ def api_me(user: User = Depends(get_current_user)) -> CurrentUserResponse:
         email=user.email,
         plan=user.plan,
         created_at=user.created_at,
+        nickname=user.nickname,
+        avatar_url=user.avatar_url,
     )
 
 

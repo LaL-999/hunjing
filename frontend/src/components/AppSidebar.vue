@@ -17,6 +17,8 @@ import { ApiError, type Project } from "../api/types";
 import Icon from "./Icon.vue";
 import QuotaIndicator from "./QuotaIndicator.vue";
 import BYOKUnlockModal from "./BYOKUnlockModal.vue";
+import EditProfileModal from "./EditProfileModal.vue";
+import { apiAssetUrl } from "../api/client";
 import { useAuthStore } from "../stores/auth";
 import { useQuotaStore } from "../stores/quota";
 import { useBYOKStore } from "../stores/byok";
@@ -220,6 +222,27 @@ function gotoCreditHistory() {
   activeMenu.value = null;
   router.push("/credit-history");
 }
+
+/** 2026-06-25:编辑资料(昵称 + 头像)modal */
+const editProfileOpen = ref(false);
+function openEditProfile() {
+  activeMenu.value = null;
+  if (!auth.isAuthed) {
+    loginModal.open();
+    return;
+  }
+  editProfileOpen.value = true;
+}
+
+/** 用户展示名:昵称优先,否则邮箱,再否则"已登录" */
+const userDisplayName = computed(() =>
+  auth.currentUser?.nickname || auth.currentUser?.email || "已登录",
+);
+/** 头像首字母:昵称 / 邮箱首字符 */
+const userAvatarInitial = computed(() => {
+  const n = auth.currentUser?.nickname || auth.currentUser?.email || "";
+  return n[0]?.toUpperCase() ?? "?";
+});
 
 
 // ============================================================
@@ -530,6 +553,11 @@ onUnmounted(() => {
             <!-- 已登录:消费记录 + 协议 + 主题 + 退出
                  2026-06-02 重设计:统一 line SVG icon,去掉每行分隔线,只用底部一条隔退出 -->
             <template v-else>
+              <button class="menu-item" @click="openEditProfile">
+                <Icon name="user" :size="14" class="menu-icon" />
+                <span>编辑资料</span>
+              </button>
+
               <button class="menu-item" @click="gotoCreditHistory">
                 <Icon name="clock" :size="14" class="menu-icon" />
                 <span>消费记录</span>
@@ -595,17 +623,19 @@ onUnmounted(() => {
 
         <button class="user-btn" @click="toggleUserMenu($event)">
           <span class="avatar" :class="{ 'avatar-guest': !auth.isAuthed }">
-            {{ auth.isAuthed
-              ? (auth.currentUser?.email?.[0]?.toUpperCase() ?? "?")
-              : "游"
-            }}
+            <img
+              v-if="auth.isAuthed && auth.currentUser?.avatar_url"
+              :src="apiAssetUrl(auth.currentUser.avatar_url)"
+              alt=""
+              class="avatar-img"
+            />
+            <template v-else>
+              {{ auth.isAuthed ? userAvatarInitial : "游" }}
+            </template>
           </span>
           <div class="user-text">
             <span class="user-line-1">
-              {{ auth.isAuthed
-                ? (auth.currentUser?.email ?? "已登录")
-                : "游客"
-              }}
+              {{ auth.isAuthed ? userDisplayName : "游客" }}
             </span>
             <span class="user-line-2" :class="{ mono: auth.isAuthed }">
               {{ auth.isAuthed ? `${auth.plan} 档` : "点击查看更多" }}
@@ -622,6 +652,12 @@ onUnmounted(() => {
     <BYOKUnlockModal
       :is-open="byokModalOpen"
       @close="byokModalOpen = false"
+    />
+
+    <!-- 2026-06-25:编辑资料(昵称 + 头像)modal — sidebar 永驻 -->
+    <EditProfileModal
+      :open="editProfileOpen"
+      @close="editProfileOpen = false"
     />
   </aside>
 </template>
@@ -1018,6 +1054,16 @@ onUnmounted(() => {
 
 .avatar-guest {
   background: var(--color-text-muted);
+}
+
+/* 2026-06-25:头像图(用户上传后覆盖首字母) */
+.avatar {
+  overflow: hidden;
+}
+.avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .user-text {

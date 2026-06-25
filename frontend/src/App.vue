@@ -74,8 +74,15 @@ watch(
 watch(
   () => auth.isAuthed,
   (isAuthed) => {
-    if (isAuthed) quota.refresh();
-    else quota.reset();
+    if (isAuthed) {
+      quota.refresh();
+      // 2026-06-25:启动 / 登录即拉取当前用户资料(昵称 + 头像)
+      // 否则深链 / 刷新到非 Dashboard 页时,侧栏头像区拿不到 nickname/avatar
+      // (原本只有 DashboardView onMounted 拉 me)。fetchMe 自带 token 校验,安全。
+      if (!auth.currentUser) void auth.fetchMe();
+    } else {
+      quota.reset();
+    }
   },
   { immediate: true },
 );

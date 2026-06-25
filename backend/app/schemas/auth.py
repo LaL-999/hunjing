@@ -36,6 +36,9 @@ class CurrentUserResponse(BaseModel):
     email: Optional[str]
     plan: str
     created_at: str
+    # 2026-06-25:用户资料(配合作品广场作者展示)
+    nickname: Optional[str] = None
+    avatar_url: Optional[str] = None
 
 
 class SseTokenResponse(BaseModel):

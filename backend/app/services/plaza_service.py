@@ -45,8 +45,12 @@ class PublishInput:
 
 
 def _excerpt(text: str, n: int = 80) -> str:
-    """从正文取前 n 字做简介(去多余空白)。"""
-    flat = " ".join((text or "").split())
+    """从正文取前 n 字做简介(去 markdown 噪音 + 多余空白)。"""
+    import re
+    raw = text or ""
+    # 去行首 markdown 标记(# 标题 / > 引用 / - * 列表),避免简介里出现"# "
+    cleaned = re.sub(r"(?m)^\s*(#{1,6}|>|[-*+])\s+", "", raw)
+    flat = " ".join(cleaned.split())
     return flat[:n]
 
 

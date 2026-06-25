@@ -96,8 +96,11 @@ function onModeSelected(mode: ProjectMode) {
       return;
     }
     router.push("/screenplay");
+  } else if (mode === "more") {
+    // 2026-06-25:「更多玩法」→ 进 /playground 主视图(网易云式 banner:作品广场等)
+    // 游客也能进(广场可逛可读),上架 / 点赞才需登录
+    router.push("/playground");
   }
-  // mode === "more" 不会走到这里 — CreationModeQuadrant 内部 toast 已拦截
 }
 
 /** 漫画创建成功 — CreateComicModal 内部已自管 router.push 到详情页,这里只 close */

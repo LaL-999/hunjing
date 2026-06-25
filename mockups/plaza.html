@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>作品广场 · 设计稿</title>
+<style>
+  :root{
+    --bg:#FAF7F2; --bg2:#F4F0E8; --surface:#fff; --border:#E8E3D9;
+    --text:#1F1F1E; --muted:#6B6862; --subtle:#A8A296;
+    --accent:#7C3AED; --accent2:#6D28D9; --soft:#F3EFFE; --accent-text:#5B21B6;
+    --serif:"Songti SC","STSong",Georgia,serif;
+    --shadow:0 1px 2px rgba(50,40,20,.04);
+    --shadow-lg:0 14px 36px rgba(50,40,20,.10);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1180px;margin:0 auto;padding:0 28px}
+  /* 顶栏 */
+  .top{display:flex;align-items:center;justify-content:space-between;height:62px;border-bottom:1px solid var(--border);background:rgba(250,247,242,.85);backdrop-filter:blur(10px);position:sticky;top:0;z-index:10}
+  .brand{display:flex;align-items:center;gap:9px;font-weight:700;font-size:18px}
+  .brand .dot{width:11px;height:11px;border-radius:3px;background:var(--accent);transform:rotate(45deg)}
+  .back{font-size:14px;color:var(--muted);cursor:pointer}
+  .me{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+  .me .av{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#7C3AED,#22D3A8)}
+
+  /* 标题区 */
+  .head{padding:38px 0 22px}
+  .head h1{font-family:var(--serif);font-size:34px;font-weight:700;letter-spacing:1px}
+  .head p{color:var(--muted);font-size:15px;margin-top:8px}
+  .head .pub{margin-top:18px;display:inline-flex;align-items:center;gap:8px;background:var(--accent);color:#fff;border:none;border-radius:11px;padding:11px 20px;font-size:14px;font-weight:600;cursor:pointer;box-shadow:0 6px 18px rgba(124,58,237,.28)}
+
+  /* 更多玩法:大矩形 banner(网易云式) */
+  .section-label{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--subtle);letter-spacing:2px;margin:34px 0 14px;text-transform:uppercase}
+  .banners{display:flex;flex-direction:column;gap:16px}
+  .banner{position:relative;height:170px;border-radius:20px;overflow:hidden;cursor:pointer;display:flex;align-items:center;padding:0 46px;color:#fff;box-shadow:var(--shadow-lg)}
+  .banner.plaza{background:radial-gradient(120% 160% at 0% 0%,#8B5CF6 0%,#6D28D9 45%,#3B1F8B 100%)}
+  .banner.soon{background:linear-gradient(110deg,#2A2540,#3A3357);opacity:.92}
+  .banner .b-tag{position:absolute;top:18px;left:46px;font-size:11px;letter-spacing:1px;background:rgba(255,255,255,.18);padding:4px 10px;border-radius:20px}
+  .banner.soon .b-tag{background:rgba(255,255,255,.10);color:#C9C3DE}
+  .banner h2{font-family:var(--serif);font-size:30px;font-weight:700;margin-bottom:8px}
+  .banner p{font-size:14px;opacity:.86;max-width:520px;line-height:1.6}
+  .banner .b-go{position:absolute;right:46px;bottom:26px;font-size:14px;opacity:.9}
+  .banner .b-art{position:absolute;right:-10px;top:-30px;width:280px;height:280px;border-radius:50%;background:radial-gradient(circle at 40% 40%,rgba(255,255,255,.22),transparent 60%)}
+  .banner .b-grid{position:absolute;right:40px;top:50%;transform:translateY(-50%);display:grid;grid-template-columns:repeat(2,1fr);gap:8px;opacity:.85}
+  .banner .b-grid i{width:46px;height:46px;border-radius:10px;background:rgba(255,255,255,.16);display:block}
+
+  /* 作品广场 网格 */
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;margin-top:6px}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:18px;overflow:hidden;box-shadow:var(--shadow);transition:transform .18s,box-shadow .18s;cursor:pointer;display:flex;flex-direction:column}
+  .card:hover{transform:translateY(-4px);box-shadow:var(--shadow-lg)}
+  .cover{height:172px;position:relative;display:flex;align-items:flex-end;padding:16px;color:#fff;overflow:hidden}
+  .cover .c-title{font-family:var(--serif);font-size:21px;font-weight:700;text-shadow:0 2px 12px rgba(0,0,0,.35);line-height:1.3;position:relative;z-index:2}
+  .cover::after{content:"";position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,.42),transparent 62%)}
+  .mode{position:absolute;top:13px;left:13px;z-index:3;font-size:11px;font-weight:600;background:rgba(255,255,255,.92);color:var(--accent-text);padding:4px 9px;border-radius:7px}
+  .info{padding:15px 16px 16px}
+  .orig{font-size:12px;color:var(--muted);margin-bottom:9px;display:flex;align-items:center;gap:5px}
+  .orig b{color:var(--text);font-weight:600}
+  .row{display:flex;align-items:center;justify-content:space-between}
+  .author{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--muted)}
+  .author .a-av{width:22px;height:22px;border-radius:50%}
+  .like{display:flex;align-items:center;gap:5px;font-size:13px;color:var(--muted);border:1px solid var(--border);border-radius:20px;padding:4px 10px;background:#fff;transition:all .15s}
+  .like:hover{border-color:#F3C0C0;color:#E05858}
+  .like.on{border-color:#F3C0C0;color:#E05858;background:#FDF1F1}
+  .meta{font-size:11px;color:var(--subtle);margin-top:11px;display:flex;gap:10px}
+  /* 封面渐变变体 */
+  .g1{background:linear-gradient(135deg,#5B6CF0,#9B5CF0)}
+  .g2{background:linear-gradient(135deg,#0FB5A8,#1E6FE0)}
+  .g3{background:linear-gradient(135deg,#E0792F,#C13E6A)}
+  .g4{background:linear-gradient(135deg,#7C3AED,#3B1F8B)}
+  .g5{background:linear-gradient(135deg,#2D9E6F,#16607A)}
+  .g6{background:linear-gradient(135deg,#C2456A,#7A2E8E)}
+  .g7{background:linear-gradient(135deg,#4661C9,#22324F)}
+  .g8{background:linear-gradient(135deg,#B8843E,#7A4E2E)}
+  .g9{background:linear-gradient(135deg,#6E59C2,#9686C2)}
+  .av1{background:linear-gradient(135deg,#7C3AED,#22D3A8)}.av2{background:linear-gradient(135deg,#E0792F,#C13E6A)}
+  .av3{background:linear-gradient(135deg,#0FB5A8,#1E6FE0)}.av4{background:linear-gradient(135deg,#C2456A,#7A2E8E)}
+  @media(max-width:900px){.grid{grid-template-columns:repeat(2,1fr)}}
+</style>
+</head>
+<body>
+  <div class="top"><div class="wrap" style="display:flex;align-items:center;justify-content:space-between;width:100%">
+    <div style="display:flex;align-items:center;gap:24px">
+      <span class="back">← 更多玩法</span>
+      <div class="brand"><span class="dot"></span> 浑晶</div>
+    </div>
+    <div class="me"><span>1957578570</span><span class="av"></span></div>
+  </div></div>
+
+  <div class="wrap">
+    <!-- 更多玩法:大矩形 banner 区 -->
+    <div class="section-label">更多玩法</div>
+    <div class="banners">
+      <div class="banner plaza">
+        <div class="b-tag">✦ 全新上线</div>
+        <div class="b-art"></div>
+        <div class="b-grid"><i></i><i></i><i></i><i></i></div>
+        <div>
+          <h2>作品广场</h2>
+          <p>把你在浑晶创作的故事上架到广场,免费分享给所有人在线阅读。好作品,值得被看见。</p>
+        </div>
+        <div class="b-go">进入 →</div>
+      </div>
+      <div class="banner soon">
+        <div class="b-tag">敬请期待</div>
+        <div>
+          <h2 style="font-size:26px">创作大赛 · 赛季榜</h2>
+          <p>主题征文 + 读者投票 + 奖金池 —— 下一个玩法正在路上。</p>
+        </div>
+        <div class="b-go" style="opacity:.6">开发中</div>
+      </div>
+    </div>
+
+    <!-- 作品广场本体 -->
+    <div class="head">
+      <h1>作品广场</h1>
+      <p>大家用浑晶写出来的故事,都在这里 · 免费在线阅读</p>
+      <button class="pub">＋ 上架我的作品</button>
+    </div>
+
+    <div class="grid">
+      <!-- 9 张示例作品卡 -->
+      <div class="card"><div class="cover g1"><span class="mode">末尾态</span><span class="c-title">雪国 · 列车开往无人之境</span></div>
+        <div class="info"><div class="orig">原著《<b>雪国</b>》· 续写</div>
+        <div class="row"><span class="author"><span class="a-av av1"></span>岛村的旅人</span><span class="like on">♥ 1.2k</span></div>
+        <div class="meta"><span>2026-06-24</span><span>·</span><span>3.4 万字</span></div></div></div>
+
+      <div class="card"><div class="cover g2"><span class="mode">初始态</span><span class="c-title">星轨之下的最后一封信</span></div>
+        <div class="info"><div class="orig">原创世界</div>
+        <div class="row"><span class="author"><span class="a-av av2"></span>未命名星球</span><span class="like">♥ 866</span></div>
+        <div class="meta"><span>2026-06-23</span><span>·</span><span>2.1 万字</span></div></div></div>
+
+      <div class="card"><div class="cover g3"><span class="mode">中间态</span><span class="c-title">挪威的森林 · 另一种直子</span></div>
+        <div class="info"><div class="orig">原著《<b>挪威的森林</b>》· 重塑</div>
+        <div class="row"><span class="author"><span class="a-av av3"></span>渡边的台灯</span><span class="like">♥ 743</span></div>
+        <div class="meta"><span>2026-06-22</span><span>·</span><span>5.0 万字</span></div></div></div>
+
+      <div class="card"><div class="cover g4"><span class="mode">剧创态</span><span class="c-title">三体 · 黑暗森林剧本</span></div>
+        <div class="info"><div class="orig">原著《<b>三体</b>》· 改编剧本</div>
+        <div class="row"><span class="author"><span class="a-av av4"></span>面壁者老罗</span><span class="like on">♥ 2.0k</span></div>
+        <div class="meta"><span>2026-06-21</span><span>·</span><span>16 集</span></div></div></div>
+
+      <div class="card"><div class="cover g5"><span class="mode">漫创态</span><span class="c-title">深海邮差</span></div>
+        <div class="info"><div class="orig">原创世界 · 漫画</div>
+        <div class="row"><span class="author"><span class="a-av av1"></span>水母小姐</span><span class="like">♥ 512</span></div>
+        <div class="meta"><span>2026-06-20</span><span>·</span><span>24 格</span></div></div></div>
+
+      <div class="card"><div class="cover g6"><span class="mode">末尾态</span><span class="c-title">百年孤独 · 第七代人的雨</span></div>
+        <div class="info"><div class="orig">原著《<b>百年孤独</b>》· 续写</div>
+        <div class="row"><span class="author"><span class="a-av av2"></span>马孔多气象台</span><span class="like">♥ 689</span></div>
+        <div class="meta"><span>2026-06-19</span><span>·</span><span>4.2 万字</span></div></div></div>
+
+      <div class="card"><div class="cover g7"><span class="mode">初始态</span><span class="c-title">机械城的最后一个钟表匠</span></div>
+        <div class="info"><div class="orig">原创世界</div>
+        <div class="row"><span class="author"><span class="a-av av3"></span>齿轮与诗</span><span class="like">♥ 401</span></div>
+        <div class="meta"><span>2026-06-18</span><span>·</span><span>1.8 万字</span></div></div></div>
+
+      <div class="card"><div class="cover g8"><span class="mode">中间态</span><span class="c-title">活着 · 福贵的另一头牛</span></div>
+        <div class="info"><div class="orig">原著《<b>活着</b>》· 重塑</div>
+        <div class="row"><span class="author"><span class="a-av av4"></span>老黄牛</span><span class="like">♥ 934</span></div>
+        <div class="meta"><span>2026-06-17</span><span>·</span><span>3.9 万字</span></div></div></div>
+
+      <div class="card"><div class="cover g9"><span class="mode">剧创态</span><span class="c-title">围城 · 方鸿渐求职记(短剧)</span></div>
+        <div class="info"><div class="orig">原著《<b>围城</b>》· 改编剧本</div>
+        <div class="row"><span class="author"><span class="a-av av1"></span>城里城外</span><span class="like">♥ 318</span></div>
+        <div class="meta"><span>2026-06-16</span><span>·</span><span>8 集</span></div></div></div>
+    </div>
+    <div style="height:60px"></div>
+  </div>
+</body>
+</html>

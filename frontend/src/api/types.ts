@@ -42,6 +42,9 @@ export interface CurrentUser {
   email: string | null;
   plan: Plan;
   created_at: string;
+  // 2026-06-25:用户资料(作品广场作者展示)
+  nickname?: string | null;
+  avatar_url?: string | null;
 }
 
 // ========== consent ==========
