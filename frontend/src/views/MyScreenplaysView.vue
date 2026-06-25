@@ -159,9 +159,10 @@ onMounted(() => {
             <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
           </svg>
           <p class="empty-title">书架尚空</p>
-          <p class="empty-hint">
-            回主页点击「剧创态」卡片,上传小说,AI 帮你把它编成剧本
-          </p>
+          <p class="empty-hint">上传小说,AI 帮你编成剧本</p>
+          <button class="empty-cta" @click="router.push('/screenplay')">
+            去剧创态 →
+          </button>
         </section>
 
         <!-- 作品列表 -->
@@ -376,6 +377,21 @@ onMounted(() => {
 .empty-hint {
   font-size: 12px;
   margin: 0;
+}
+.empty-cta {
+  margin-top: 16px;
+  padding: 8px 18px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-accent-text, var(--accent-text));
+  background: var(--color-accent-soft, var(--soft));
+  border: 1px solid var(--color-accent-border, transparent);
+  border-radius: var(--radius-md, 8px);
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+.empty-cta:hover {
+  transform: translateY(-1px);
 }
 
 /* 作品列表 */
