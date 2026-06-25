@@ -130,6 +130,21 @@ async function request<T>(
     throw new ApiError(resp.status, code, message, detailObj);
   }
 
+  // 防御(2026-06-25):resp.ok 但响应体不是 JSON —— 常见于后端重启 / 502 窗口里 nginx 返回
+  // HTML 错误页,或 /api 路径被 SPA fallback 接管返回 index.html(200 text/html)。
+  // 旧逻辑此时静默返回 null,导致调用方 `(await api.get<T[]>()).length` / `.map()` 崩成
+  // "Cannot read properties of null (reading 'length')",进而拖垮整个组件 render
+  //(线上「侧栏显示一秒后隐身」即此根因)。这里统一抛 ApiError,让调用方既有的 try/catch
+  // 正常降级(保留旧数据 / 显错误条),绝不把 null 漏给业务层。
+  // 注:content-type 为 JSON 的合法 `null` 响应(FastAPI 返 None)不受影响 —— 那条进了上面分支。
+  if (!contentType.includes("application/json")) {
+    throw new ApiError(
+      resp.status,
+      "NON_JSON_RESPONSE",
+      "服务暂时不可用,请稍后再试",
+    );
+  }
+
   return parsed as T;
 }
 
