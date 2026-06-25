@@ -227,4 +227,24 @@ sudo nginx -t && sudo systemctl reload nginx
 
 ---
 
-_最后更新:2026-06-24 · 配套:DEPLOY.md(首次部署)/ DESKTOP_CLIENT.md(桌面端)/ deploy/(配置 + 脚本)_
+## 10. 线上诡异速查(2026-06-25 上线那轮的血泪总结)
+
+部署/换服务器/重传代码后,如果出现"功能怪怪的",**99% 不是代码 bug,是下面这几类**。先自己按表试,还不行把现象 + 截图发 Claude。
+
+| 症状 | 多半原因 | 你先做什么 |
+|---|---|---|
+| **界面是旧的 / 新功能没生效 / 一会儿新一会儿旧** | 浏览器缓存混着旧版本 | **开无痕窗口**(Ctrl+Shift+N)访问 —— 无痕是干净的,能立刻看到真实最新版。修常用窗口:F12→「应用/Application」→「清除站点数据」 |
+| **登录发不出验证码(405)/ 广场"服务暂时不可用"/ 项目列表空** | app 子域 nginx 没把 `/api` 转给后端 | 先确认后端活着 `curl -s https://api.shuangdayeye.cn/api/health`;活着就是 nginx 路由问题,**发 Claude**(它知道补 `/api` 反代) |
+| **整站 502 / 某子域打不开** | 后端没起来(可能缺依赖) | `sudo systemctl stop huimeng-backend && sleep 1 && sudo systemctl start huimeng-backend`(**stop+start 比 restart 彻底**),再看 `journalctl -u huimeng-backend -n 30 --no-pager`,把红字发 Claude |
+| **感觉到处都在转圈、慢** | 没开 HTTP/2 / 浏览器缓存 / 跨域 | 验证 HTTP/2:`curl --http2 -sI https://app.shuangdayeye.cn/ | grep ^HTTP`(注意必须带 `--http2`,普通 curl 会假显示 1.1)。还慢就发 Claude |
+| **洞察后台看不到实时行为流 / 控制台 /track 报 CORS** | 洞察 nginx 子域配置缺 location 或 CORS 没通 | 不影响平台使用(埋点是旁路)。要修发 Claude,它知道怎么补 insights 的 443 块 |
+
+**两条铁律(Claude 排错也靠它)**:
+1. **改了 nginx 子域配置后,别直接 `cp` 仓库配置覆盖线上**——会把 certbot 加的 HTTPS(443)块冲掉,导致该子域 https 出怪事。让 Claude 给"手术式只改一处"的命令。
+2. **慢/错先量,别猜**:`curl -w "%{time_total}"` 量耗时、后端直连(`127.0.0.1:端口`)对比经域名,一刀切开是后端还是 nginx 的问题。
+
+> 完整 9 条技术细节(给 Claude 看的)在仓库无关,Claude 的长期记忆里存着,你只管描述现象即可。
+
+---
+
+_最后更新:2026-06-25 · 配套:DEPLOY.md(首次部署)/ DESKTOP_CLIENT.md(桌面端)/ INSIGHTS_DEPLOY.md(洞察后台)/ deploy/(配置 + 脚本)_
