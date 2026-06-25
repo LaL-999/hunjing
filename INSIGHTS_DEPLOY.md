@@ -94,7 +94,7 @@ sudo cp /opt/huimeng/app/deploy/huimeng-insights.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now huimeng-insights
 sudo systemctl status huimeng-insights        # 看到 active (running) 就成
-curl -s 127.0.0.1:8001/track/health           # 本机直连应返 {"ok":true,...}
+curl -s 127.0.0.1:8001/health                 # 本机直连应返 {"ok":true,...}
 ```
 > 若 status 报错且日志写"拒绝启动:...默认 dev 值",说明步骤 3 的 token 没填好——回去补。这是**故意的安全守卫**。
 

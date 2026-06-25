@@ -15,6 +15,16 @@ dev = [
     "httpx>=0.27",
 ]
 
+# flat-layout 下有 app/data/prompts/migrations 多个顶层目录,setuptools 自动发现会
+# 报 "Multiple top-level packages discovered" 并拒绝构建。显式只声明 app 包即可。
+# (对齐主 backend 的同款修复。)
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["app"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
