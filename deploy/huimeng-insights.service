@@ -1,0 +1,29 @@
+# 浑晶洞察后台(insights)systemd 服务
+# 放到 /etc/systemd/system/huimeng-insights.service
+# 然后:systemctl daemon-reload && systemctl enable --now huimeng-insights
+#
+# 与主 backend 并行的独立服务:独立端口 8001 / 独立 analytics.db /
+# 只读 attach 主平台 huimeng.db。复用同一个 venv 与同一份 .env。
+[Unit]
+Description=Huimeng Insights (浑晶洞察后台) FastAPI backend
+After=network.target
+
+[Service]
+Type=simple
+User=huimeng
+Group=huimeng
+WorkingDirectory=/opt/huimeng/app/insights-backend
+# 复用主平台同一份 .env(把 INSIGHTS_* 段写在里面即可)
+EnvironmentFile=/opt/huimeng/app/.env
+# 生产环境标记 —— 触发 config.py 启动守卫(默认 token 拒启)+ 关 /docs
+Environment=INSIGHTS_ENV=production
+# 单 worker —— SQLite 写锁友好(与主 backend 同款约定)
+ExecStart=/opt/huimeng/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8001
+Restart=always
+RestartSec=3
+# 日志走 journald:journalctl -u huimeng-insights -f
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -54,9 +54,17 @@ class Settings:
     # 默认值仅 dev 用,生产环境必须 env 覆盖
     ADMIN_TOKEN: str = "huimeng-insights-dev-token"
 
+    # === 运行环境 ===
+    # "development"(默认)/ "production"。生产下做启动守卫:token 仍是默认值则拒启动。
+    ENV: str = "development"
+
     # === 埋点限流 ===
     # 同 user_id 同 event_type 在 N ms 内的重复埋点视为去重(防 frontend 误派发)
     DEDUP_WINDOW_MS: int = 100
+
+
+# 默认 dev token —— 生产绝不能用它(会被任何人从公开 bundle 提取)
+_DEFAULT_DEV_TOKEN = "huimeng-insights-dev-token"
 
 
 def _load() -> Settings:
@@ -72,7 +80,28 @@ def _load() -> Settings:
         kwargs["HUIMENG_DB_PATH"] = Path(v)
     if v := os.getenv("INSIGHTS_ADMIN_TOKEN"):
         kwargs["ADMIN_TOKEN"] = v
-    return Settings(**kwargs)
+    if v := os.getenv("INSIGHTS_ENV"):
+        kwargs["ENV"] = v
+
+    # CORS:在内置 dev 白名单基础上,叠加生产 origin(逗号分隔)。
+    #   例:INSIGHTS_ALLOWED_ORIGINS=https://app.shuangdayeye.cn,https://insights.shuangdayeye.cn
+    # 写 env 钩子(而非把生产域写死进 tuple),后续换域名不必改代码。
+    if extra := os.getenv("INSIGHTS_ALLOWED_ORIGINS"):
+        base = Settings.__dataclass_fields__["ALLOWED_ORIGINS"].default
+        add = tuple(o.strip() for o in extra.split(",") if o.strip())
+        kwargs["ALLOWED_ORIGINS"] = base + add
+
+    s = Settings(**kwargs)
+
+    # 启动守卫:生产环境若 admin token 仍是默认 dev 值 → 拒绝启动。
+    #   token 会被 build 进可下载的前端 bundle,默认值 = 形同无鉴权。
+    #   生产必须 env 覆盖 INSIGHTS_ADMIN_TOKEN(`openssl rand -hex 24`)。
+    if s.ENV.lower() == "production" and s.ADMIN_TOKEN == _DEFAULT_DEV_TOKEN:
+        raise RuntimeError(
+            "拒绝启动:INSIGHTS_ENV=production 但 INSIGHTS_ADMIN_TOKEN 仍是默认 dev 值。"
+            "请用 `openssl rand -hex 24` 生成强 token 并写入 .env。"
+        )
+    return s
 
 
 settings = _load()

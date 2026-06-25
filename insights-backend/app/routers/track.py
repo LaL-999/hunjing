@@ -124,22 +124,12 @@ async def health() -> dict:
     try:
         events_count = conn.execute("SELECT COUNT(*) AS c FROM events").fetchone()["c"]
         attached = huimeng_attached(conn)
-        # 列出 huimeng.* 里有哪些表(若 attach 成功)— 帮诊断
-        huimeng_tables: list[str] = []
-        if attached:
-            try:
-                rows = conn.execute(
-                    "SELECT name FROM huimeng.sqlite_master "
-                    "WHERE type='table' ORDER BY name"
-                ).fetchall()
-                huimeng_tables = [r["name"] for r in rows]
-            except Exception:  # noqa: BLE001
-                pass
+        # 安全:不再回显 huimeng.* 的表名清单(会把主库 schema 送给攻击者)。
+        #   只返回 attach 成功与否的布尔位,足够运维诊断"主库连上没"。
         return {
             "ok": True,
             "events_count": events_count,
             "huimeng_attached": attached,
-            "huimeng_tables": huimeng_tables,
         }
     finally:
         conn.close()

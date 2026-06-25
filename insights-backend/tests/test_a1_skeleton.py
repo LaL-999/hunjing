@@ -238,9 +238,9 @@ def test_admin_user_profile(client):
 
 def test_event_types_count():
     from app.models.event import EVENT_TYPES
-    # 设计上的 17 个 event_type(写在 README / memory)
+    # event_type 总数(原 17,任务 C.1 扩了 10 个剧创态 / 多模型埋点类型 → 27)
     # 若加新类型,本断言要一起更新
-    assert len(EVENT_TYPES) == 17
+    assert len(EVENT_TYPES) == 27
 
 
 def test_event_types_includes_all_categories():

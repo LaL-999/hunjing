@@ -49,6 +49,11 @@ async def lifespan(app: FastAPI):
     logger.info("insights-backend 关闭")
 
 
+# 安全:关掉自动 docs / openapi。
+#   洞察后台一旦公网暴露,/docs 会把 admin/agent 全部 endpoint 地图 + X-Admin-Token
+#   header 名公开给任何人(即便有 nginx Basic Auth,纵深防御也不该把接口地图送出去)。
+#   dev 需要看 docs 时,设 INSIGHTS_ENV != production 自动放开。
+_enable_docs = settings.ENV.lower() != "production"
 app = FastAPI(
     title="huimeng-insights",
     description=(
@@ -57,6 +62,9 @@ app = FastAPI(
     ),
     version="0.1.0",
     lifespan=lifespan,
+    docs_url="/docs" if _enable_docs else None,
+    redoc_url="/redoc" if _enable_docs else None,
+    openapi_url="/openapi.json" if _enable_docs else None,
 )
 
 # CORS — 允许主平台 frontend 发埋点 + insights-frontend 调 admin
