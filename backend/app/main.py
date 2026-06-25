@@ -270,6 +270,14 @@ def create_app() -> FastAPI:
     from app.routers import byok_admin
     app.include_router(byok_admin.router, prefix="/api", tags=["byok_admin"])
 
+    # 作品广场(2026-06-25):用户把创作上架到社区 + 免费在线阅读 + 点赞 + 阅读量 + 智能排序
+    from app.routers import plaza
+    app.include_router(plaza.router, prefix="/api", tags=["plaza"])
+
+    # 用户资料(2026-06-25):改昵称 + 改头像(配合广场作者展示)
+    from app.routers import profile
+    app.include_router(profile.router, prefix="/api", tags=["profile"])
+
     # BYOK 支付:收款码图片静态服务 + 用户上传截图存储目录
     from fastapi.staticfiles import StaticFiles
     payment_qrcodes_dir = settings.uploads_abs_dir.parent / "payment_qrcodes"
@@ -307,6 +315,25 @@ def create_app() -> FastAPI:
         "/api/comic-composed",
         StaticFiles(directory=str(composed_dir)),
         name="comic-composed",
+    )
+
+    # 作品广场(2026-06-25):用户上传的封面图 + 头像静态服务
+    #   POST /api/plaza/cover  → backend/data/plaza_covers/{user_id}/{token}.{ext}
+    #   POST /api/me/avatar    → backend/data/avatars/{user_id}/{token}.{ext}
+    # 文件名 24 字节随机 token,不可枚举(同 comic_refs 图床惯例)
+    plaza_covers_dir = settings.uploads_abs_dir.parent / "plaza_covers"
+    plaza_covers_dir.mkdir(parents=True, exist_ok=True)
+    app.mount(
+        "/api/plaza-covers",
+        StaticFiles(directory=str(plaza_covers_dir)),
+        name="plaza-covers",
+    )
+    avatars_dir = settings.uploads_abs_dir.parent / "avatars"
+    avatars_dir.mkdir(parents=True, exist_ok=True)
+    app.mount(
+        "/api/avatars",
+        StaticFiles(directory=str(avatars_dir)),
+        name="avatars",
     )
 
     # ============================================================

@@ -17,9 +17,13 @@ class User:
     register_ua: Optional[str]
     created_at: str
     updated_at: str
+    # 2026-06-25:用户资料(migration 090)
+    nickname: Optional[str] = None
+    avatar_url: Optional[str] = None
 
     @classmethod
     def from_row(cls, row: sqlite3.Row) -> "User":
+        keys = row.keys()
         return cls(
             id=row["id"],
             phone=row["phone"],
@@ -30,4 +34,7 @@ class User:
             register_ua=row["register_ua"],
             created_at=row["created_at"],
             updated_at=row["updated_at"],
+            # 防御:个别精简查询 / 迁移前旧库可能未含新列
+            nickname=row["nickname"] if "nickname" in keys else None,
+            avatar_url=row["avatar_url"] if "avatar_url" in keys else None,
         )
