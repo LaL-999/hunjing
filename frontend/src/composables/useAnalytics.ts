@@ -148,6 +148,11 @@ function getOrCreateSessionId(): string {
 
 /** 向 /track 发单条 — 异步,失败静默 */
 async function sendOne(ev: AnalyticsEvent): Promise<void> {
+  // 2026-06-25:加 2.5s 硬超时。背景 — insights 跨域 /track 若 CORS 没配好,
+  // 浏览器预检会"待处理"卡到 8s 才失败,这些挂死的连接会霸占连接池、把整页"加载完成"
+  // 拖到几十秒(实测刷新整页 42s)。埋点是旁路,绝不能拖累主平台:超时即放弃。
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 2500);
   try {
     await fetch(`${INSIGHTS_BASE}/track`, {
       method: "POST",
@@ -155,10 +160,13 @@ async function sendOne(ev: AnalyticsEvent): Promise<void> {
       body: JSON.stringify(ev),
       // keepalive 让 fetch 也能在 unload 时尽量送达(类似 sendBeacon)
       keepalive: true,
+      signal: ctrl.signal,
       // 不带 credentials — insights 系统无 cookie 鉴权,纯接收
     });
   } catch {
-    // 静默吞 — 网络失败 / CORS / insights 服务挂都不影响主平台
+    // 静默吞 — 网络失败 / CORS / 超时 / insights 服务挂都不影响主平台
+  } finally {
+    clearTimeout(timer);
   }
 }
 
