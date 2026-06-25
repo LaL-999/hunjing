@@ -104,7 +104,11 @@ async function loadProjects() {
   const isFirstLoad = projects.value.length === 0;
   if (isFirstLoad) projectsLoading.value = true;
   try {
-    projects.value = await api.get<Project[]>("/projects");
+    // 防御(2026-06-25):后端异常时 nginx 可能返 200+HTML(非 JSON),api.get 会返回 null;
+    // 若直接赋给 projects,模板里 projects.length 会抛 "Cannot read properties of null" →
+    // 整个侧栏 render effect 崩溃消失。这里强制兜底成数组,后端抖动也不白屏。
+    const result = await api.get<Project[]>("/projects");
+    projects.value = Array.isArray(result) ? result : [];
   } catch (e) {
     if (e instanceof ApiError && e.status === 401) {
       projects.value = [];

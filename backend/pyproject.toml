@@ -28,6 +28,7 @@ dependencies = [
     "beautifulsoup4>=4.12",           # epub 内嵌 HTML 抽纯文本(配合 ebooklib)
     "Pillow>=10.0,<12.0",             # Sprint 4.C 漫画排版 _agent_typesetter(PIL 本地合成对话气泡 / 旁白 / 拟声词)
     "requests>=2.31",                 # Sprint 4.C 下载 Seedream 远程 panel 图(BytesIO);simulation 已用过未列入,显式补
+    "jsonschema>=4.0",                # 剧创态 yaml_validator 校验剧本 schema(Draft202012);此前漏声明导致生产 ModuleNotFoundError → 502
 ]
 
 [project.optional-dependencies]
