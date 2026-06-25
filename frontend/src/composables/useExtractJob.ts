@@ -34,6 +34,7 @@ import {
   type ExtractEvent,
   type ExtractJobResponse,
 } from "../api/types";
+import { useQuotaStore } from "../stores/quota";
 import { toast } from "./useToast";
 
 const POLL_INTERVAL_MS = 2000;
@@ -152,6 +153,9 @@ export function useExtractJob() {
         cur.state = "done";
         cur.completed_at = new Date().toISOString();
         phase.value = "done";
+        // 2026-06-25:抽取 done 时后端按真实 token 扣了 credit,刷新侧栏「本月余额」。
+        // applyEvent 同时承接 SSE done 与 polling 派生的 done,两条路径都覆盖。
+        void useQuotaStore().refresh();
       }
     } else if (ev.kind === "error") {
       cur.state = "failed";

@@ -50,6 +50,7 @@ from app.services.character_affinity import (
     SceneRegular,
     compute_scene_regulars,
 )
+from app.services.credit_service import consume_credits, credit_units_for_text_call
 from app.services.llm_client import call_llm_json, estimate_cost_yuan
 from app.services.project_service import iso_now
 from app.services.rag_retrieval import ChunkSnippet, retrieve_relevant_chunks
@@ -1998,6 +1999,32 @@ def run_evolution_simulation(sim_id: str) -> None:
             cost_yuan=final_cost,
             narrative=narrative_so_far,
         )
+
+        # 2026-06-25 CRITICAL 修复:演化模式 done 时真扣 credit。
+        # 此前演化(旗舰多 agent 推演)路径从不调 consume_credits → 免费用户无限烧
+        # 平台 DeepSeek key(用户线上实测账户欠费)。镜像 quick 路径
+        # (simulation_service.py done 块)。total_in/out 此处已累计完整。
+        # 失败仅 warn 不阻塞(LLM 已发生成本、产物已交付);不退(已 done)。
+        try:
+            consume_credits(
+                conn,
+                user_id=sim.user_id,
+                action="continuation",
+                units=credit_units_for_text_call(total_in, total_out),
+                related_id=sim_id,
+                cost_yuan=final_cost,
+                metadata={
+                    "input_tokens": total_in,
+                    "output_tokens": total_out,
+                    "vendor": "deepseek",
+                    "mode": "evolution",
+                },
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning(
+                f"consume_credits(evolution) failed for sim {sim_id}: {e}"
+            )
+
         # M6:标 outline 收尾
         if outline_scenes_list:
             from app.services.outline_orchestrator import mark_outline_state

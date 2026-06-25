@@ -23,7 +23,7 @@
  * 事件流(events):最近 50 条原始 event,UI 用来呈现 PowerShell 风格滚动日志。
  * 配额错误 (QUOTA_EXCEEDED) 单独暴露 errorDetail,父组件 catch 后弹 UpgradeModal。
  */
-import { computed, ref, watch } from "vue";
+import { computed, onScopeDispose, ref, watch } from "vue";
 
 import { api } from "../api/client";
 import {
@@ -33,6 +33,7 @@ import {
   type SimulationFull,
   type SimulationState,
 } from "../api/types";
+import { useQuotaStore } from "../stores/quota";
 
 const FALLBACK_POLL_INTERVAL_MS = 2000;
 const MAX_EVENTS_KEPT = 50;
@@ -410,21 +411,19 @@ export function useSimulation(getProjectId: () => string) {
     return Math.min(0.95, sceneBaseProgress);
   });
 
-  // M6-fix5:已运行时长(秒)— 让用户对长篇有时间感
+  // M6-fix5:已运行时长(秒)— 让用户对长篇有时间感。
+  // 2026-06-25 修「秒不跳」bug:原来 ticker 只在 queued/directing/composing 由
+  // watch(state) 启停 → 演化态(及终态/SSE 竞态)下从不启动,elapsed 算一次后冻结
+  // (用户实测:进去就是十几分钟、秒数不动)。改为 composable 生命周期内【常开】1s
+  // ticker;_startTimer/_stopTimer 保留为兼容 no-op,避免改散落的老调用点。
+  // 终态时 elapsedSeconds 自身走「completed_at - anchor」静态分支,不受 ticker 影响。
   const _nowTick = ref(Date.now());
-  let _nowTimer: ReturnType<typeof setInterval> | null = null;
-  function _startTimer() {
-    if (_nowTimer !== null) return;
-    _nowTimer = setInterval(() => {
-      _nowTick.value = Date.now();
-    }, 1000);
-  }
-  function _stopTimer() {
-    if (_nowTimer !== null) {
-      clearInterval(_nowTimer);
-      _nowTimer = null;
-    }
-  }
+  const _nowTimer = setInterval(() => {
+    _nowTick.value = Date.now();
+  }, 1000);
+  onScopeDispose(() => clearInterval(_nowTimer));
+  function _startTimer() { /* 常开,无需手动启动 */ }
+  function _stopTimer() { /* 常开,不停 */ }
 
   // Bug 1 治本(2026-05-24,M11 Pre-flight 增强版):用 created_at 代替 started_at
   //
@@ -480,19 +479,18 @@ export function useSimulation(getProjectId: () => string) {
     return `${h}h ${m % 60}m`;
   });
 
-  // Sprint 6.A2 polish(2026-05-22)修计时 bug:_startTimer 之前只在 pollFullDetail 调,
-  // SSE 流接管时永远不启动 → elapsed 一直停在初始 _nowTick 与 started_at 的差(~1s)。
-  // 改用 watch 跟踪 sim.state,running 三态启动 timer,其他状态停 — 不依赖 SSE/poll 路径
+  // 2026-06-25:sim 进入 done 时刷新侧栏「本月余额」。扣费发生在 done(异步 SSE worker
+  // 跑完才 consume_credits),而原来 quota 只在创建/关闭时刷 → 用户看到的余额总慢一拍
+  // (要等下一次操作才更新)。这里挂在「真正 done」的状态转变上,SSE/poll 两条路径都覆盖。
+  // (timer 已常开,这里不再启停 _startTimer/_stopTimer。)
+  const quota = useQuotaStore();
   watch(
     () => simulation.value?.state,
-    (state) => {
-      if (state === "queued" || state === "directing" || state === "composing") {
-        _startTimer();
-      } else {
-        _stopTimer();
+    (state, prev) => {
+      if (state === "done" && prev !== "done") {
+        void quota.refresh();
       }
     },
-    { immediate: true },
   );
 
   /** 当前细化阶段(最近 SSE 事件的可读描述)— 让用户知道"AI 在做什么"。 */

@@ -345,9 +345,16 @@ def create_app() -> FastAPI:
         app.include_router(sp_episodes.router, prefix="/api/screenplay", tags=["screenplay"])
         # 阶段 8.5:多模型对比(基于 BYOK)
         app.include_router(sp_compare.router, prefix="/api/screenplay", tags=["screenplay"])
-    except Exception as e:  # noqa: BLE001
+    except Exception:  # noqa: BLE001
+        # 2026-06-25:原来只 warn → 剧创态路由一旦注册失败就全静默消失,前端
+        # 「我的剧本」拿到 404 却无从查因(用户线上实测)。改 logging.exception
+        # 打全栈,prod 日志能直接看到真因(多半是 prod-only 缺依赖 / DB 迁移状态),
+        # 而不是降级成请求时 404。仍不阻塞父平台启动(漫画等其他态照常)。
         import logging
-        logging.warning("剧创态 router 注册失败(不阻塞父平台): %s", e)
+        logging.exception(
+            "剧创态 router 注册失败(不阻塞父平台启动,但 /api/screenplay/* 将全部 404,"
+            "请看上面全栈定位真因)"
+        )
 
     return app
 

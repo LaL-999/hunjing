@@ -64,6 +64,9 @@ watch(
     else if (newDepth < lastDepth) transitionName.value = "slide-right";
     else transitionName.value = "page-fade";
     lastDepth = newDepth;
+    // 2026-06-25:每次导航顺手刷一次「本月余额」—— 兜底覆盖所有 AI op(含 refine/漫画
+    // 等未单独挂 hook 的),让余额随用户走动保持新鲜。refresh 自带重入保护,开销可忽略。
+    if (auth.isAuthed) void quota.refresh();
   },
 );
 
