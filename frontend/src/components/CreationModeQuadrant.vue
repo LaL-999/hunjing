@@ -115,9 +115,9 @@ const MODE_CARDS: ModeCard[] = [
     mode: "cycle",
     index: 4,
     title: "漫创态",
-    description: "已有文本 → AI 漫画分格(实验中;Pro 及以上会员专属)。",
-    status: "experimental",
-    statusLabel: "⚗ 实验中",
+    description: "已有文本 → AI 漫画分格(Pro 及以上会员专属)。",
+    status: "available",
+    statusLabel: "可用",
     // 漫画分格 — 2×2 frames
     iconPaths: [
       "M3 3h8v8H3z",                          // 左上格

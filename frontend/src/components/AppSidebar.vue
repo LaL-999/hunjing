@@ -490,7 +490,6 @@ onUnmounted(() => {
       >
         <span class="nav-icon" aria-hidden="true">⚭</span>
         <span class="nav-label">我的漫画</span>
-        <span class="nav-chip">内测</span>
       </button>
 
       <!-- 2026-06-08:我的剧本 — 跟我的漫画平级,放下方 -->
