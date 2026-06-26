@@ -134,15 +134,21 @@ def _hot_score(row, now_ts: float) -> float:
 
     老作品随时间自然下沉(不霸榜);新作有曝光窗口(不被埋)。
     """
-    import math
     from datetime import datetime
 
     try:
-        pub = datetime.fromisoformat(row["published_at"]).timestamp()
+        pub = datetime.fromisoformat(str(row["published_at"])).timestamp()
     except Exception:  # noqa: BLE001
         pub = now_ts
+    # 防御(2026-06-25):like_count/read_count 理论 NOT NULL,但旧数据/边界值兜底成 0,
+    # 任何类型异常都不让热度分崩掉(否则 sorted 整条 500,广场首页白屏)。
+    try:
+        likes = float(row["like_count"] or 0)
+        reads = float(row["read_count"] or 0)
+    except Exception:  # noqa: BLE001
+        likes = reads = 0.0
     age_hours = max(0.0, (now_ts - pub) / 3600.0)
-    base = (row["like_count"] + row["read_count"] * 0.2 + 1) / ((age_hours + 2) ** 1.5)
+    base = (likes + reads * 0.2 + 1) / ((age_hours + 2) ** 1.5)
     if age_hours < _FRESH_HOURS:
         base *= _FRESH_BOOST
     return base
@@ -164,9 +170,14 @@ def list_works(
     elif sort == "classic":
         rows = sorted(rows, key=lambda r: (r["like_count"], r["published_at"]), reverse=True)
     else:  # hot
-        from datetime import datetime, timezone
-        now_ts = datetime.now(timezone.utc).timestamp()
-        rows = sorted(rows, key=lambda r: _hot_score(r, now_ts), reverse=True)
+        # 防御(2026-06-25):热度排序任何异常都降级到"最新"序,绝不让 /plaza/works?sort=hot
+        # 抛 500(被 nginx 错误页伪装成"服务暂时不可用",广场首页直接打不开)。
+        try:
+            from datetime import datetime, timezone
+            now_ts = datetime.now(timezone.utc).timestamp()
+            rows = sorted(rows, key=lambda r: _hot_score(r, now_ts), reverse=True)
+        except Exception:  # noqa: BLE001
+            rows = sorted(rows, key=lambda r: r["published_at"], reverse=True)
 
     total = len(rows)
     page = rows[offset:offset + limit]

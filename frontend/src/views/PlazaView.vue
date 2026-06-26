@@ -49,38 +49,49 @@ const publishOpen = ref(false);
 /** 正在切换点赞的作品 id 集合(防抖 + 禁重复点击) */
 const likeBusy = ref<Set<string>>(new Set());
 
-async function load(tab: Tab, opts: { silent?: boolean } = {}): Promise<void> {
-  if (!opts.silent) loading.value = true;
+/** 各 tab 结果缓存(stale-while-revalidate)— 再切回时瞬间显示,不再闪骨架屏 */
+const cache = new Map<Tab, PlazaCard[]>();
+
+async function load(tab: Tab): Promise<void> {
+  const cached = cache.get(tab);
+  if (cached) {
+    // 有缓存:瞬间显示旧数据 + 不显骨架,后台静默刷新
+    works.value = cached;
+    loading.value = false;
+  } else {
+    // 首次进该 tab:才显骨架屏
+    loading.value = true;
+  }
   errorMsg.value = null;
   try {
+    let items: PlazaCard[];
     if (tab === "mine") {
-      if (!auth.isAuthed) {
-        works.value = [];
-        return;
-      }
-      const resp = await plazaApi.myWorks();
-      works.value = resp.items;
+      items = auth.isAuthed ? (await plazaApi.myWorks()).items : [];
     } else {
-      const resp = await plazaApi.list(tab, 48, 0);
-      works.value = resp.items;
+      items = (await plazaApi.list(tab, 48, 0)).items;
     }
+    cache.set(tab, items);
+    // 仅当仍停在该 tab 才 swap(防快速连切导致错位)
+    if (tab === activeTab.value) works.value = items;
   } catch (e) {
-    errorMsg.value = e instanceof ApiError ? e.message : "加载作品广场失败";
+    // 有缓存就静默失败保留旧数据;无缓存才显错误条
+    if (!cached && tab === activeTab.value) {
+      errorMsg.value = e instanceof ApiError ? e.message : "加载作品广场失败";
+    }
   } finally {
-    loading.value = false;
+    if (tab === activeTab.value) loading.value = false;
   }
 }
 
 function switchTab(tab: Tab): void {
   if (tab === activeTab.value) return;
   activeTab.value = tab;
-  // stale-while-revalidate:保留旧列表(silent),新数据到了再替换
-  void load(tab, { silent: works.value.length > 0 });
+  void load(tab);   // load 内部按缓存决定要不要闪骨架
 }
 
 onMounted(() => void load(activeTab.value));
-// 登录态变化(登录 / 登出)→ 重新拉(尤其影响 liked 标记 + 我的发布)
-watch(() => auth.isAuthed, () => void load(activeTab.value, { silent: true }));
+// 登录态变化(登录 / 登出)→ 清缓存重拉(影响 liked 标记 + 我的发布)
+watch(() => auth.isAuthed, () => { cache.clear(); void load(activeTab.value); });
 
 const isEmpty = computed(() => !loading.value && works.value.length === 0);
 
@@ -95,6 +106,7 @@ function openPublish(): void {
 function onPublished(): void {
   publishOpen.value = false;
   toast.success("作品已上架到广场");
+  cache.clear();   // 新发布影响 hot/new/classic/mine 所有 tab,缓存全失效
   // 切到「我的发布」让用户立刻看到
   activeTab.value = "mine";
   void load("mine");
