@@ -11,7 +11,12 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 
 import { apiAssetUrl, ApiError } from "../api/client";
-import { plazaApi, type PublishableSim } from "../api/plaza";
+import {
+  plazaApi,
+  type PublishableSim,
+  type PublishableScreenplay,
+  type ScreenplayPublishKind,
+} from "../api/plaza";
 import { toast } from "../composables/useToast";
 
 const props = defineProps<{ open: boolean }>();
@@ -29,9 +34,23 @@ const MODE_LABELS: Record<string, string> = {
 };
 const GRADIENTS = [1, 2, 3, 4, 5, 6, 7, 8, 9];
 
+// v5 item8:发布来源 —— 推演作品(simulation)/ 剧本(screenplay)
+type SourceType = "sim" | "screenplay";
+const sourceType = ref<SourceType>("sim");
+
 const sims = ref<PublishableSim[]>([]);
 const loadingSims = ref(false);
 const loadError = ref<string | null>(null);
+
+// 剧创态可发布素材
+const screenplays = ref<PublishableScreenplay[]>([]);
+const selectedNovelId = ref<string | null>(null);
+const screenplayKind = ref<ScreenplayPublishKind>("global");
+const selectedPlanId = ref<string | null>(null);
+
+const selectedNovel = computed(() =>
+  screenplays.value.find((s) => s.novel_id === selectedNovelId.value) ?? null,
+);
 
 const selectedSimId = ref<string | null>(null);
 const title = ref("");
@@ -50,9 +69,20 @@ const selectedSim = computed(() =>
   sims.value.find((s) => s.sim_id === selectedSimId.value) ?? null,
 );
 
+/** 剧本发布:episodes/both 必须选中一个分集方案 */
+const screenplayReady = computed(() => {
+  if (!selectedNovelId.value) return false;
+  if (screenplayKind.value !== "global" && !selectedPlanId.value) return false;
+  return true;
+});
+
+const hasSelection = computed(() =>
+  sourceType.value === "sim" ? !!selectedSimId.value : screenplayReady.value,
+);
+
 const canSubmit = computed(
   () =>
-    !!selectedSimId.value
+    hasSelection.value
     && title.value.trim().length > 0
     && title.value.trim().length <= 60
     && !submitting.value
@@ -72,16 +102,45 @@ async function loadPublishable(): Promise<void> {
   }
 }
 
+async function loadPublishableScreenplays(): Promise<void> {
+  loadingSims.value = true;
+  loadError.value = null;
+  try {
+    const resp = await plazaApi.publishableScreenplays();
+    screenplays.value = resp.items;
+  } catch (e) {
+    loadError.value = e instanceof ApiError ? e.message : "加载可上架剧本失败";
+  } finally {
+    loadingSims.value = false;
+  }
+}
+
+function resetForm(): void {
+  selectedSimId.value = null;
+  selectedNovelId.value = null;
+  selectedPlanId.value = null;
+  screenplayKind.value = "global";
+  title.value = "";
+  summary.value = "";
+  coverGradient.value = 1;
+  coverImagePath.value = null;
+  submitError.value = null;
+}
+
+function switchSource(t: SourceType): void {
+  if (sourceType.value === t) return;
+  sourceType.value = t;
+  resetForm();
+  if (t === "sim") void loadPublishable();
+  else void loadPublishableScreenplays();
+}
+
 watch(
   () => props.open,
   (isOpen) => {
     if (isOpen) {
-      selectedSimId.value = null;
-      title.value = "";
-      summary.value = "";
-      coverGradient.value = 1;
-      coverImagePath.value = null;
-      submitError.value = null;
+      sourceType.value = "sim";
+      resetForm();
       void loadPublishable();
     }
   },
@@ -93,6 +152,14 @@ function pickSim(sim: PublishableSim): void {
   if (!title.value.trim()) {
     title.value = sim.original_title || sim.project_name || "我的作品";
   }
+}
+
+function pickNovel(sp: PublishableScreenplay): void {
+  selectedNovelId.value = sp.novel_id;
+  selectedPlanId.value = sp.episode_plans[0]?.plan_id ?? null;
+  // 若没有全局剧本,默认切到分集
+  screenplayKind.value = sp.has_global ? "global" : "episodes";
+  if (!title.value.trim()) title.value = sp.novel_title || "我的剧本";
 }
 
 function triggerUpload(): void {
@@ -124,17 +191,31 @@ function clearCover(): void {
 }
 
 async function handleSubmit(): Promise<void> {
-  if (!canSubmit.value || !selectedSimId.value) return;
+  if (!canSubmit.value) return;
   submitting.value = true;
   submitError.value = null;
   try {
-    await plazaApi.publish({
-      sim_id: selectedSimId.value,
-      title: title.value.trim(),
-      summary: summary.value.trim() || null,
-      cover_image_path: coverImagePath.value,
-      cover_gradient: coverGradient.value,
-    });
+    if (sourceType.value === "sim") {
+      if (!selectedSimId.value) return;
+      await plazaApi.publish({
+        sim_id: selectedSimId.value,
+        title: title.value.trim(),
+        summary: summary.value.trim() || null,
+        cover_image_path: coverImagePath.value,
+        cover_gradient: coverGradient.value,
+      });
+    } else {
+      if (!selectedNovelId.value) return;
+      await plazaApi.publishScreenplay({
+        novel_id: selectedNovelId.value,
+        kind: screenplayKind.value,
+        plan_id: screenplayKind.value === "global" ? null : selectedPlanId.value,
+        title: title.value.trim(),
+        summary: summary.value.trim() || null,
+        cover_image_path: coverImagePath.value,
+        cover_gradient: coverGradient.value,
+      });
+    }
     emit("published");
   } catch (e) {
     submitError.value =
@@ -195,6 +276,22 @@ function fmtDate(iso: string): string {
             <p class="modal-subtitle">选一部已完成的作品,分享到广场免费给大家阅读</p>
           </header>
 
+          <!-- v5 item8:发布来源 tab -->
+          <div class="source-tabs" role="tablist">
+            <button
+              type="button" class="source-tab"
+              :class="{ 'is-active': sourceType === 'sim' }"
+              role="tab" :aria-selected="sourceType === 'sim'"
+              @click="switchSource('sim')"
+            >推演作品</button>
+            <button
+              type="button" class="source-tab"
+              :class="{ 'is-active': sourceType === 'screenplay' }"
+              role="tab" :aria-selected="sourceType === 'screenplay'"
+              @click="switchSource('screenplay')"
+            >剧本(剧创态)</button>
+          </div>
+
           <!-- 选作品 -->
           <div class="field">
             <label class="field-label">选择作品 <span class="req">*</span></label>
@@ -202,42 +299,118 @@ function fmtDate(iso: string): string {
             <div v-if="loadingSims" class="state-msg">加载可上架作品…</div>
             <div v-else-if="loadError" class="state-msg state-error">
               {{ loadError }}
-              <button class="retry-btn" type="button" @click="loadPublishable">重试</button>
-            </div>
-            <div v-else-if="sims.length === 0" class="state-msg">
-              还没有可上架的作品 — 请先在项目里完成一次 AI 推演。
+              <button class="retry-btn" type="button"
+                @click="sourceType === 'sim' ? loadPublishable() : loadPublishableScreenplays()">重试</button>
             </div>
 
-            <ul v-else class="sim-list" role="listbox">
-              <li
-                v-for="sim in sims"
-                :key="sim.sim_id"
-                class="sim-row"
-                :class="{ 'is-selected': selectedSimId === sim.sim_id }"
-                role="option"
-                :aria-selected="selectedSimId === sim.sim_id"
-                tabindex="0"
-                @click="pickSim(sim)"
-                @keydown.enter.prevent="pickSim(sim)"
-              >
-                <span class="sim-radio" aria-hidden="true">
-                  <span v-if="selectedSimId === sim.sim_id" class="dot" />
-                </span>
-                <div class="sim-content">
-                  <div class="sim-head">
-                    <span class="sim-mode">{{ modeLabel(sim.mode) }}</span>
-                    <span class="sim-project">
-                      {{ sim.original_title ? `原著《${sim.original_title}》` : (sim.project_name || "原创世界") }}
-                    </span>
+            <!-- 推演作品列表 -->
+            <template v-else-if="sourceType === 'sim'">
+              <div v-if="sims.length === 0" class="state-msg">
+                还没有可上架的作品 — 请先在项目里完成一次 AI 推演。
+              </div>
+              <ul v-else class="sim-list" role="listbox">
+                <li
+                  v-for="sim in sims"
+                  :key="sim.sim_id"
+                  class="sim-row"
+                  :class="{ 'is-selected': selectedSimId === sim.sim_id }"
+                  role="option"
+                  :aria-selected="selectedSimId === sim.sim_id"
+                  tabindex="0"
+                  @click="pickSim(sim)"
+                  @keydown.enter.prevent="pickSim(sim)"
+                >
+                  <span class="sim-radio" aria-hidden="true">
+                    <span v-if="selectedSimId === sim.sim_id" class="dot" />
+                  </span>
+                  <div class="sim-content">
+                    <div class="sim-head">
+                      <span class="sim-mode">{{ modeLabel(sim.mode) }}</span>
+                      <span class="sim-project">
+                        {{ sim.original_title ? `原著《${sim.original_title}》` : (sim.project_name || "原创世界") }}
+                      </span>
+                    </div>
+                    <p v-if="sim.summary" class="sim-summary">{{ sim.summary }}</p>
+                    <span class="sim-time mono">{{ fmtDate(sim.created_at) }}</span>
                   </div>
-                  <p v-if="sim.summary" class="sim-summary">{{ sim.summary }}</p>
-                  <span class="sim-time mono">{{ fmtDate(sim.created_at) }}</span>
-                </div>
-              </li>
-            </ul>
+                </li>
+              </ul>
+            </template>
+
+            <!-- 剧本列表 -->
+            <template v-else>
+              <div v-if="screenplays.length === 0" class="state-msg">
+                还没有可上架的剧本 — 请先在剧创态生成「全局剧本」或「分集方案」。
+              </div>
+              <ul v-else class="sim-list" role="listbox">
+                <li
+                  v-for="sp in screenplays"
+                  :key="sp.novel_id"
+                  class="sim-row"
+                  :class="{ 'is-selected': selectedNovelId === sp.novel_id }"
+                  role="option"
+                  :aria-selected="selectedNovelId === sp.novel_id"
+                  tabindex="0"
+                  @click="pickNovel(sp)"
+                  @keydown.enter.prevent="pickNovel(sp)"
+                >
+                  <span class="sim-radio" aria-hidden="true">
+                    <span v-if="selectedNovelId === sp.novel_id" class="dot" />
+                  </span>
+                  <div class="sim-content">
+                    <div class="sim-head">
+                      <span class="sim-mode">剧创态</span>
+                      <span class="sim-project">{{ sp.novel_title || "未命名剧本" }}</span>
+                    </div>
+                    <p class="sim-summary">
+                      <template v-if="sp.has_global">含全局剧本 · </template>
+                      {{ sp.episode_plans.length }} 套分集方案
+                    </p>
+                  </div>
+                </li>
+              </ul>
+            </template>
           </div>
 
-          <template v-if="selectedSim">
+          <!-- 剧本:全局 / 分集 / 两者 选择 -->
+          <div v-if="sourceType === 'screenplay' && selectedNovel" class="field">
+            <label class="field-label">发布内容 <span class="req">*</span></label>
+            <div class="kind-row">
+              <button
+                type="button" class="kind-btn"
+                :class="{ 'is-active': screenplayKind === 'global' }"
+                :disabled="!selectedNovel.has_global"
+                :title="selectedNovel.has_global ? '' : '该剧本还没有生成全局剧本'"
+                @click="screenplayKind = 'global'"
+              >全局剧本</button>
+              <button
+                type="button" class="kind-btn"
+                :class="{ 'is-active': screenplayKind === 'episodes' }"
+                :disabled="selectedNovel.episode_plans.length === 0"
+                @click="screenplayKind = 'episodes'"
+              >分集方案</button>
+              <button
+                type="button" class="kind-btn"
+                :class="{ 'is-active': screenplayKind === 'both' }"
+                :disabled="!selectedNovel.has_global || selectedNovel.episode_plans.length === 0"
+                @click="screenplayKind = 'both'"
+              >两者都要</button>
+            </div>
+
+            <!-- 分集方案下拉(episodes/both 时)-->
+            <div v-if="screenplayKind !== 'global' && selectedNovel.episode_plans.length > 0" class="plan-select">
+              <label class="field-sub">选择分集方案</label>
+              <select v-model="selectedPlanId" class="text-input">
+                <option
+                  v-for="p in selectedNovel.episode_plans"
+                  :key="p.plan_id"
+                  :value="p.plan_id"
+                >{{ p.scheme_name }} · {{ p.episode_count }} 集</option>
+              </select>
+            </div>
+          </div>
+
+          <template v-if="hasSelection">
             <!-- 作品名 -->
             <div class="field">
               <label class="field-label" for="pub-title">作品名 <span class="req">*</span></label>
@@ -388,6 +561,54 @@ function fmtDate(iso: string): string {
 }
 .modal-title { font-size: var(--text-xl); font-weight: 600; color: var(--color-text); margin: 0; }
 .modal-subtitle { font-size: var(--text-sm); color: var(--color-text-muted); margin: 0; line-height: 1.55; }
+
+/* v5 item8:来源 tab + 剧本发布内容选择 */
+.source-tabs {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  align-self: flex-start;
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+.source-tab {
+  padding: 6px 16px;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  background: transparent;
+  border: none;
+  border-radius: calc(var(--radius-md) - 3px);
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out);
+}
+.source-tab:hover { color: var(--color-text); }
+.source-tab.is-active {
+  background: var(--color-surface);
+  color: var(--color-accent-text);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+.kind-row { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.kind-btn {
+  padding: 6px 14px;
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out);
+}
+.kind-btn:hover:not(:disabled) { border-color: var(--color-accent-border); }
+.kind-btn.is-active {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+  color: var(--color-accent-text);
+  font-weight: 600;
+}
+.kind-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.plan-select { display: flex; flex-direction: column; gap: 4px; margin-top: var(--space-2); }
 
 .field { display: flex; flex-direction: column; gap: var(--space-2); }
 .field-label { font-size: var(--text-sm); font-weight: 500; color: var(--color-text); }

@@ -44,6 +44,18 @@ class PublishInput:
     cover_gradient: int = 1
 
 
+@dataclass
+class PublishScreenplayInput:
+    """剧创态发布(v5 item8)。kind ∈ global|episodes|both。"""
+    novel_id: str
+    kind: str = "global"                 # global(全局剧本)/ episodes(分集方案)/ both
+    plan_id: Optional[str] = None        # kind=episodes/both 时指定分集方案
+    title: str = ""
+    summary: Optional[str] = None
+    cover_image_path: Optional[str] = None
+    cover_gradient: int = 1
+
+
 def _excerpt(text: str, n: int = 80) -> str:
     """从正文取前 n 字做简介(去 markdown 噪音 + 多余空白)。"""
     import re
@@ -102,6 +114,156 @@ def publish_work(conn, user_id: str, inp: PublishInput) -> dict:
         (
             work_id, user_id, "simulation", inp.sim_id, project_id, title, summary,
             mode, original_title, inp.cover_image_path, grad, content,
+            word_count, now, now,
+        ),
+    )
+    return get_work_meta(conn, work_id, viewer_id=user_id)
+
+
+def _render_screenplay_content(
+    conn, user_id: str, inp: "PublishScreenplayInput",
+) -> tuple[str, str]:
+    """把剧创态素材渲染成可发布纯文本(item8)。
+
+    返回 (content, source_id)。全部走 plaza 的 conn + JOIN sp_novels 校验归属,
+    渲染复用剧创态既有 exporter(纯函数,吃 dict)。
+    """
+    import json as _json
+
+    kind = inp.kind if inp.kind in ("global", "episodes", "both") else "global"
+    parts: list[tuple[str, str]] = []
+    screenplay_dict: Optional[dict] = None
+    source_id = inp.novel_id
+
+    # ---- 全局剧本(sp_screenplays.yaml_text)----
+    if kind in ("global", "both"):
+        sp_row = fetch_one(
+            conn,
+            """SELECT sc.id AS screenplay_id, sc.yaml_text
+                 FROM sp_screenplays sc
+                 JOIN sp_novels n ON sc.novel_id = n.id
+                WHERE sc.novel_id = ? AND n.user_id = ?
+                ORDER BY sc.created_at DESC LIMIT 1""",
+            (inp.novel_id, user_id),
+        )
+        if sp_row is None or not (sp_row["yaml_text"] or "").strip():
+            raise PlazaError("SOURCE_NOT_DONE", "该剧本还没有生成「全局剧本」,无法发布全局版本")
+        try:
+            import yaml as _yaml
+            screenplay_dict = _yaml.safe_load(sp_row["yaml_text"]) or {}
+        except Exception:  # noqa: BLE001
+            screenplay_dict = {}
+        try:
+            from app.screenplay.services import screenplay_exporter
+            global_txt = screenplay_exporter.export_to_txt(screenplay_dict)
+        except Exception as e:  # noqa: BLE001
+            raise PlazaError("RENDER_FAILED", f"全局剧本渲染失败:{str(e)[:120]}")
+        parts.append(("# 全局剧本", global_txt.strip()))
+        if kind == "global":
+            source_id = sp_row["screenplay_id"]
+
+    # ---- 分集方案(sp_episode_plans.plan_json)----
+    if kind in ("episodes", "both"):
+        if not inp.plan_id:
+            raise PlazaError("PLAN_REQUIRED", "请选择要发布的分集方案")
+        plan_row = fetch_one(
+            conn,
+            """SELECT p.* FROM sp_episode_plans p
+                 JOIN sp_novels n ON p.novel_id = n.id
+                WHERE p.id = ? AND p.novel_id = ? AND n.user_id = ?""",
+            (inp.plan_id, inp.novel_id, user_id),
+        )
+        if plan_row is None:
+            raise PlazaError("SOURCE_NOT_FOUND", "找不到该分集方案或无权发布")
+        try:
+            plan_data = _json.loads(plan_row["plan_json"])
+        except Exception:  # noqa: BLE001
+            plan_data = {}
+        plan_summary = {
+            "scheme_name": plan_row["scheme_name"],
+            "preset": plan_row["preset"],
+            "target_minutes": plan_row["target_minutes"],
+            "recommended_perspective": plan_row["recommended_perspective"],
+            "episode_count": plan_row["episode_count"],
+            "scene_count": plan_row["scene_count"],
+            "created_at": plan_row["created_at"],
+        }
+        # 若尚未取到剧本(episodes-only),尝试取一份给 full 模式;取不到降级 outline
+        if screenplay_dict is None:
+            sp2 = fetch_one(
+                conn,
+                """SELECT sc.yaml_text FROM sp_screenplays sc
+                     JOIN sp_novels n ON sc.novel_id = n.id
+                    WHERE sc.novel_id = ? AND n.user_id = ?
+                    ORDER BY sc.created_at DESC LIMIT 1""",
+                (inp.novel_id, user_id),
+            )
+            if sp2 and (sp2["yaml_text"] or "").strip():
+                try:
+                    import yaml as _yaml
+                    screenplay_dict = _yaml.safe_load(sp2["yaml_text"]) or {}
+                except Exception:  # noqa: BLE001
+                    screenplay_dict = None
+        ep_mode = "full" if screenplay_dict else "outline"
+        try:
+            from app.screenplay.services import episode_plan_exporter
+            ep_txt = episode_plan_exporter.export_to_txt(
+                plan_summary, plan_data, mode=ep_mode, screenplay_dict=screenplay_dict,
+            )
+        except Exception as e:  # noqa: BLE001
+            raise PlazaError("RENDER_FAILED", f"分集方案渲染失败:{str(e)[:120]}")
+        parts.append(("# 分集方案", ep_txt.strip()))
+        if kind == "episodes":
+            source_id = inp.plan_id
+
+    if not parts:
+        raise PlazaError("EMPTY_CONTENT", "没有可发布的剧本内容")
+
+    if len(parts) == 1:
+        content = parts[0][1]
+    else:
+        content = "\n\n".join(f"{head}\n\n{body}" for head, body in parts)
+
+    if not content.strip():
+        raise PlazaError("EMPTY_CONTENT", "剧本正文为空,无法上架")
+    return content, source_id
+
+
+def publish_screenplay(conn, user_id: str, inp: "PublishScreenplayInput") -> dict:
+    """把剧创态作品(全局 / 分集 / 两者)上架到广场(item8)。"""
+    title = (inp.title or "").strip()
+    if not title:
+        raise PlazaError("TITLE_REQUIRED", "作品名不能为空")
+    if len(title) > 60:
+        raise PlazaError("TITLE_TOO_LONG", "作品名最多 60 字")
+
+    novel = fetch_one(
+        conn,
+        "SELECT id, title FROM sp_novels WHERE id=? AND user_id=?",
+        (inp.novel_id, user_id),
+    )
+    if novel is None:
+        raise PlazaError("SOURCE_NOT_FOUND", "找不到该剧本或无权发布")
+
+    content, source_id = _render_screenplay_content(conn, user_id, inp)
+
+    grad = inp.cover_gradient if 1 <= inp.cover_gradient <= _GRADIENT_COUNT else 1
+    word_count = len(content)
+    summary = (inp.summary or "").strip() or _excerpt(content)
+    original_title = novel["title"]
+    now = iso_now()
+    work_id = str(uuid.uuid4())
+
+    execute(
+        conn,
+        """INSERT INTO published_works
+            (id, user_id, source_type, source_id, project_id, title, summary,
+             mode, original_title, cover_image_path, cover_gradient, content,
+             word_count, like_count, read_count, is_public, published_at, updated_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,0,0,1,?,?)""",
+        (
+            work_id, user_id, "screenplay", source_id, None, title, summary,
+            "screenplay", original_title, inp.cover_image_path, grad, content,
             word_count, now, now,
         ),
     )
@@ -316,5 +478,66 @@ def list_publishable_sims(conn, user_id: str) -> list[dict]:
             "original_title": None if mode == "initial" else r["project_name"],
             "summary": r["narrative_summary"],
             "created_at": r["created_at"],
+        })
+    return out
+
+
+def list_publishable_screenplays(conn, user_id: str) -> list[dict]:
+    """用户可上架的剧创态素材(item8):有「全局剧本」或「分集方案」的 novel。
+
+    每个 novel 返回:是否有全局剧本 + 该 novel 下的分集方案列表(供前端选 全局/分集/both)。
+    异常隔离:剧创态表缺失 / 查询异常时返 [](不阻断广场发布主流程)。
+    """
+    try:
+        novels = fetch_all(
+            conn,
+            """SELECT id, title, uploaded_at FROM sp_novels
+                WHERE user_id = ? ORDER BY uploaded_at DESC LIMIT 100""",
+            (user_id,),
+        )
+    except Exception:  # noqa: BLE001 —— 剧创态未初始化等
+        return []
+
+    out: list[dict] = []
+    for n in novels:
+        try:
+            sp = fetch_one(
+                conn,
+                """SELECT id FROM sp_screenplays
+                    WHERE novel_id = ? AND yaml_text <> ''
+                    ORDER BY created_at DESC LIMIT 1""",
+                (n["id"],),
+            )
+            plans = fetch_all(
+                conn,
+                """SELECT id, scheme_name, episode_count, preset, created_at
+                    FROM sp_episode_plans WHERE novel_id = ?
+                    ORDER BY created_at DESC""",
+                (n["id"],),
+            )
+        except Exception:  # noqa: BLE001
+            continue
+
+        has_global = sp is not None
+        episode_plans = [
+            {
+                "plan_id": p["id"],
+                "scheme_name": p["scheme_name"],
+                "episode_count": p["episode_count"],
+                "preset": p["preset"],
+            }
+            for p in plans
+        ]
+        if not has_global and not episode_plans:
+            continue   # 该 novel 没有任何可发布内容,跳过
+
+        # 该 novel 已上架的剧本(去重提示用,不强制拦)
+        out.append({
+            "novel_id": n["id"],
+            "novel_title": n["title"],
+            "has_global": has_global,
+            "screenplay_id": sp["id"] if sp else None,
+            "episode_plans": episode_plans,
+            "created_at": n["uploaded_at"],
         })
     return out

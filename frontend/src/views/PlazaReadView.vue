@@ -1,16 +1,22 @@
 <script setup lang="ts">
 /**
- * PlazaReadView — 作品广场在线阅读页。2026-06-25。
+ * PlazaReadView — 作品广场沉浸式在线阅读器。
+ * v5(2026-07-02)item9 重设计:从"一长条竖排滚动"升级为全屏横向翻页阅读器
+ * (对齐 SimulationReadView 质感)—— 返回广场按钮固定在视口左上角,不再淹没在正文里。
  *
- * 免费阅读一部上架作品的正文 + 顶部封面信息 + 点赞。进入即 +1 阅读量(后端处理)。
+ * 交互:
+ *   键盘:← / PgUp 上一页 · → / PgDn / Space 下一页 · Esc 返回广场 ·
+ *         + - 字号 · F 单/双页 · T 主题
+ *   鼠标:点屏左 1/3 上一页 · 右 1/3 下一页 · 中 1/3 留给选中
+ *   触摸:横滑翻页(|Δx| > 60px)
  *
- * 正文渲染:无 markdown 依赖(架构冻结闸门),按空行拆段 + 简单识别 # 标题行,
- * 与 SimulationReadView 的 split(/\n{2,}/) 口径一致。
+ * 技术:CSS Multi-column 分栏 + scrollLeft 翻页(无 paginate 依赖,复刻推演阅读器)。
+ * 正文渲染无 markdown 依赖(架构冻结闸门):按空行拆段 + # 识别标题(标题起新页)。
  */
-import { computed, onMounted, ref } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
-import { apiAssetUrl, ApiError } from "../api/client";
+import { ApiError } from "../api/client";
 import { plazaApi, type PlazaWork } from "../api/plaza";
 import { useAuthStore } from "../stores/auth";
 import { useLoginModal } from "../composables/useLoginModal";
@@ -21,33 +27,49 @@ const router = useRouter();
 const auth = useAuthStore();
 const loginModal = useLoginModal();
 
+const workId = computed(() => String(route.params.id ?? ""));
+
 const MODE_LABELS: Record<string, string> = {
   initial: "初始态", middle: "中间态", end: "末尾态", cycle: "漫创态", screenplay: "剧创态",
 };
+function modeLabel(mode: string): string { return MODE_LABELS[mode] ?? "创作"; }
 
+// ============================================================
+// 阅读偏好(localStorage 持久化,与推演阅读器共用 key)
+// ============================================================
+const STORAGE_KEY = "huimeng:reader-prefs";
+type ReaderTheme = "light" | "sepia" | "dark";
+type ReaderSpread = "single" | "double";
+interface ReaderPrefs { fontSize: number; spread: ReaderSpread; theme: ReaderTheme }
+const FONT_SIZES = [16, 18, 22] as const;
+const DEFAULT_PREFS: ReaderPrefs = { fontSize: 18, spread: "double", theme: "sepia" };
+
+function loadPrefs(): ReaderPrefs {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return { ...DEFAULT_PREFS };
+    const p = JSON.parse(raw) as Partial<ReaderPrefs>;
+    return {
+      fontSize: (FONT_SIZES as readonly number[]).includes(p.fontSize as number)
+        ? (p.fontSize as number) : DEFAULT_PREFS.fontSize,
+      spread: p.spread === "single" || p.spread === "double" ? p.spread : DEFAULT_PREFS.spread,
+      theme: p.theme === "light" || p.theme === "sepia" || p.theme === "dark"
+        ? p.theme : DEFAULT_PREFS.theme,
+    };
+  } catch { return { ...DEFAULT_PREFS }; }
+}
+const prefs = ref<ReaderPrefs>(loadPrefs());
+watch(prefs, (p) => {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(p)); } catch { /* 忽略 */ }
+}, { deep: true });
+
+// ============================================================
+// 数据加载
+// ============================================================
 const work = ref<PlazaWork | null>(null);
 const loading = ref(true);
 const errorMsg = ref<string | null>(null);
 const likeBusy = ref(false);
-
-const workId = computed(() => String(route.params.id));
-
-interface Block { type: "h" | "p"; text: string }
-
-/** 正文 → 段落块(# 开头识别为标题) */
-const blocks = computed<Block[]>(() => {
-  const raw = work.value?.content ?? "";
-  return raw
-    .split(/\n{2,}/)
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .map((s): Block => {
-      const m = s.match(/^#{1,6}\s+(.*)$/);
-      if (m) return { type: "h", text: m[1].trim() };
-      // 段内单换行折叠成空格(避免硬换行破坏排版)
-      return { type: "p", text: s.replace(/\n/g, " ") };
-    });
-});
 
 async function load(): Promise<void> {
   loading.value = true;
@@ -55,24 +77,99 @@ async function load(): Promise<void> {
   try {
     work.value = await plazaApi.read(workId.value);
   } catch (e) {
-    if (e instanceof ApiError && e.status === 404) {
-      errorMsg.value = "作品不存在或已下架";
-    } else {
-      errorMsg.value = e instanceof ApiError ? e.message : "加载作品失败";
-    }
+    if (e instanceof ApiError && e.status === 404) errorMsg.value = "作品不存在或已下架";
+    else errorMsg.value = e instanceof ApiError ? e.message : "加载作品失败";
   } finally {
     loading.value = false;
   }
 }
 
-onMounted(load);
+// ============================================================
+// 内容拆块(# → 标题起新页;其余 → 段落)
+// ============================================================
+type RenderItem = { type: "h"; text: string } | { type: "p"; text: string };
+const items = computed<RenderItem[]>(() => {
+  const raw = work.value?.content ?? "";
+  return raw
+    .split(/\n{2,}/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((s): RenderItem => {
+      const m = s.match(/^#{1,6}\s+(.*)$/);
+      if (m) return { type: "h", text: m[1].trim() };
+      return { type: "p", text: s.replace(/\n/g, " ") };
+    });
+});
+const isEmpty = computed(() => items.value.length === 0);
 
+const charCount = computed(
+  () => work.value?.word_count ?? (work.value?.content?.match(/[一-鿿]/g) || []).length,
+);
+
+// ============================================================
+// 翻页(CSS column + scrollLeft)—— 复刻 SimulationReadView
+// ============================================================
+const pagerEl = ref<HTMLElement | null>(null);
+const currentPage = ref(1);
+const totalPages = ref(1);
+
+function recalcPagination() {
+  const el = pagerEl.value;
+  if (!el) return;
+  const pageWidth = el.clientWidth;
+  if (pageWidth <= 0) return;
+  const total = Math.max(1, Math.round(el.scrollWidth / pageWidth));
+  totalPages.value = total;
+  currentPage.value = Math.min(total, Math.max(1, Math.round(el.scrollLeft / pageWidth) + 1));
+}
+function goToPage(page: number) {
+  const el = pagerEl.value;
+  if (!el) return;
+  const clamped = Math.min(totalPages.value, Math.max(1, page));
+  el.scrollTo({ left: (clamped - 1) * el.clientWidth, behavior: "smooth" });
+}
+function nextPage() { if (currentPage.value < totalPages.value) goToPage(currentPage.value + 1); }
+function prevPage() { if (currentPage.value > 1) goToPage(currentPage.value - 1); }
+
+const progressPct = computed(() =>
+  totalPages.value <= 1 ? 100 : Math.round((currentPage.value / totalPages.value) * 100),
+);
+
+// ============================================================
+// 字号 / 单双页 / 主题
+// ============================================================
+function adjustFontSize(delta: 1 | -1) {
+  const idx = FONT_SIZES.indexOf(prefs.value.fontSize as typeof FONT_SIZES[number]);
+  const ni = Math.min(FONT_SIZES.length - 1, Math.max(0, idx + delta));
+  prefs.value = { ...prefs.value, fontSize: FONT_SIZES[ni] };
+}
+function toggleSpread() {
+  prefs.value = { ...prefs.value, spread: prefs.value.spread === "double" ? "single" : "double" };
+}
+const THEME_ORDER: ReaderTheme[] = ["sepia", "light", "dark"];
+function cycleTheme() {
+  const idx = THEME_ORDER.indexOf(prefs.value.theme);
+  prefs.value = { ...prefs.value, theme: THEME_ORDER[(idx + 1) % THEME_ORDER.length] };
+}
+const themeLabel = computed(() =>
+  prefs.value.theme === "light" ? "浅" : prefs.value.theme === "sepia" ? "沙" : "暗",
+);
+const spreadLabel = computed(() => (prefs.value.spread === "double" ? "双页" : "单页"));
+const fontSizeLabel = computed(() =>
+  prefs.value.fontSize === 16 ? "小" : prefs.value.fontSize === 22 ? "大" : "中",
+);
+
+// ============================================================
+// 返回广场
+// ============================================================
+function exitReader() { router.push("/plaza"); }
+
+// ============================================================
+// 点赞(plaza 专属)
+// ============================================================
 async function toggleLike(): Promise<void> {
   if (!work.value) return;
-  if (!auth.isAuthed) {
-    loginModal.open(`/plaza/works/${workId.value}`);
-    return;
-  }
+  if (!auth.isAuthed) { loginModal.open(`/plaza/works/${workId.value}`); return; }
   if (likeBusy.value) return;
   likeBusy.value = true;
   const next = !work.value.liked;
@@ -91,265 +188,460 @@ async function toggleLike(): Promise<void> {
   }
 }
 
-function modeLabel(mode: string): string { return MODE_LABELS[mode] ?? "创作"; }
-function coverClass(): string {
-  const g = work.value?.cover_gradient ?? 1;
-  return `g${g >= 1 && g <= 9 ? g : 1}`;
+// ============================================================
+// 键盘 / 鼠标 / 触摸
+// ============================================================
+function onGlobalKey(e: KeyboardEvent) {
+  const t = e.target as HTMLElement | null;
+  if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
+  if (e.key === "ArrowRight" || e.key === "PageDown" || e.key === " ") { e.preventDefault(); nextPage(); }
+  else if (e.key === "ArrowLeft" || e.key === "PageUp") { e.preventDefault(); prevPage(); }
+  else if (e.key === "Escape") exitReader();
+  else if (e.key === "+" || e.key === "=") adjustFontSize(1);
+  else if (e.key === "-" || e.key === "_") adjustFontSize(-1);
+  else if (e.key === "f" || e.key === "F") toggleSpread();
+  else if (e.key === "t" || e.key === "T") cycleTheme();
+  else if (e.key === "Home") { e.preventDefault(); goToPage(1); }
+  else if (e.key === "End") { e.preventDefault(); goToPage(totalPages.value); }
 }
-function coverStyle(): Record<string, string> {
-  if (work.value?.cover_image_path) {
-    return { backgroundImage: `url(${apiAssetUrl(work.value.cover_image_path)})` };
+function onPagerClick(e: MouseEvent) {
+  const el = pagerEl.value;
+  if (!el) return;
+  const sel = window.getSelection();
+  if (sel && sel.toString().length > 0) return;
+  const rect = el.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  if (x < rect.width / 3) prevPage();
+  else if (x > (rect.width * 2) / 3) nextPage();
+}
+let _touchStartX: number | null = null;
+function onTouchStart(e: TouchEvent) { _touchStartX = e.touches[0]?.clientX ?? null; }
+function onTouchEnd(e: TouchEvent) {
+  if (_touchStartX === null) return;
+  const endX = e.changedTouches[0]?.clientX ?? _touchStartX;
+  const dx = endX - _touchStartX;
+  _touchStartX = null;
+  if (Math.abs(dx) < 60) return;
+  if (dx < 0) nextPage(); else prevPage();
+}
+
+// ============================================================
+// 沉浸 chrome:鼠标 idle 2.5s 自动隐藏 toolbar
+// ============================================================
+const chromeVisible = ref(true);
+let _idleTimer: ReturnType<typeof setTimeout> | null = null;
+function pingChrome() {
+  chromeVisible.value = true;
+  if (_idleTimer !== null) clearTimeout(_idleTimer);
+  _idleTimer = setTimeout(() => { chromeVisible.value = false; }, 2500);
+}
+
+// ============================================================
+// 稳定布局后重算分页(等 DOM + 字体 + 双 rAF)
+// ============================================================
+async function waitForStableLayout() {
+  await nextTick();
+  const docFonts = (document as Document & { fonts?: FontFaceSet }).fonts;
+  if (docFonts && typeof docFonts.ready?.then === "function") {
+    try { await docFonts.ready; } catch { /* 兜底 */ }
   }
-  return {};
+  await new Promise<void>((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+  });
 }
+async function recalcStable(resetScroll = false) {
+  await waitForStableLayout();
+  if (resetScroll && pagerEl.value) pagerEl.value.scrollLeft = 0;
+  recalcPagination();
+}
+watch(loading, (isLoading) => {
+  if (!isLoading && work.value && !isEmpty.value) void recalcStable(true);
+});
+watch(() => [prefs.value.fontSize, prefs.value.spread], () => { void recalcStable(true); });
+
+let _resizeObs: ResizeObserver | null = null;
+watch(pagerEl, (el, oldEl) => {
+  if (_resizeObs) {
+    if (oldEl) _resizeObs.unobserve(oldEl);
+    _resizeObs.disconnect();
+    _resizeObs = null;
+  }
+  if (el && typeof ResizeObserver !== "undefined") {
+    _resizeObs = new ResizeObserver(() => recalcPagination());
+    _resizeObs.observe(el);
+  }
+});
+
+onMounted(() => {
+  document.addEventListener("keydown", onGlobalKey);
+  window.addEventListener("mousemove", pingChrome, { passive: true });
+  pingChrome();
+  void load();
+});
+onBeforeUnmount(() => {
+  document.removeEventListener("keydown", onGlobalKey);
+  window.removeEventListener("mousemove", pingChrome);
+  if (_idleTimer !== null) clearTimeout(_idleTimer);
+  if (_resizeObs) { _resizeObs.disconnect(); _resizeObs = null; }
+});
+
 function authorName(): string { return work.value?.author_nickname || "浑晶创作者"; }
 function fmtCount(n: number): string {
   if (n >= 10000) return `${(n / 10000).toFixed(1)}w`;
   if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
   return String(n);
 }
-function fmtWords(n: number): string {
-  if (n >= 10000) return `${(n / 10000).toFixed(1)} 万字`;
-  return `${n} 字`;
-}
-function fmtDate(iso: string): string {
-  try {
-    return new Date(iso).toLocaleDateString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit" });
-  } catch { return iso; }
-}
 </script>
 
 <template>
-  <div class="reader">
-    <div class="reader-bar">
-      <button class="back-link" type="button" @click="router.push('/plaza')">← 返回广场</button>
-    </div>
+  <div
+    class="reader"
+    :data-theme="prefs.theme"
+    :data-spread="prefs.spread"
+    :class="{ 'is-chrome-hidden': !chromeVisible }"
+  >
+    <!-- 顶部 toolbar:返回广场固定在左上角 -->
+    <header class="reader-toolbar reader-toolbar--top">
+      <button class="tool-btn tool-btn--icon" @click="exitReader" title="返回广场 (Esc)">
+        <span aria-hidden="true">←</span>
+        <span>返回广场</span>
+      </button>
 
-    <div v-if="loading" class="state-msg">加载中…</div>
-    <div v-else-if="errorMsg" class="state-msg state-error">
+      <h1 class="reader-title">
+        <span v-if="work" class="title-mode">{{ modeLabel(work.mode) }}</span>
+        <span class="title-text">{{ work?.title || "在线阅读" }}</span>
+      </h1>
+
+      <div class="reader-tools">
+        <div class="tool-group">
+          <button class="tool-btn" @click="adjustFontSize(-1)" title="缩小字号 (-)">A−</button>
+          <span class="tool-label">{{ fontSizeLabel }}</span>
+          <button class="tool-btn" @click="adjustFontSize(1)" title="放大字号 (+)">A+</button>
+        </div>
+        <span class="tool-sep" aria-hidden="true">·</span>
+        <button class="tool-btn" @click="toggleSpread" title="单 / 双页切换 (F)">{{ spreadLabel }}</button>
+        <span class="tool-sep" aria-hidden="true">·</span>
+        <button class="tool-btn" @click="cycleTheme" title="主题切换 (T)">{{ themeLabel }}</button>
+      </div>
+    </header>
+
+    <!-- loading / error / empty -->
+    <div v-if="loading" class="reader-state" aria-busy="true">加载作品中…</div>
+    <div v-else-if="errorMsg" class="reader-state reader-state--error">
       {{ errorMsg }}
-      <button class="link-btn" type="button" @click="router.push('/plaza')">回到广场</button>
+      <button class="ghost-btn" @click="exitReader">返回广场</button>
+    </div>
+    <div v-else-if="isEmpty" class="reader-state reader-state--empty">
+      <p>作品正文为空。</p>
+      <button class="ghost-btn" @click="exitReader">返回广场</button>
     </div>
 
-    <template v-else-if="work">
-      <!-- 封面头 -->
-      <header class="work-hero" :class="coverClass()" :style="coverStyle()">
-        <div class="hero-overlay">
-          <span class="mode-badge">{{ modeLabel(work.mode) }}</span>
-          <h1 class="work-title">{{ work.title }}</h1>
-          <p class="work-orig">
-            <template v-if="work.original_title">原著《{{ work.original_title }}》· 二创</template>
+    <!-- 内容区(CSS column 分页) -->
+    <main
+      v-else
+      ref="pagerEl"
+      class="reader-pager"
+      :style="{ '--reader-font-size': `${prefs.fontSize}px` }"
+      @click="onPagerClick"
+      @scroll.passive="recalcPagination"
+      @touchstart.passive="onTouchStart"
+      @touchend.passive="onTouchEnd"
+    >
+      <div class="reader-content">
+        <!-- 卷首:标题 + 作者(作为第一页的题头)-->
+        <div class="reader-frontmatter">
+          <h2 class="fm-title">{{ work?.title }}</h2>
+          <p class="fm-orig">
+            <template v-if="work?.original_title">原著《{{ work.original_title }}》· 二创</template>
             <template v-else>原创世界</template>
           </p>
+          <p class="fm-author">{{ authorName() }} · {{ modeLabel(work?.mode || "") }}</p>
         </div>
-      </header>
 
-      <!-- 元信息条 -->
-      <div class="work-meta">
-        <span class="author">
-          <span class="a-av">
-            <img v-if="work.author_avatar_url" :src="apiAssetUrl(work.author_avatar_url)" alt="" />
-            <template v-else>{{ authorName()[0]?.toUpperCase() }}</template>
-          </span>
-          {{ authorName() }}
-        </span>
-        <span class="dot-sep">·</span>
-        <span>{{ fmtDate(work.published_at) }}</span>
-        <span class="dot-sep">·</span>
-        <span>{{ fmtWords(work.word_count) }}</span>
-        <span class="dot-sep">·</span>
-        <span class="reads">
-          <svg viewBox="0 0 24 24" width="13" height="13" fill="none"
-               stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z" /><circle cx="12" cy="12" r="3" />
-          </svg>
-          {{ fmtCount(work.read_count) }} 阅读
-        </span>
-      </div>
-
-      <p v-if="work.summary" class="work-summary">{{ work.summary }}</p>
-
-      <!-- 正文 -->
-      <article class="work-body">
-        <template v-for="(b, i) in blocks" :key="i">
-          <h2 v-if="b.type === 'h'" class="body-h">{{ b.text }}</h2>
-          <p v-else class="body-p">{{ b.text }}</p>
+        <template v-for="(item, i) in items" :key="i">
+          <h3 v-if="item.type === 'h'" class="reader-chapter-title">{{ item.text }}</h3>
+          <p v-else class="reader-para">{{ item.text }}</p>
         </template>
-      </article>
-
-      <!-- 底部点赞 -->
-      <div class="reader-footer">
-        <button type="button" class="like-big" :class="{ on: work.liked }" :disabled="likeBusy" @click="toggleLike">
-          <svg viewBox="0 0 24 24" width="18" height="18"
-               :fill="work.liked ? 'currentColor' : 'none'"
-               stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z" />
-          </svg>
-          <span>{{ work.liked ? "已喜欢" : "喜欢这部作品" }}</span>
-          <span class="like-num">{{ fmtCount(work.like_count) }}</span>
-        </button>
       </div>
-    </template>
+
+      <!-- 点击翻页提示 -->
+      <div class="reader-tap-hint reader-tap-hint--left" aria-hidden="true">
+        <span v-if="currentPage > 1" class="tap-arrow">‹</span>
+      </div>
+      <div class="reader-tap-hint reader-tap-hint--right" aria-hidden="true">
+        <span v-if="currentPage < totalPages" class="tap-arrow">›</span>
+      </div>
+    </main>
+
+    <!-- 底部 footer:翻页 + 进度 + 点赞 -->
+    <footer v-if="!loading && !errorMsg && !isEmpty" class="reader-toolbar reader-toolbar--bottom">
+      <button class="page-btn" :disabled="currentPage <= 1" @click="prevPage" aria-label="上一页">‹</button>
+      <span class="page-meta">{{ currentPage }} / {{ totalPages }}</span>
+      <div class="progress-track" role="progressbar"
+        :aria-valuenow="progressPct" aria-valuemin="0" aria-valuemax="100">
+        <div class="progress-fill" :style="{ width: `${progressPct}%` }"></div>
+      </div>
+      <button
+        v-if="work"
+        type="button"
+        class="like-pill"
+        :class="{ on: work.liked }"
+        :disabled="likeBusy"
+        @click="toggleLike"
+      >
+        <svg viewBox="0 0 24 24" width="15" height="15"
+             :fill="work.liked ? 'currentColor' : 'none'"
+             stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z" />
+        </svg>
+        <span>{{ fmtCount(work.like_count) }}</span>
+      </button>
+      <span class="char-count">{{ charCount.toLocaleString() }} 字</span>
+      <button class="page-btn" :disabled="currentPage >= totalPages" @click="nextPage" aria-label="下一页">›</button>
+    </footer>
   </div>
 </template>
 
 <style scoped>
 .reader {
-  max-width: 760px;
-  margin: 0 auto;
-  padding: var(--space-4) var(--space-6) var(--space-8);
-}
-.reader-bar { padding: var(--space-2) 0 var(--space-4); }
-.back-link {
-  font-size: var(--text-sm);
-  color: var(--color-text-muted);
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  padding: 0;
-  transition: color var(--duration-fast) var(--ease-out);
-}
-.back-link:hover { color: var(--color-text); }
-
-.work-hero {
-  height: 240px;
-  border-radius: var(--radius-xl);
-  position: relative;
-  overflow: hidden;
-  display: flex;
-  align-items: flex-end;
-  background-size: cover;
-  background-position: center;
-  box-shadow: var(--shadow-md);
-}
-.work-hero::after {
-  content: "";
-  position: absolute;
+  position: fixed;
   inset: 0;
-  background: linear-gradient(to top, rgba(0, 0, 0, 0.55), transparent 70%);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  background: var(--r-bg);
+  color: var(--r-text);
+  transition: background 220ms ease, color 220ms ease;
 }
-.hero-overlay {
-  position: relative;
-  z-index: 2;
-  padding: var(--space-6);
-  color: #fff;
+.reader[data-theme="sepia"] {
+  --r-bg: #F4ECD8; --r-text: #3C3528;
+  --r-chrome-bg: rgba(232, 223, 202, 0.92); --r-border: rgba(213, 201, 176, 0.6);
+  --r-accent: #8B5A2B; --r-muted: rgba(60, 53, 40, 0.55);
 }
-.mode-badge {
-  display: inline-block;
-  font-size: 11px;
-  font-weight: 600;
-  background: rgba(255, 255, 255, 0.94);
-  color: var(--color-accent-text);
-  padding: 4px 9px;
-  border-radius: var(--radius-sm);
-  margin-bottom: var(--space-3);
+.reader[data-theme="light"] {
+  --r-bg: #FFFFFF; --r-text: #1F1F1E;
+  --r-chrome-bg: rgba(244, 240, 232, 0.92); --r-border: rgba(229, 225, 216, 0.7);
+  --r-accent: #7C3AED; --r-muted: rgba(107, 104, 98, 0.7);
 }
-.work-title {
-  font-size: var(--text-2xl);
-  font-weight: 700;
-  font-family: var(--font-serif, Georgia, serif);
-  line-height: 1.3;
-  margin: 0;
-  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.4);
+.reader[data-theme="dark"] {
+  --r-bg: #1A1A19; --r-text: #DCD8CF;
+  --r-chrome-bg: rgba(38, 36, 31, 0.92); --r-border: rgba(56, 53, 48, 0.6);
+  --r-accent: #A78BFA; --r-muted: rgba(220, 216, 207, 0.5);
 }
-.work-orig { font-size: var(--text-sm); opacity: 0.9; margin: var(--space-2) 0 0; }
 
-.work-meta {
+.reader-toolbar {
+  position: absolute;
+  left: 0; right: 0;
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-  font-size: var(--text-sm);
-  color: var(--color-text-muted);
-  padding: var(--space-4) 0 var(--space-2);
+  gap: 16px;
+  height: 52px;
+  padding: 0 24px;
+  background: var(--r-chrome-bg);
+  border-color: var(--r-border);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: transform 220ms ease, opacity 220ms ease;
+  z-index: 2;
 }
-.author { display: inline-flex; align-items: center; gap: 7px; color: var(--color-text); }
-.a-av {
-  width: 24px; height: 24px; border-radius: 50%;
-  background: linear-gradient(135deg, #7C3AED, #22D3A8);
-  display: inline-flex; align-items: center; justify-content: center;
-  color: #fff; font-size: 11px; font-weight: 600; overflow: hidden;
+.reader-toolbar--top { top: 0; border-bottom: 1px solid var(--r-border); }
+.reader-toolbar--bottom { bottom: 0; border-top: 1px solid var(--r-border); }
+.reader.is-chrome-hidden .reader-toolbar--top {
+  transform: translateY(-100%); opacity: 0; pointer-events: none;
 }
-.a-av img { width: 100%; height: 100%; object-fit: cover; }
-.dot-sep { color: var(--color-text-subtle); }
-.reads { display: inline-flex; align-items: center; gap: 4px; }
+.reader.is-chrome-hidden .reader-toolbar--bottom {
+  transform: translateY(100%); opacity: 0; pointer-events: none;
+}
 
-.work-summary {
-  font-size: var(--text-sm);
-  color: var(--color-text-muted);
-  line-height: 1.7;
-  padding: var(--space-2) 0 var(--space-3);
+.reader-title {
+  flex: 1;
+  text-align: center;
+  font-size: var(--text-base);
+  font-weight: 500;
   margin: 0;
-  border-bottom: 1px solid var(--color-border);
-}
-
-.work-body {
-  padding: var(--space-6) 0 var(--space-4);
-}
-.body-h {
-  font-size: var(--text-xl);
-  font-weight: 700;
-  color: var(--color-text);
-  font-family: var(--font-serif, Georgia, serif);
-  margin: var(--space-6) 0 var(--space-3);
-}
-.body-p {
-  font-size: 17px;
-  line-height: 2;
-  color: var(--color-text);
-  margin: 0 0 var(--space-4);
-  font-family: var(--font-serif, Georgia, serif);
-}
-
-.reader-footer {
-  display: flex;
-  justify-content: center;
-  padding: var(--space-6) 0 var(--space-4);
-  border-top: 1px solid var(--color-border);
-}
-.like-big {
+  color: var(--r-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-3) var(--space-6);
-  font-size: var(--text-sm);
+  justify-content: center;
+  gap: 8px;
+  min-width: 0;
+}
+.title-mode {
+  font-size: 11px;
   font-weight: 600;
-  color: var(--color-text);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-full);
-  cursor: pointer;
-  transition: all var(--duration-fast) var(--ease-out);
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: var(--r-border);
+  color: var(--r-accent);
+  flex-shrink: 0;
 }
-.like-big:hover:not(:disabled) { border-color: #E8B4B4; color: #D9534F; }
-.like-big.on { border-color: #E8B4B4; color: #D9534F; background: rgba(217, 83, 79, 0.06); }
-.like-big:disabled { opacity: 0.6; cursor: default; }
-.like-num { font-family: var(--font-mono); opacity: 0.8; }
+.title-text { overflow: hidden; text-overflow: ellipsis; }
 
-.state-msg {
-  padding: var(--space-8);
-  text-align: center;
+.reader-tools { display: flex; align-items: center; gap: 8px; }
+.tool-group { display: inline-flex; align-items: center; gap: 4px; }
+.tool-btn {
+  padding: 5px 10px;
   font-size: var(--text-sm);
-  color: var(--color-text-muted);
-}
-.state-error { color: var(--color-danger); }
-.link-btn {
-  margin-left: var(--space-2);
-  font-size: var(--text-xs);
-  color: var(--color-accent-text);
+  font-weight: 500;
+  color: var(--r-text);
   background: transparent;
-  border: none;
-  text-decoration: underline;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  transition: all 120ms ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  line-height: 1.2;
   cursor: pointer;
 }
+.tool-btn:hover:not(:disabled) { background: var(--r-border); }
+.tool-btn--icon { padding-left: 8px; }
+.tool-label { font-size: var(--text-xs); color: var(--r-muted); min-width: 16px; text-align: center; }
+.tool-sep { color: var(--r-border); font-size: var(--text-xs); }
 
-.g1 { background-image: linear-gradient(135deg, #5B6CF0, #9B5CF0); }
-.g2 { background-image: linear-gradient(135deg, #0FB5A8, #1E6FE0); }
-.g3 { background-image: linear-gradient(135deg, #E0792F, #C13E6A); }
-.g4 { background-image: linear-gradient(135deg, #7C3AED, #3B1F8B); }
-.g5 { background-image: linear-gradient(135deg, #2D9E6F, #16607A); }
-.g6 { background-image: linear-gradient(135deg, #C2456A, #7A2E8E); }
-.g7 { background-image: linear-gradient(135deg, #4661C9, #22324F); }
-.g8 { background-image: linear-gradient(135deg, #B8843E, #7A4E2E); }
-.g9 { background-image: linear-gradient(135deg, #6E59C2, #9686C2); }
+.reader-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  font-size: var(--text-base);
+  color: var(--r-muted);
+}
+.reader-state--error { color: #C24555; }
+.ghost-btn {
+  padding: 6px 16px;
+  font-size: var(--text-sm);
+  color: var(--r-text);
+  background: transparent;
+  border: 1px solid var(--r-border);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 120ms ease;
+}
+.ghost-btn:hover { background: var(--r-border); }
+
+.reader-pager { flex: 1; position: relative; overflow: hidden; cursor: default; }
+.reader-content {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  column-gap: 0;
+  column-fill: auto;
+  padding-top: 56px;
+  padding-bottom: 56px;
+  font-size: var(--reader-font-size);
+  line-height: 1.95;
+  font-family:
+    "Songti SC", "STSong", "霞鹜文楷", "Source Han Serif SC",
+    "Noto Serif CJK SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", serif;
+  letter-spacing: 0.5px;
+  color: var(--r-text);
+}
+.reader[data-spread="double"] .reader-content { column-count: 2; }
+.reader[data-spread="single"] .reader-content { column-count: 1; }
+
+.reader-frontmatter {
+  margin: 0 40px 1.5em 40px;
+  text-align: center;
+  break-after: column;
+}
+.reader[data-spread="single"] .reader-frontmatter {
+  margin-left: max(40px, calc((100vw - 720px) / 2));
+  margin-right: max(40px, calc((100vw - 720px) / 2));
+}
+.fm-title {
+  font-size: calc(var(--reader-font-size, 18px) * 1.7);
+  font-weight: 700;
+  margin: 0.4em 0 0.4em;
+  line-height: 1.3;
+}
+.fm-orig { font-size: var(--text-sm); color: var(--r-muted); margin: 0 0 0.3em; }
+.fm-author { font-size: var(--text-sm); color: var(--r-muted); margin: 0; }
+
+.reader-para {
+  margin: 0 40px 1em 40px;
+  text-indent: 2em;
+  break-inside: avoid;
+  hyphens: auto;
+}
+.reader[data-spread="single"] .reader-para {
+  margin-left: max(40px, calc((100vw - 720px) / 2));
+  margin-right: max(40px, calc((100vw - 720px) / 2));
+}
+.reader-chapter-title {
+  font-size: calc(var(--reader-font-size, 18px) * 1.35);
+  font-weight: 600;
+  text-align: center;
+  margin: 1.5em 40px 1em 40px;
+  break-before: column;
+  break-after: avoid;
+  letter-spacing: 0.08em;
+}
+.reader[data-spread="single"] .reader-chapter-title {
+  margin-left: max(40px, calc((100vw - 720px) / 2));
+  margin-right: max(40px, calc((100vw - 720px) / 2));
+}
+
+.reader-tap-hint {
+  position: absolute; top: 0; bottom: 0;
+  width: 33.33%;
+  display: flex; align-items: center;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 180ms ease;
+}
+.reader-tap-hint--left { left: 0; justify-content: flex-start; padding-left: 24px; }
+.reader-tap-hint--right { right: 0; justify-content: flex-end; padding-right: 24px; }
+.reader-pager:hover .reader-tap-hint { opacity: 0.35; }
+.reader-pager:hover .reader-tap-hint:hover { opacity: 0.7; }
+.tap-arrow { font-size: 48px; color: var(--r-muted); line-height: 1; user-select: none; }
+
+.page-btn {
+  width: 36px; height: 36px;
+  font-size: var(--text-xl); line-height: 1;
+  color: var(--r-text);
+  background: transparent;
+  border: 1px solid var(--r-border);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 120ms ease;
+}
+.page-btn:hover:not(:disabled) { background: var(--r-border); }
+.page-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.page-meta { min-width: 66px; text-align: center; font-size: var(--text-sm); color: var(--r-muted); }
+.progress-track {
+  flex: 1; height: 4px;
+  background: var(--r-border);
+  border-radius: 2px;
+  overflow: hidden;
+  min-width: 100px;
+}
+.progress-fill { height: 100%; background: var(--r-accent); transition: width 220ms ease; }
+.char-count { font-size: var(--text-xs); color: var(--r-muted); white-space: nowrap; }
+
+.like-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  font-size: var(--text-sm);
+  color: var(--r-text);
+  background: transparent;
+  border: 1px solid var(--r-border);
+  border-radius: var(--radius-full, 999px);
+  cursor: pointer;
+  transition: all 120ms ease;
+}
+.like-pill:hover:not(:disabled) { border-color: #E8B4B4; color: #D9534F; }
+.like-pill.on { border-color: #E8B4B4; color: #D9534F; background: rgba(217, 83, 79, 0.08); }
+.like-pill:disabled { opacity: 0.6; cursor: default; }
+
+@media (prefers-reduced-motion: reduce) {
+  .reader, .reader-toolbar, .progress-fill { transition: none !important; }
+}
 </style>

@@ -62,6 +62,34 @@ export interface PublishPayload {
   cover_gradient?: number;
 }
 
+/** 剧创态可发布素材(v5 item8):一个 novel 的全局剧本 + 分集方案清单 */
+export interface PublishableScreenplayPlan {
+  plan_id: string;
+  scheme_name: string;
+  episode_count: number;
+  preset: string;
+}
+export interface PublishableScreenplay {
+  novel_id: string;
+  novel_title: string;
+  has_global: boolean;
+  screenplay_id: string | null;
+  episode_plans: PublishableScreenplayPlan[];
+  created_at: string;
+}
+
+export type ScreenplayPublishKind = "global" | "episodes" | "both";
+
+export interface PublishScreenplayPayload {
+  novel_id: string;
+  kind: ScreenplayPublishKind;
+  plan_id?: string | null;
+  title: string;
+  summary?: string | null;
+  cover_image_path?: string | null;
+  cover_gradient?: number;
+}
+
 export type PlazaSort = "hot" | "new" | "classic";
 
 export const plazaApi = {
@@ -75,6 +103,12 @@ export const plazaApi = {
   },
   publishable(): Promise<{ items: PublishableSim[] }> {
     return api.get<{ items: PublishableSim[] }>("/plaza/publishable");
+  },
+  publishableScreenplays(): Promise<{ items: PublishableScreenplay[] }> {
+    return api.get<{ items: PublishableScreenplay[] }>("/plaza/publishable-screenplays");
+  },
+  publishScreenplay(payload: PublishScreenplayPayload): Promise<PlazaCard> {
+    return api.post<PlazaCard>("/plaza/publish-screenplay", payload);
   },
   read(workId: string): Promise<PlazaWork> {
     return api.get<PlazaWork>(`/plaza/works/${workId}`);

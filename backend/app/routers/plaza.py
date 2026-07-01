@@ -39,7 +39,11 @@ from app.config import settings
 from app.deps import get_current_user, get_db
 from app.models.user import User
 from app.services import plaza_service
-from app.services.plaza_service import PlazaError, PublishInput
+from app.services.plaza_service import (
+    PlazaError,
+    PublishInput,
+    PublishScreenplayInput,
+)
 from app.services.project_service import ResourceNotFoundOrForbidden
 
 router = APIRouter()
@@ -127,6 +131,17 @@ class PublishBody(BaseModel):
     cover_gradient: int = Field(1, ge=1, le=9, description="无封面图时用的默认渐变编号 1-9")
 
 
+class PublishScreenplayBody(BaseModel):
+    novel_id: str = Field(..., description="剧创态 novel id")
+    kind: str = Field("global", pattern="^(global|episodes|both)$",
+                      description="global=全局剧本 / episodes=分集方案 / both=两者")
+    plan_id: Optional[str] = Field(None, description="kind=episodes/both 时指定的分集方案 id")
+    title: str = Field(..., description="作品名(1-60 字)")
+    summary: Optional[str] = Field(None, description="简介,空则自动截取正文前 80 字")
+    cover_image_path: Optional[str] = Field(None, description="封面图内部 URL")
+    cover_gradient: int = Field(1, ge=1, le=9, description="无封面图时用的默认渐变 1-9")
+
+
 class LikeBody(BaseModel):
     liked: bool = Field(..., description="true=点赞 false=取消")
 
@@ -163,6 +178,15 @@ def api_list_publishable(
     return {"items": plaza_service.list_publishable_sims(conn, user.id)}
 
 
+@router.get("/plaza/publishable-screenplays")
+def api_list_publishable_screenplays(
+    user: User = Depends(get_current_user),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict:
+    """我可上架的剧创态素材(有全局剧本或分集方案的 novel)。item8。"""
+    return {"items": plaza_service.list_publishable_screenplays(conn, user.id)}
+
+
 # ---------- 封面上传 ----------
 
 @router.post("/plaza/cover")
@@ -190,6 +214,33 @@ def api_publish(
             user.id,
             PublishInput(
                 sim_id=body.sim_id,
+                title=body.title,
+                summary=body.summary,
+                cover_image_path=body.cover_image_path,
+                cover_gradient=body.cover_gradient,
+            ),
+        )
+    except PlazaError as exc:
+        raise _map_plaza_error(exc)
+    conn.commit()
+    return work
+
+
+@router.post("/plaza/publish-screenplay", status_code=status.HTTP_201_CREATED)
+def api_publish_screenplay(
+    body: PublishScreenplayBody,
+    user: User = Depends(get_current_user),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict:
+    """把剧创态作品(全局 / 分集 / 两者)上架到广场(item8,快照正文)。"""
+    try:
+        work = plaza_service.publish_screenplay(
+            conn,
+            user.id,
+            PublishScreenplayInput(
+                novel_id=body.novel_id,
+                kind=body.kind,
+                plan_id=body.plan_id,
                 title=body.title,
                 summary=body.summary,
                 cover_image_path=body.cover_image_path,

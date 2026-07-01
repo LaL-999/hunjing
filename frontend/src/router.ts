@@ -191,11 +191,11 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: false, depth: 2 },
   },
   {
-    // 2026-06-25:作品在线阅读页
+    // 2026-06-25:作品在线阅读页;v5(2026-07-02)item9:升级为沉浸式全屏阅读器
     path: "/plaza/works/:id",
     name: "plaza-read",
     component: () => import("./views/PlazaReadView.vue"),
-    meta: { requiresAuth: false, depth: 3 },
+    meta: { requiresAuth: false, fullscreen: true, depth: 3 },
     props: true,
   },
   {
