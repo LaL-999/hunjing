@@ -94,18 +94,80 @@ section.block { padding: 72px 0; }
 .section-head p { color: var(--muted); font-size: 16px; max-width: 560px; margin: 0 auto; }
 
 /* ===== 创作态 grid ===== */
-.modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+.modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
 .mode-card {
+  position: relative; display: block;
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
-  padding: 28px 24px; transition: all .2s cubic-bezier(.16,1,.3,1);
+  padding: 30px 26px; transition: transform .28s cubic-bezier(.16,1,.3,1), box-shadow .28s cubic-bezier(.16,1,.3,1), border-color .28s;
+  overflow: hidden;
 }
-.mode-card:hover { transform: translateY(-3px); box-shadow: 0 10px 30px rgba(50,40,20,.07); border-color: #d8d2c4; }
-.mode-num { font-family: var(--serif); font-size: 13px; color: var(--subtle); letter-spacing: .1em; }
-.mode-icon { width: 28px; height: 28px; color: var(--accent); margin: 6px 0 14px; }
+/* 卡片顶部渐隐色条(hover 才亮)—— 每卡不同色,视觉有节奏 */
+.mode-card::before {
+  content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: var(--card-accent, var(--accent)); opacity: 0;
+  transform: scaleX(.3); transform-origin: left; transition: opacity .3s, transform .4s cubic-bezier(.16,1,.3,1);
+}
+.mode-card:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 18px 44px rgba(80,60,120,.14);
+  border-color: color-mix(in srgb, var(--card-accent, var(--accent)) 40%, var(--border));
+}
+.mode-card:hover::before { opacity: 1; transform: scaleX(1); }
+/* 每卡强调色 */
+.mode-card:nth-child(1) { --card-accent: #7C3AED; }
+.mode-card:nth-child(2) { --card-accent: #2D9E6F; }
+.mode-card:nth-child(3) { --card-accent: #C13E6A; }
+.mode-card:nth-child(4) { --card-accent: #E0792F; }
+.mode-card:nth-child(5) { --card-accent: #1E6FE0; }
+.mode-card:nth-child(6) { --card-accent: #9686C2; }
+.mode-num {
+  font-family: var(--serif); font-size: 13px; color: var(--subtle); letter-spacing: .1em;
+  position: absolute; top: 22px; right: 24px;
+}
+/* 图标升级为渐变 chip —— 视觉冲击力主来源 */
+.mode-icon {
+  width: 48px; height: 48px; box-sizing: border-box; padding: 11px;
+  color: #fff; margin: 4px 0 16px; border-radius: 13px;
+  background: linear-gradient(135deg, var(--card-accent, var(--accent)), color-mix(in srgb, var(--card-accent, var(--accent)) 62%, #000));
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--card-accent, var(--accent)) 30%, transparent);
+  transition: transform .3s cubic-bezier(.16,1,.3,1);
+}
+.mode-card:hover .mode-icon { transform: scale(1.08) rotate(-3deg); }
 .mode-card h3 { font-family: var(--serif); font-size: 21px; font-weight: 600; margin-bottom: 8px; }
 .mode-card p { font-size: 14px; color: var(--muted); }
 .mode-card.soon { opacity: .6; }
+.mode-card--link { cursor: pointer; }
+.mode-go {
+  display: inline-block; margin-top: 14px; font-size: 13px; font-weight: 600;
+  color: var(--card-accent, var(--accent));
+  opacity: 0; transform: translateX(-6px); transition: opacity .3s, transform .3s cubic-bezier(.16,1,.3,1);
+}
+.mode-card--link:hover .mode-go { opacity: 1; transform: translateX(0); }
 .mode-tag { display:inline-block; font-size: 11px; padding: 2px 9px; border-radius: 10px; background: var(--accent-soft); color: var(--accent-text); margin-left: 8px; vertical-align: middle; }
+.mode-tag--live {
+  background: #E7F6EE; color: #1E7A47;
+  position: relative; padding-left: 18px;
+}
+.mode-tag--live::before {
+  content: ""; position: absolute; left: 8px; top: 50%; transform: translateY(-50%);
+  width: 6px; height: 6px; border-radius: 50%; background: #22C55E;
+  box-shadow: 0 0 0 0 rgba(34,197,94,.5); animation: livePulse 2s infinite;
+}
+@keyframes livePulse {
+  0% { box-shadow: 0 0 0 0 rgba(34,197,94,.45); }
+  70% { box-shadow: 0 0 0 6px rgba(34,197,94,0); }
+  100% { box-shadow: 0 0 0 0 rgba(34,197,94,0); }
+}
+
+/* ===== 滚动揭示动画(零依赖 IntersectionObserver 驱动)===== */
+.reveal { opacity: 0; transform: translateY(24px); transition: opacity .7s cubic-bezier(.16,1,.3,1), transform .7s cubic-bezier(.16,1,.3,1); }
+.reveal.is-in { opacity: 1; transform: none; }
+.reveal[data-d="1"] { transition-delay: .06s; }
+.reveal[data-d="2"] { transition-delay: .12s; }
+.reveal[data-d="3"] { transition-delay: .18s; }
+.reveal[data-d="4"] { transition-delay: .24s; }
+.reveal[data-d="5"] { transition-delay: .30s; }
+@media (prefers-reduced-motion: reduce) { .reveal { opacity: 1; transform: none; transition: none; } }
 
 /* ===== 差异化 ===== */
 .features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; }
@@ -240,12 +302,13 @@ footer { border-top: 1px solid var(--border); padding: 40px 0 30px; margin-top: 
         <h3>剧创态 <span class="mode-tag">新</span></h3>
         <p>导入小说 → AI 转剧本 YAML,5 种改编手法 + 版本树 + 张力曲线 + 智能分集。</p>
       </div>
-      <div class="mode-card soon">
+      <a class="mode-card mode-card--link" id="mode-plaza">
         <div class="mode-num">06</div>
-        <svg class="mode-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
-        <h3>更多玩法 <span class="mode-tag">开发中</span></h3>
-        <p>我们还在思考下一种创作姿势 —— 欢迎告诉我们你想要的。</p>
-      </div>
+        <svg class="mode-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18M3 12h18M3 19h18" opacity="0"/><rect x="3" y="4" width="7" height="7" rx="1.5"/><rect x="14" y="4" width="7" height="7" rx="1.5"/><rect x="3" y="15" width="7" height="5" rx="1.5"/><path d="M14 15h7M14 18h5"/></svg>
+        <h3>作品广场 <span class="mode-tag mode-tag--live">已上线</span></h3>
+        <p>把你的创作发布到社区 —— 推演 / 剧本 / 漫画都能上架,免费在线阅读 + 点赞,好故事被更多人看见。</p>
+        <span class="mode-go">进广场逛逛 →</span>
+      </a>
     </div>
   </div>
 </section>
@@ -514,6 +577,28 @@ document.getElementById("dl-web").href = PORTAL_CONFIG.webAppUrl;
 (function () {
   var b = document.getElementById("byok-cta");
   if (b) b.href = PORTAL_CONFIG.webAppUrl.replace(/\/$/, "") + "/byok-config";
+})();
+// v5:作品广场卡 → app 的 /plaza
+(function () {
+  var p = document.getElementById("mode-plaza");
+  if (p) p.href = PORTAL_CONFIG.webAppUrl.replace(/\/$/, "") + "/plaza";
+})();
+// 滚动揭示动画(渐进增强:JS 才加 .reveal,无 JS / 无 IO 不隐藏内容)
+(function () {
+  if (!("IntersectionObserver" in window)) return;
+  var io = new IntersectionObserver(function (entries) {
+    entries.forEach(function (e) {
+      if (e.isIntersecting) { e.target.classList.add("is-in"); io.unobserve(e.target); }
+    });
+  }, { threshold: 0.12, rootMargin: "0px 0px -40px 0px" });
+  [".section-head", ".modes .mode-card", ".features .feat"].forEach(function (sel) {
+    var els = document.querySelectorAll(sel);
+    Array.prototype.forEach.call(els, function (el, i) {
+      el.classList.add("reveal");
+      el.setAttribute("data-d", String((i % 5) + 1));
+      io.observe(el);
+    });
+  });
 })();
 // 联系我们 → 弹微信浮窗卡(创始人微信)
 (function () {
