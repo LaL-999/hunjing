@@ -601,24 +601,31 @@ document.getElementById("dl-web").href = PORTAL_CONFIG.webAppUrl;
   });
 })();
 // 联系我们 → 弹微信浮窗卡(创始人微信)
-(function () {
+// 注:contact-modal 等元素在本 <script> 之后才被解析(位于页尾),脚本内联执行时它们尚不存在。
+// 必须放进 DOMContentLoaded,否则同步取 null 会抛错、中断后面的 renderPricing() → 定价卡不渲染。
+document.addEventListener("DOMContentLoaded", function () {
   var WECHAT_ID = "Everovernever";
   var modal = document.getElementById("contact-modal");
-  document.getElementById("contact-wx-id").textContent = WECHAT_ID;
-  document.getElementById("foot-contact").addEventListener("click", function (e) {
+  var wxId = document.getElementById("contact-wx-id");
+  var footContact = document.getElementById("foot-contact");
+  if (!modal || !footContact) return;   // 结构缺失时静默,不阻断其它逻辑
+  if (wxId) wxId.textContent = WECHAT_ID;
+  footContact.addEventListener("click", function (e) {
     e.preventDefault();
     modal.hidden = false;
   });
-  document.getElementById("contact-close").addEventListener("click", function () { modal.hidden = true; });
+  var closeBtn = document.getElementById("contact-close");
+  if (closeBtn) closeBtn.addEventListener("click", function () { modal.hidden = true; });
   modal.addEventListener("click", function (e) { if (e.target === modal) modal.hidden = true; });
   document.addEventListener("keydown", function (e) { if (e.key === "Escape") modal.hidden = true; });
-  document.getElementById("contact-copy").addEventListener("click", function () {
+  var copyBtn = document.getElementById("contact-copy");
+  if (copyBtn) copyBtn.addEventListener("click", function () {
     var btn = this;
     if (navigator.clipboard) { navigator.clipboard.writeText(WECHAT_ID).catch(function () {}); }
     btn.textContent = "已复制 ✓";
     setTimeout(function () { btn.textContent = "复制"; }, 1500);
   });
-})();
+});
 
 renderPricing();
 loadLivePricing();
