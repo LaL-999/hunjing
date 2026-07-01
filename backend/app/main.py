@@ -17,6 +17,7 @@ from fastapi.responses import JSONResponse
 from app import __version__
 from app.config import settings
 from app.db import healthcheck as db_healthcheck
+from app.services.credit_service import InsufficientCredits
 from app.services.project_service import ResourceNotFoundOrForbidden
 
 logger = logging.getLogger(__name__)
@@ -121,6 +122,29 @@ def create_app() -> FastAPI:
                 "detail": {
                     "code": "NOT_FOUND",
                     "resource": exc.resource,
+                    "message": str(exc),
+                }
+            },
+        )
+
+    @app.exception_handler(InsufficientCredits)
+    async def handle_insufficient_credits(
+        request: Request, exc: InsufficientCredits
+    ) -> JSONResponse:
+        """余额不足(含 item7:AI 调用前余额闸)→ 统一 429。
+
+        任何入口(推演/续写/剧创态/漫创/对比…)调 AI 前若 0 余额且非 BYOK,
+        LLM 客户端抛 InsufficientCredits,这里统一转 429 + 引导升级/开 BYOK,
+        前端 client 拦 429 弹加购/升档/自携密钥 modal。省去每个 router 各写 try/except。
+        """
+        return JSONResponse(
+            status_code=429,
+            content={
+                "detail": {
+                    "code": "INSUFFICIENT_CREDITS",
+                    "needed": getattr(exc, "needed", 1),
+                    "available": getattr(exc, "available", 0),
+                    "action": getattr(exc, "action", "ai_call"),
                     "message": str(exc),
                 }
             },

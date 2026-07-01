@@ -426,6 +426,54 @@ def _resolve_byok_llm_config(user_id: str | None) -> dict | None:
         return None
 
 
+def _require_platform_budget(user_id: str | None) -> None:
+    """走【平台默认 key】前的余额闸(item7 止血,2026-06-26)。
+
+    背景:refine / 剧创态全子系统等入口过去调 AI 前完全不查余额 → 0 余额用户
+    一路白嫖平台公用 key → 创始人 API 账户欠费。这里在 LLM 客户端**单一咽喉**统一拦:
+    能走到平台默认路径说明 BYOK 未命中(用的是平台 key),必须有余额。
+
+    放行规则(可用性优先,宁漏放系统调用也不误杀):
+      - user_id 无(后台 cron / migration / 未登录)→ 放行
+      - founder 档 → 放行(无限)
+      - 余额 total > 0 → 放行
+      - 否则抛 InsufficientCredits(main.py 全局 handler 转 429 + 引导升级/BYOK)
+    BYOK 用户走不到这里(call_llm_* 上游 byok_cfg 命中已 return,用自己的 key,不占平台额度)。
+    """
+    if user_id is None:
+        try:
+            from app.services.byok_context import get_current_user_id
+            user_id = get_current_user_id()
+        except Exception:  # noqa: BLE001
+            user_id = None
+    if not user_id:
+        return
+    from app.config import settings
+    from app.services.credit_service import InsufficientCredits, get_balance
+    try:
+        from app.db import get_connection
+        conn = get_connection()
+        try:
+            row = conn.execute(
+                "SELECT email FROM users WHERE id=?", (user_id,)
+            ).fetchone()
+            # founder 判定走邮箱白名单 —— DB users.plan 永远不是 'founder'(CHECK 约束),
+            # 'founder' 是 deps.get_current_user 的内存态。必须对齐 credit_service 逻辑。
+            if (
+                row is not None
+                and row["email"]
+                and row["email"].lower() in settings.founder_emails
+            ):
+                return
+            total = get_balance(conn, user_id).total
+        finally:
+            conn.close()
+    except Exception:  # noqa: BLE001
+        return  # 查询失败放行(可用性优先,不因基础设施抖动误杀创作)
+    if total <= 0:
+        raise InsufficientCredits(needed=1, available=total, action="ai_call")
+
+
 def call_llm_json(
     system_prompt: str,
     user_input: dict | str,
@@ -471,6 +519,8 @@ def call_llm_json(
         )
 
     # ---- 平台默认路径 ----
+    # item7:走平台 key 前先查余额,0 余额不放行(防白嫖创始人 API)
+    _require_platform_budget(user_id)
     # 在函数体内 import,避免与 llm_routing.protocols 形成循环 import
     from app.services.llm_routing.router import get_text_llm
 
@@ -522,6 +572,8 @@ def call_llm_text(
         )
 
     # ---- 平台默认路径 ----
+    # item7:走平台 key 前先查余额,0 余额不放行(防白嫖创始人 API)
+    _require_platform_budget(user_id)
     from app.services.llm_routing.router import get_text_llm
 
     return get_text_llm().call_text(

@@ -199,7 +199,10 @@ def api_create_simulation(
         #   不预估具体多少(LLM 调用前 token 数未知),只防"明显跑不动"
         #   真实扣费在 simulation done 时按总 token 算(simulation_service.run_simulation)
         #   founder 档跳过(consume_credits 内部短路,但前置防止 free 用户跑不动还烧 LLM)
-        if user.plan != "founder":
+        # item7 修(2026-06-26):BYOK 用户走自己的 key,不查平台余额
+        # (否则 0 平台余额的 BYOK 付费用户会被误拦在门外)。非 founder 且非 BYOK 才走余额闸。
+        from app.services.byok_service import get_active_llm_config
+        if user.plan != "founder" and get_active_llm_config(conn, user.id) is None:
             balance = get_balance(conn, user.id)
             if balance.total <= 0:
                 raise InsufficientCredits(

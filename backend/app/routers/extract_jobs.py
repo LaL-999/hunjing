@@ -53,7 +53,9 @@ def api_create_extract(
 ) -> dict:
     try:
         # Sprint C.2:前置 credit 余额粗检(founder 跳过)
-        if user.plan != "founder":
+        # item7 修(2026-06-26):BYOK 用户走自己的 key,不查平台余额(避免误拦)
+        from app.services.byok_service import get_active_llm_config
+        if user.plan != "founder" and get_active_llm_config(conn, user.id) is None:
             balance = get_balance(conn, user.id)
             if balance.total <= 0:
                 raise InsufficientCredits(
