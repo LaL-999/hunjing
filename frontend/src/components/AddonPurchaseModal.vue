@@ -165,9 +165,10 @@ function switchToUpgrade() {
           </p>
 
           <p class="upgrade-hint">
-            💡 重度使用建议升档:Max / 超级 Max 单 credit 比 Pro 便宜 10-19%,
+            💡 更划算:每月 5 元开通「自携密钥」即可用满全部功能、不占额度;
+            或升 Max 拿更大 credit 池,
             <button type="button" class="upgrade-link" @click="switchToUpgrade">
-              查看升档方案 →
+              查看方案 →
             </button>
           </p>
 

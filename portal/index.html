@@ -281,9 +281,26 @@ footer { border-top: 1px solid var(--border); padding: 40px 0 30px; margin-top: 
 <section class="block" id="pricing">
   <div class="wrap">
     <div class="section-head">
-      <h2>透明定价,按需选择</h2>
-      <p>免费起步,随时升级。老用户老规则,价格保护。</p>
+      <h2>主打:自携密钥,每月 ¥5 用满全部功能</h2>
+      <p>接上你自己的大模型 key,五大创作态全解锁、不占平台额度 —— 只收一点辛苦费。也可选订阅。</p>
     </div>
+
+    <!-- v5 主打:自携密钥 hero -->
+    <div style="max-width:920px;margin:0 auto 34px;border-radius:20px;overflow:hidden;background:radial-gradient(120% 160% at 0% 0%,#8B5CF6 0%,#6D28D9 52%,#3B1F8B 100%);color:#fff;box-shadow:0 14px 40px rgba(124,58,237,.28);">
+      <div style="padding:30px 36px;display:flex;align-items:center;justify-content:space-between;gap:24px;flex-wrap:wrap;">
+        <div style="min-width:0;flex:1;">
+          <div style="display:inline-block;font-size:12px;letter-spacing:1px;background:rgba(255,255,255,.2);padding:4px 12px;border-radius:20px;margin-bottom:10px;">主打 · 最超值</div>
+          <div style="font-size:30px;font-weight:800;margin-bottom:8px;">自携密钥 · ¥5<span style="font-size:18px;font-weight:600;opacity:.85;">/月</span></div>
+          <div style="font-size:14px;line-height:1.7;opacity:.92;max-width:560px;">
+            接上你自己的大模型 key(文本 + 生图),<strong>五大创作态全解锁(含漫创态)</strong>、
+            <strong>不再消耗平台额度</strong>。相当于开源项目的辛苦费 —— 用到顶级平台的全部能力。
+          </div>
+        </div>
+        <a class="dl-btn" id="byok-cta" style="background:#fff;color:#6D28D9;font-weight:700;white-space:nowrap;">开通自携密钥 →</a>
+      </div>
+    </div>
+
+    <div class="section-head" style="margin-top:8px;"><p style="opacity:.7;">或者,选择订阅档:</p></div>
     <div class="cycle-toggle">
       <button id="cyc-monthly" class="active" onclick="setCycle('monthly')">按月付</button>
       <button id="cyc-yearly" onclick="setCycle('yearly')">按年付 · 省 15%</button>
@@ -352,13 +369,13 @@ var PORTAL_CONFIG = {
 var FALLBACK_PRICING = {
   monthly: [
     { name: "免费", amount: 0, eq: "尝鲜起步", feats: ["20 credit / 月", "项目 2 个 · 角色 10/项", "体验初始/中间/末尾态"], featured: false, free: true },
-    { name: "Pro", amount: 138, eq: "约 600 credit / 月", feats: ["全创作态解锁", "600 credit / 月", "多模型对比", "3D 关系图谱"], featured: true },
-    { name: "Max", amount: 438, eq: "约 2000 credit / 月", feats: ["Pro 全部能力", "2000 credit / 月", "更高项目 / 角色上限", "优先生成队列"], featured: false },
+    { name: "Pro", amount: 68, eq: "约 600 credit / 月", feats: ["全创作态解锁(含漫创态)", "600 credit / 月", "多模型对比", "3D 关系图谱"], featured: true },
+    { name: "Max", amount: 218, eq: "约 2000 credit / 月", feats: ["Pro 全部能力", "2000 credit / 月", "更高项目 / 角色上限", "优先生成队列"], featured: false },
   ],
   yearly: [
     { name: "免费", amount: 0, eq: "尝鲜起步", feats: ["20 credit / 月", "项目 2 个 · 角色 10/项", "体验初始/中间/末尾态"], featured: false, free: true },
-    { name: "Pro", amount: 1407.6, eq: "月均 ¥117 · 省 15%", feats: ["全创作态解锁", "600 credit / 月", "多模型对比", "3D 关系图谱"], featured: true },
-    { name: "Max", amount: 4467.6, eq: "月均 ¥372 · 省 15%", feats: ["Pro 全部能力", "2000 credit / 月", "更高项目 / 角色上限", "优先生成队列"], featured: false },
+    { name: "Pro", amount: 693.6, eq: "月均 ¥58 · 省 15%", feats: ["全创作态解锁(含漫创态)", "600 credit / 月", "多模型对比", "3D 关系图谱"], featured: true },
+    { name: "Max", amount: 2223.6, eq: "月均 ¥185 · 省 15%", feats: ["Pro 全部能力", "2000 credit / 月", "更高项目 / 角色上限", "优先生成队列"], featured: false },
   ],
 };
 
@@ -403,9 +420,8 @@ function loadLivePricing() {
       // 按 plan 聚合 monthly/yearly
       var byCycle = { monthly: [], yearly: [] };
       var planMeta = {
-        pro: { name: "Pro", featured: true, feats: ["全创作态解锁", "多模型对比", "3D 关系图谱"] },
+        pro: { name: "Pro", featured: true, feats: ["全创作态解锁(含漫创态)", "多模型对比", "3D 关系图谱"] },
         max: { name: "Max", featured: false, feats: ["Pro 全部能力", "更高项目 / 角色上限", "优先生成队列"] },
-        super_max: { name: "Super Max", featured: false, feats: ["Max 全部能力", "最高配额", "团队协作(规划中)"] },
       };
       // 免费档置顶
       byCycle.monthly.push(FALLBACK_PRICING.monthly[0]);
@@ -494,6 +510,11 @@ function setupDownload() {
 document.getElementById("nav-enter").href = PORTAL_CONFIG.webAppUrl;
 document.getElementById("hero-enter").href = PORTAL_CONFIG.webAppUrl;
 document.getElementById("dl-web").href = PORTAL_CONFIG.webAppUrl;
+// v5 主打:自携密钥 CTA → app 的 BYOK 配置页
+(function () {
+  var b = document.getElementById("byok-cta");
+  if (b) b.href = PORTAL_CONFIG.webAppUrl.replace(/\/$/, "") + "/byok-config";
+})();
 // 联系我们 → 弹微信浮窗卡(创始人微信)
 (function () {
   var WECHAT_ID = "Everovernever";

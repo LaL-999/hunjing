@@ -11,6 +11,7 @@
  * 后续接入支付时:每张卡片"立即订阅"按钮换 stripe / 微信支付 / 支付宝。
  */
 import { computed, ref } from "vue";
+import { useRouter } from "vue-router";
 
 import { useAuthStore } from "../stores/auth";
 import { useUpgradeModal } from "../composables/useUpgradeModal";
@@ -21,6 +22,13 @@ import type { Plan } from "../api/types";
 const auth = useAuthStore();
 const upgradeModal = useUpgradeModal();
 const pay = usePayment();
+const router = useRouter();
+
+// v5 主打:开通自携密钥 —— 关升级弹窗,去 BYOK 配置页(内含开通 ¥5 月卡 + 配 key)
+function handleByok() {
+  upgradeModal.close();
+  void router.push("/byok-config");
+}
 
 // 月付 / 年付切换 — 默认显月付(用户更易接受门槛低)
 const billingCycle = ref<"monthly" | "yearly">("monthly");
@@ -40,12 +48,10 @@ interface PlanCard {
   bullets: string[];
 }
 
-// ECON-1 订阅重设(2026-05-27 末⁴):4 档配额按真实毛利目标重算
-//   - 单 credit 真实成本 ¥0.13(token×0.013/0.026 反推),旧定价毛利仅 7%
-//   - 新定价:Pro ¥0.23/c / Max ¥0.22/c / 超级 Max ¥0.21/c(满配额毛利 39-44%)
-//   - 年付从 -10% 升到 -15%(月付 × 12 × 0.85)
-//   - 漫创态从订阅福利改为"单买漫画包 ¥30/次"(各档 comics_per_month 清零,功能临时禁用至 ECON-2)
-//   - 首次订阅 5 折优惠(billing_service.subscribe 检查 snapshot 历史 == 0)
+// v5 计费转向(2026-06-26,BYOK 主打):订阅激进降价约半,超级 Max 下架,Max 转正可购
+//   - Pro ¥138→¥68 / Max ¥438→¥218;credit 数不变(600/2000)= 单 credit ¥0.11
+//   - 年付 = 月付 × 12 × 0.85;漫创态对 Pro/Max 解锁(去漫画包门槛)
+//   - 主推「自携密钥 ¥5/月」(见顶部 byok-hero),订阅为辅
 const PLANS: PlanCard[] = [
   {
     key: "free",
@@ -58,50 +64,35 @@ const PLANS: PlanCard[] = [
       "项目 2 个 · 角色 10/项",
       "重塑度上限 30%",
       "体验 AI 对焦 / 短文本推演",
-      "不开放漫画态(付费档亦不送,需单买漫画包)",
     ],
   },
   {
     key: "pro",
     name: "Pro",
-    monthlyPrice: "¥138/月",
-    yearlyPrice: "¥1407.60/年",
-    yearlyMonthEq: "¥117.30/月",
+    monthlyPrice: "¥68/月",
+    yearlyPrice: "¥693.60/年",
+    yearlyMonthEq: "¥57.80/月",
     highlight: true,
     bullets: [
-      "**600 credit / 月**(基准单价 ¥0.23/c)",
+      "**600 credit / 月**(单 credit ¥0.11)",
       "项目 5 个 · 角色 30/项",
       "重塑度上限 80%",
-      "约 90 次中等推演 / 月(token 加权计费)",
+      "**漫创态解锁** · 约 90 次中等推演/月",
       "首次订阅 5 折 · 月末清零,加购 1 年有效",
     ],
   },
   {
     key: "max",
     name: "Max",
-    monthlyPrice: "¥438/月",
-    yearlyPrice: "¥4467.60/年",
-    yearlyMonthEq: "¥372.30/月",
+    monthlyPrice: "¥218/月",
+    yearlyPrice: "¥2223.60/年",
+    yearlyMonthEq: "¥185.30/月",
     bullets: [
-      "**2000 credit / 月**(单价 ¥0.22/c,**比 Pro 便宜 4.3%**)",
+      "**2000 credit / 月**(单 credit ¥0.11)",
       "项目 20 个 · 角色 50/项",
       "重塑度上限 90%(满档)",
-      "约 300 次中等推演 + 大量素材库 / 守护者",
-      "升档专享:credit 单价更低",
-    ],
-  },
-  {
-    key: "super_max",
-    name: "超级 Max",
-    monthlyPrice: "¥1388/月",
-    yearlyPrice: "¥14157.60/年",
-    yearlyMonthEq: "¥1179.80/月",
-    bullets: [
-      "**6500 credit / 月**(单价 ¥0.21/c,**比 Max 再便宜 4.5%**)",
-      "项目无限 · 角色 100/项",
-      "重塑度上限 90%(满档)",
-      "约 1000 次中等推演 + 工作室级",
-      "升档双重优惠:credit 多 3.25 倍 + 单价累计 -8.7%",
+      "**漫创态解锁** · 约 300 次中等推演",
+      "大量素材库 / 守护者 / 工作室级",
     ],
   },
 ];
@@ -111,8 +102,8 @@ const KIND_LABEL: Record<string, string> = {
   characters_per_project: "项目内角色数",
   projects_total: "项目总数",
   reshape_percent: "重塑度上限",
-  // ECON-2(2026-05-27 末⁴⁴):漫创态改为单买漫画包,¥30/次,有效期 6 月
-  comics_per_month: "漫画功能(需购买漫画包)",
+  // v5(2026-06-26):漫创态改为订阅(Pro/Max)或 BYOK 解锁,去漫画包门槛
+  comics_per_month: "漫创态(升级 Pro/Max 或开自携密钥解锁)",
   // AI credit 不足类(InsufficientCredits)— action 字段映射
   refine: "AI 对焦",
   continuation: "AI 推演",
@@ -132,13 +123,9 @@ const reasonText = computed<string | null>(() => {
   }
   // QuotaExceeded(资源容量类)
   const label = KIND_LABEL[r.kind] ?? r.kind;
-  // ECON-2(2026-05-27 末⁴⁴):漫画态采用单买漫画包制 ¥30/次,有效期 6 月.
-  // 用户没有可用漫画包时引导购买(后续接通"购买"按钮 → /api/credit/comic_pack/purchase).
+  // v5(2026-06-26):漫创态改为 Pro/Max 订阅 或 自携密钥解锁,去漫画包门槛
   if (r.kind === "comics_per_month") {
-    return (
-      "需要购买漫画包才能创建漫画。漫画态采用单买制:¥30/次,有效期 6 个月。" +
-      "请到「账号 / 加购」购买漫画包后再创建。"
-    );
+    return "漫创态是 Pro / Max 会员功能。升级订阅,或开通「自携密钥 ¥5/月」即可解锁漫创态与全部功能。";
   }
   return `当前 ${r.plan} 档的「${label}」已用尽 (${r.used}/${r.limit}),升级解锁更多`;
 });
@@ -181,12 +168,25 @@ function handleBackdrop(e: MouseEvent) {
             <div>
               <h2 class="modal-title">选择订阅档位</h2>
               <p v-if="reasonText" class="modal-subtitle reason">{{ reasonText }}</p>
-              <p v-else class="modal-subtitle">解锁完整推演 / 漫画态 / 大字数 / 重塑度上限</p>
+              <p v-else class="modal-subtitle">最超值:用「自携密钥」每月 ¥5 解锁全部功能;或选下方订阅</p>
             </div>
             <button class="close-btn" type="button" aria-label="关闭" @click="upgradeModal.close()">
               ×
             </button>
           </header>
+
+          <!-- v5 主打:自携密钥 hero(¥5/月,解锁全部功能,不占平台额度)-->
+          <section class="byok-hero" @click="handleByok" role="button" tabindex="0">
+            <div class="byok-hero-text">
+              <span class="byok-hero-badge">主打 · 最超值</span>
+              <h3 class="byok-hero-title">自携密钥 · <strong>¥5/月</strong></h3>
+              <p class="byok-hero-desc">
+                接上你自己的大模型 key，<strong>五大创作态全解锁</strong>(含漫创态)、
+                <strong>不再消耗平台额度</strong>。只付一点辛苦费，用到顶级平台的全部能力。
+              </p>
+            </div>
+            <span class="byok-hero-cta">开通自携密钥 →</span>
+          </section>
 
           <!-- 月付 / 年付切换 -->
           <div class="billing-toggle">
@@ -245,16 +245,13 @@ function handleBackdrop(e: MouseEvent) {
                 <template v-else-if="plan.key === 'free'">免费使用</template>
                 <template v-else>立即订阅</template>
               </button>
-
-              <p v-if="plan.key !== 'free' && auth.plan !== plan.key" class="coming-soon">敬请期待</p>
             </article>
           </section>
 
           <footer class="modal-footer">
             <p class="footnote">
-              支付通道接入中。早鸟内测可联系 <span class="mono">hi@huimeng.example</span>
-              · <strong>首次订阅享 5 折</strong>
-              · 年付额外 -15%
+              <strong>推荐自携密钥 ¥5/月解锁全部</strong>
+              · 订阅首次 5 折 · 年付额外 -15%
               · 老用户 6 个月价格保护(协议第三章 §价格快照)
             </p>
           </footer>
@@ -278,8 +275,8 @@ function handleBackdrop(e: MouseEvent) {
 
 .modal-card {
   width: 100%;
-  /* Sprint D.1:从 3 卡到 4 卡,宽度需要 + 130-150px 才不挤 */
-  max-width: 1080px;
+  /* v5:super_max 下架 → 3 档卡片,宽度收窄 */
+  max-width: 900px;
   max-height: calc(100vh - var(--space-8));
   display: flex;
   flex-direction: column;
@@ -374,18 +371,62 @@ function handleBackdrop(e: MouseEvent) {
   opacity: 0.6;
 }
 
-/* ===== 4 档卡片 ===== */
+/* ===== v5 主打:自携密钥 hero ===== */
+.byok-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin: var(--space-4) var(--space-5) 0;
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-lg);
+  background: radial-gradient(120% 160% at 0% 0%, #8B5CF6 0%, #6D28D9 55%, #3B1F8B 100%);
+  color: #fff;
+  cursor: pointer;
+  box-shadow: 0 10px 28px rgba(124, 58, 237, 0.28);
+  transition: transform var(--duration-base) var(--ease-out), box-shadow var(--duration-base) var(--ease-out);
+}
+.byok-hero:hover { transform: translateY(-2px); box-shadow: 0 14px 36px rgba(124, 58, 237, 0.34); }
+.byok-hero-text { min-width: 0; }
+.byok-hero-badge {
+  display: inline-block;
+  font-size: 11px;
+  letter-spacing: 1px;
+  background: rgba(255, 255, 255, 0.2);
+  padding: 3px 10px;
+  border-radius: var(--radius-full);
+  margin-bottom: 6px;
+}
+.byok-hero-title { font-size: var(--text-lg); font-weight: 700; margin: 0 0 4px; }
+.byok-hero-title strong { font-size: var(--text-xl); }
+.byok-hero-desc { font-size: var(--text-xs); line-height: 1.6; opacity: 0.9; margin: 0; max-width: 46em; }
+.byok-hero-desc strong { color: #fff; font-weight: 700; }
+.byok-hero-cta {
+  flex-shrink: 0;
+  padding: var(--space-2) var(--space-5);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-accent-text);
+  background: #fff;
+  border-radius: var(--radius-md);
+  white-space: nowrap;
+}
+@media (max-width: 640px) {
+  .byok-hero { flex-direction: column; align-items: flex-start; }
+}
+
+/* ===== 3 档卡片 ===== */
 .plan-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: var(--space-3);
   padding: var(--space-5) var(--space-5);
   overflow-y: auto;
 }
 
-@media (max-width: 1000px) {
+@media (max-width: 760px) {
   .plan-grid {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: 1fr;
   }
 }
 @media (max-width: 560px) {

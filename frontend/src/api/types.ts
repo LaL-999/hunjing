@@ -20,14 +20,14 @@ export interface VerifyOtpRequest {
   code: string;
 }
 
-/** Sprint D.1(2026-05-12)— 订阅模式 v2 4 档 Anthropic 风
- *    free        — 免费,1 推演/5 对焦/0 漫画
- *    pro         — ¥138/月 或 ¥1488/年,尝鲜门槛(含 1 本漫画)
- *    max         — ¥438/月 或 ¥4380/年,创作者主战场(3 本漫画)
- *    super_max   — ¥1388/月 或 ¥14988/年,工作室级(10 本漫画)
+/** Sprint D.1(2026-05-12)— 订阅模式;v5(2026-06-26)BYOK 主打转向后:
+ *    free        — 免费,月度 20 credit
+ *    pro         — ¥68/月 或 ¥693.60/年,月度 600 credit(单价 ¥0.11),全创作态解锁
+ *    max         — ¥218/月 或 ¥2223.60/年,月度 2000 credit(单价 ¥0.11),全创作态解锁
+ *    super_max   — 【v5 下架不可售】仅保留字面量兜底历史老用户快照,不再出现在售卖路径
  *    founder     — env 白名单,各项 999999
- *  老 'standard' / 'super' 字面量已被 migration 021 迁移到 'pro' / 'max',
- *  前端类型不再保留兼容(后端字段已统一,前端不暴露老字面量) */
+ *  主打方案是 BYOK(自携密钥)¥5/月,见 UpgradeModal 顶部 hero + 门户页。
+ *  老 'standard' / 'super' 字面量已被 migration 021 迁移到 'pro' / 'max'。 */
 export type Plan = "free" | "pro" | "max" | "super_max" | "founder";
 
 export interface VerifyOtpResponse {
@@ -1498,9 +1498,10 @@ export interface AddonPackageDef {
 }
 
 export const ADDON_PACKAGES: AddonPackageDef[] = [
-  { size: "small",  label: "小包", credits: 100,  price_cents: 1800,  unit_price_yuan: 0.18, premium_over_pro_pct: 27 },
-  { size: "medium", label: "中包", credits: 500,  price_cents: 8500,  unit_price_yuan: 0.17, premium_over_pro_pct: 19 },
-  { size: "large",  label: "大包", credits: 2000, price_cents: 32000, unit_price_yuan: 0.16, premium_over_pro_pct: 12 },
+  // v5(2026-06-26)全线约减半,对齐后端 credit_service.ADDON_PACKAGES
+  { size: "small",  label: "小包", credits: 100,  price_cents: 1000,  unit_price_yuan: 0.10, premium_over_pro_pct: 0 },
+  { size: "medium", label: "中包", credits: 500,  price_cents: 4200,  unit_price_yuan: 0.084, premium_over_pro_pct: 0 },
+  { size: "large",  label: "大包", credits: 2000, price_cents: 16000, unit_price_yuan: 0.08, premium_over_pro_pct: 0 },
 ];
 
 /** Credit 交易明细(GET /api/credit/transactions) */
@@ -1524,7 +1525,7 @@ export interface CreditTransaction {
 
 // ========== Billing(订阅 / 价格快照,Sprint E.4)==========
 
-export type PaidPlan = "pro" | "max" | "super_max";
+export type PaidPlan = "pro" | "max";   // v5:super_max 下架不可售(Plan 仍留它兜底老用户)
 export type BillingCycle = "monthly" | "yearly";
 export type SnapshotState = "active" | "cancelled" | "expired" | "upgraded";
 
