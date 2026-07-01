@@ -547,6 +547,29 @@ onUnmounted(() => {
             <!-- 配额可视化(已登录,塞菜单顶部;4 tab + ⚭ 共用标识) -->
             <QuotaIndicator v-if="auth.isAuthed" />
 
+            <!-- v5 item2:自携密钥主打促销卡(未开通时高亮引导 —— 平台公用额度紧张,¥5 自带 key 最划算)-->
+            <button
+              v-if="auth.isAuthed && !byok.isActive"
+              class="byok-promo"
+              @click="openBYOKModal"
+            >
+              <div class="byok-promo-head">
+                <span class="byok-promo-badge">主打 · 最划算</span>
+                <span class="byok-promo-price">¥5<span class="byok-promo-unit">/月</span></span>
+              </div>
+              <div class="byok-promo-title">自携密钥,解锁全部功能</div>
+              <div class="byok-promo-desc">
+                接自己的大模型 key(文本 + 生图),五大创作态全解锁(含漫创态),不占平台额度。
+              </div>
+              <div class="byok-promo-cta">立即开通 →</div>
+            </button>
+
+            <!-- 已开通:极简状态条 -->
+            <div v-else-if="auth.isAuthed && byok.isActive" class="byok-active-chip">
+              <span class="byok-active-dot"></span>
+              <span>自携密钥已开通 · 全功能解锁中</span>
+            </div>
+
             <!-- 游客:只有"登录账户" -->
             <template v-if="!auth.isAuthed">
               <button class="menu-item menu-item--accent" @click="handleLogin">
@@ -832,6 +855,81 @@ onUnmounted(() => {
 .nav-btn.is-active {
   background: var(--color-accent-soft);
   color: var(--color-accent-text);
+}
+
+/* v5 item2:自携密钥主打促销卡 */
+.byok-promo {
+  display: block;
+  width: 100%;
+  text-align: left;
+  margin: 6px 8px 8px;
+  width: calc(100% - 16px);
+  padding: 12px 14px;
+  border: none;
+  border-radius: 12px;
+  color: #fff;
+  cursor: pointer;
+  background: radial-gradient(120% 140% at 0% 0%, #8b5cf6 0%, #6d28d9 55%, #4c1d95 100%);
+  box-shadow: 0 6px 18px rgba(124, 58, 237, 0.28);
+  transition: transform var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out);
+}
+.byok-promo:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 22px rgba(124, 58, 237, 0.36);
+}
+.byok-promo-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.byok-promo-badge {
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.22);
+}
+.byok-promo-price {
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1;
+}
+.byok-promo-unit { font-size: 12px; font-weight: 600; opacity: 0.85; }
+.byok-promo-title {
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+.byok-promo-desc {
+  font-size: 11px;
+  line-height: 1.55;
+  opacity: 0.9;
+}
+.byok-promo-cta {
+  margin-top: 8px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.byok-active-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 8px 8px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border);
+}
+.byok-active-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
+  flex-shrink: 0;
 }
 
 /* 2026-06-05:BYOK 入口已挪进用户菜单 — 旧 nav-btn--byok 样式删,新 menu-item--byok 见下 */

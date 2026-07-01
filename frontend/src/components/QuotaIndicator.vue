@@ -20,7 +20,8 @@ const quota = useQuotaStore();
 const upgradeModal = useUpgradeModal();
 const addonModal = useAddonModal();
 
-const expanded = ref(false);
+// v5 item(侧栏额度卡默认展开):进入即展开明细,不用再点"使用余额"
+const expanded = ref(true);
 function toggle() {
   expanded.value = !expanded.value;
 }

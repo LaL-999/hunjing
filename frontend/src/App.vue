@@ -16,6 +16,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
 import AddonPurchaseModal from "./components/AddonPurchaseModal.vue";
+import AnnouncementBanner from "./components/AnnouncementBanner.vue";
 import AppSidebar from "./components/AppSidebar.vue";
 import BeianFooter from "./components/BeianFooter.vue";
 import ConfirmDialog from "./components/ConfirmDialog.vue";
@@ -156,6 +157,8 @@ function handleProjectCreated(p: Project, mode: ProjectMode) {
 
     <main class="app-main">
       <div class="app-main-content">
+        <!-- v5 item5:平台公告(创始人致辞)—— 非全屏 + 已登录未开 BYOK 时顶部展示 -->
+        <AnnouncementBanner v-if="!isFullscreen" />
         <router-view v-slot="{ Component }">
           <transition :name="transitionName" mode="out-in">
             <component :is="Component" />
