@@ -2362,13 +2362,21 @@ export interface UpdateAuthorCompassRequest {
 //   过期自动回到平台默认 key
 // ==========================================================
 
+export type BYOKModality = "text" | "image";
+
 export type BYOKProviderId =
+  // 文本
   | "deepseek"
   | "qwen"
   | "zhipu"
   | "doubao"
   | "moonshot"
-  | "custom";
+  | "custom"
+  // 图像(v5 item2)
+  | "siliconflow"
+  | "seedream"
+  | "cogview"
+  | "custom_image";
 
 export interface BYOKStatusResponse {
   has_active_subscription: boolean;
@@ -2405,6 +2413,7 @@ export interface BYOKConfigUpsertRequest {
   model_name: string;
   api_key: string;
   is_default: boolean;
+  modality?: BYOKModality;   // v5 item2:默认 text
 }
 
 export interface BYOKConfigResponse {
@@ -2415,6 +2424,7 @@ export interface BYOKConfigResponse {
   model_name: string;
   api_key_mask: string;
   is_default: boolean;
+  modality?: BYOKModality;   // v5 item2
   last_test_ok: boolean | null;
   last_test_at: string | null;
   last_test_error: string | null;

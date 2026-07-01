@@ -29,14 +29,26 @@ BYOK_MONTHLY_PRICE_CENTS = 500
 BYOK_VALIDITY_DAYS = 30
 
 #: 预设 provider 标识(用户也能填 "custom")
+#: v5(2026-07-02)item2:加图像 modality 专用标识(siliconflow / seedream / cogview / custom_image)。
+#: 图像 vendor 实际由 base_url 域名自动探测(ark/volces / siliconflow.cn / bigmodel.cn),
+#: provider 字段仅作展示标签 + 前端预设唯一键(与文本 provider 不重名,避免 UI 键冲突)。
 PROVIDER_LITERAL = Literal[
+    # 文本
     "deepseek",
     "qwen",
     "zhipu",
     "doubao",
     "moonshot",
     "custom",
+    # 图像(v5 item2)
+    "siliconflow",
+    "seedream",
+    "cogview",
+    "custom_image",
 ]
+
+#: 配置模态 —— text(文本 LLM,默认)/ image(图像生成模型,漫创态用)
+MODALITY_LITERAL = Literal["text", "image"]
 
 
 # ============================================================
@@ -93,6 +105,7 @@ class BYOKConfig:
     api_key_encrypted: str  # service 层用,不出 endpoint
     api_key_mask: str       # endpoint 返回的脱敏展示
     is_default: bool
+    modality: str           # v5 item2:'text'(文本)/ 'image'(漫创态生图)
     last_test_ok: Optional[bool]
     last_test_at: Optional[str]
     last_test_error: Optional[str]
@@ -118,6 +131,7 @@ class BYOKConfig:
             api_key_encrypted=row["api_key_encrypted"],
             api_key_mask=row["api_key_mask"],
             is_default=bool(row["is_default"]),
+            modality=_safe("modality", "text") or "text",   # 老库无列 → 'text'
             last_test_ok=bool(last_test) if last_test is not None else None,
             last_test_at=_safe("last_test_at", None),
             last_test_error=_safe("last_test_error", None),
@@ -168,6 +182,7 @@ class BYOKConfigUpsertRequest(BaseModel):
     model_name: str = Field(..., min_length=1, max_length=100)
     api_key: str = Field(..., min_length=4, max_length=500)
     is_default: bool = False
+    modality: MODALITY_LITERAL = "text"   # v5 item2:text 文本 / image 漫创态生图
 
 
 class BYOKConfigResponse(BaseModel):
@@ -179,6 +194,7 @@ class BYOKConfigResponse(BaseModel):
     model_name: str
     api_key_mask: str
     is_default: bool
+    modality: str = "text"   # v5 item2:text / image
     last_test_ok: Optional[bool]
     last_test_at: Optional[str]
     last_test_error: Optional[str]

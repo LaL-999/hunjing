@@ -35,6 +35,7 @@
         <h1 class="page-title">自携密钥配置</h1>
         <p class="page-sub">
           已激活状态下,平台所有 LLM 调用走你设置的 API key,不消耗平台 credit。
+          配一个<strong>图像模型</strong>还能解锁漫创态生图(见下方「图像模型」标签页)。
         </p>
       </div>
       <div class="status-pills">
@@ -52,9 +53,38 @@
     <!-- Provider 选择网格 -->
     <section class="provider-section">
       <h2 class="section-title">选择 / 添加 模型</h2>
+
+      <!-- v5 item2:模态切换(文本 / 图像)-->
+      <div class="modality-tabs" role="tablist">
+        <button
+          type="button"
+          class="modality-tab"
+          :class="{ 'is-active': activeModality === 'text' }"
+          role="tab"
+          :aria-selected="activeModality === 'text'"
+          @click="switchModality('text')"
+        >文本模型</button>
+        <button
+          type="button"
+          class="modality-tab"
+          :class="{ 'is-active': activeModality === 'image' }"
+          role="tab"
+          :aria-selected="activeModality === 'image'"
+          @click="switchModality('image')"
+        >图像模型 · 漫创态</button>
+      </div>
+
+      <p v-if="activeModality === 'text'" class="modality-hint">
+        文本模型驱动推演 / 抽图谱 / 剧本 / 续写等全部文字创作。
+      </p>
+      <p v-else class="modality-hint">
+        配一个图像模型即可解锁<strong>漫创态</strong>,生图走你自己的 key、不占平台额度。
+        推荐硅基流动(新用户有免费额度,最易上手)。
+      </p>
+
       <div class="provider-grid">
         <button
-          v-for="preset in BYOK_PROVIDERS"
+          v-for="preset in visibleProviders"
           :key="preset.id"
           class="provider-card"
           :class="{ 'is-selected': selectedPresetId === preset.id }"
@@ -150,7 +180,7 @@
           </div>
           <label class="checkbox-row">
             <input v-model="formIsDefault" type="checkbox" />
-            <span>设为默认 — 启用 BYOK 时优先使用此模型</span>
+            <span>设为默认 — 该类型({{ activeModality === 'image' ? '图像' : '文本' }})调用优先用此模型</span>
           </label>
         </div>
 
@@ -179,6 +209,10 @@
         >
           <div class="config-main">
             <div class="config-line-1">
+              <span
+                class="config-modality-tag"
+                :class="(cfg.modality ?? 'text') === 'image' ? 'is-image' : 'is-text'"
+              >{{ (cfg.modality ?? 'text') === 'image' ? '图像' : '文本' }}</span>
               <span class="config-provider">{{ providerLabel(cfg.provider) }}</span>
               <span class="config-model">{{ cfg.model_name }}</span>
               <span v-if="cfg.is_default" class="config-default-tag">默认</span>
@@ -226,7 +260,10 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 
-import { BYOK_PROVIDERS, findProviderPreset } from "../constants/byok-providers";
+import {
+  findProviderPreset,
+  providersByModality,
+} from "../constants/byok-providers";
 import { useBYOKStore } from "../stores/byok";
 import { useAuthStore } from "../stores/auth";
 import { toast } from "../composables/useToast";
@@ -240,6 +277,10 @@ const router = useRouter();
 
 const status = computed(() => byok.status);
 const configs = computed(() => byok.configs);
+
+// v5 item2:模态切换(文本 / 图像)。图像模型用于漫创态生图。
+const activeModality = ref<"text" | "image">("text");
+const visibleProviders = computed(() => providersByModality(activeModality.value));
 
 const selectedPresetId = ref<BYOKProviderId | "">("");
 const formBaseUrl = ref("");
@@ -256,7 +297,16 @@ const selectedPreset = computed(() => {
   return findProviderPreset(selectedPresetId.value) ?? null;
 });
 
-const isCustom = computed(() => selectedPresetId.value === "custom");
+const isCustom = computed(
+  () => selectedPresetId.value === "custom" || selectedPresetId.value === "custom_image",
+);
+
+// 切模态 → 清空当前选择与表单(避免把文本配置的 key 带到图像表单)
+function switchModality(m: "text" | "image") {
+  if (activeModality.value === m) return;
+  activeModality.value = m;
+  resetForm();
+}
 
 const canSave = computed(() => {
   if (!selectedPreset.value) return false;
@@ -298,7 +348,11 @@ function selectPreset(id: BYOKProviderId) {
     formBaseUrl.value = preset.base_url;
     formModelName.value = preset.default_model;
     formDisplayName.value = "";
-    formIsDefault.value = configs.value.length === 0;  // 第一条自动设默认
+    // 该模态下还没有任何默认 → 本条自动设为默认(文本 / 图像各一套默认)
+    const modalityConfigs = configs.value.filter(
+      (c) => (c.modality ?? "text") === activeModality.value,
+    );
+    formIsDefault.value = modalityConfigs.length === 0;
     formApiKey.value = "";
   }
 }
@@ -324,6 +378,7 @@ async function handleSave() {
       model_name: formModelName.value.trim(),
       api_key: formApiKey.value.trim(),
       is_default: formIsDefault.value,
+      modality: selectedPreset.value?.modality ?? "text",   // v5 item2
     };
     await byok.upsertConfig(req);
     toast.success("配置已保存");
@@ -509,6 +564,65 @@ watch(() => byok.status, (s) => {
 }
 
 .apply-link:hover { text-decoration: underline; }
+
+/* v5 item2:模态切换 tabs */
+.modality-tabs {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  margin-bottom: var(--space-3);
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.modality-tab {
+  padding: 6px 16px;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  background: transparent;
+  border: none;
+  border-radius: calc(var(--radius-md) - 3px);
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out);
+}
+
+.modality-tab:hover { color: var(--color-text-primary); }
+
+.modality-tab.is-active {
+  background: var(--color-surface);
+  color: var(--color-accent);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.modality-hint {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--color-text-secondary);
+  margin: 0 0 var(--space-3) 0;
+}
+
+.modality-hint strong { color: var(--color-accent); font-weight: 600; }
+
+/* 配置列表里的模态小标签 */
+.config-modality-tag {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 10px;
+  line-height: 1.5;
+}
+
+.config-modality-tag.is-text {
+  background: var(--color-bg-subtle);
+  color: var(--color-text-secondary);
+}
+
+.config-modality-tag.is-image {
+  background: rgba(124, 58, 237, 0.1);
+  color: var(--color-accent);
+}
 
 .provider-grid {
   display: grid;

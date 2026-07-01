@@ -216,7 +216,32 @@ def api_byok_test_config(
     base_url = row["base_url"].rstrip("/")
     model_name = row["model_name"]
 
-    # 调最小 prompt
+    # v5 item2:图像模型走 /images/generations(chat/completions 测不了图像端点)。
+    # 复用 JimengImageAdapter —— 自动按 base_url 域名适配 ark / siliconflow / 智谱字段差异。
+    modality = (row["modality"] if "modality" in row.keys() else "text") or "text"
+    if modality == "image":
+        from app.services.llm_routing.adapters.jimeng_image import JimengImageAdapter
+        start = time.time()
+        try:
+            res = JimengImageAdapter().generate(
+                "一个白底居中的小红圆点,简笔",
+                aspect_ratio="1:1",
+                override_api_key=api_key,
+                override_base_url=base_url,
+                override_model=model_name,
+            )
+            latency = int((time.time() - start) * 1000)
+            ok = bool(res.url)
+            err = None if ok else "图像模型返回空(可能限流 / 内容审核)"
+            byok_service.update_test_result(conn, config_id, ok=ok, error=err)
+            return BYOKTestResponse(ok=ok, error=err, latency_ms=latency)
+        except Exception as exc:  # noqa: BLE001
+            latency = int((time.time() - start) * 1000)
+            err = f"图像模型测试失败:{str(exc)[:200]}"
+            byok_service.update_test_result(conn, config_id, ok=False, error=err)
+            return BYOKTestResponse(ok=False, error=err, latency_ms=latency)
+
+    # 文本模型:调最小 prompt
     url = f"{base_url}/chat/completions"
     headers = {
         "Authorization": f"Bearer {api_key}",

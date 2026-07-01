@@ -2591,13 +2591,13 @@ def test_retry_style_candidates_503_when_all_fail(
 def test_create_comic_free_plan_blocked_by_plan_gate(
     client: TestClient, make_user,
 ):
-    """2026-06-02 产品决策:Free 用户创建漫画 → 403 COMIC_PLAN_REQUIRED.
+    """v5(2026-07-02)漫创态解锁重构:Free 且未开 BYOK 的用户 → 403 COMIC_ACCESS_REQUIRED,
+    引导去开自携密钥(¥5/月,配图像模型)或订阅 Pro/Max。
 
-    历史:Free 用 comics_per_month=0 配额阻塞(429).现改为更明确的 plan 校验:
-    "漫创态是会员专属功能,升级 Pro 即可解锁"(403).
+    历史:曾是 COMIC_PLAN_REQUIRED"会员专属";v5 改为 BYOK 主打的准入文案。
     """
     u = make_user("comic_free_plan_gate")
-    # 不升档,保持 free
+    # 不升档,保持 free,且无 BYOK
     sim_id = _seed_done_simulation(client, u["headers"], u["user_id"])
 
     r = client.post(
@@ -2607,53 +2607,29 @@ def test_create_comic_free_plan_blocked_by_plan_gate(
     )
     assert r.status_code == 403, r.text
     detail = r.json()["detail"]
-    assert detail["code"] == "COMIC_PLAN_REQUIRED"
-    assert "会员" in detail["message"] or "Pro" in detail["message"]
+    assert detail["code"] == "COMIC_ACCESS_REQUIRED"
+    assert "自携密钥" in detail["message"] or "订阅" in detail["message"]
 
 
 def test_create_comic_pro_plan_one_quota_then_blocked(
-    client: TestClient, make_user, monkeypatch,
+    client: TestClient, make_user,
 ):
-    """Pro 用户:ECON-1 后 comics_per_month=0,任何 plan 创建都 429.
-    历史行为(comics=1 → 第 2 本 429)用 monkeypatch 临时还原验证.
-    ECON-2 漫画包 sprint 完成后,本测试改回测"购买漫画包后能创建"."""
-    from app.services.quota_service import PLAN_LIMITS, PlanLimits
+    """v5(2026-07-02):订阅(Pro)即解锁漫创态,**无次数闸门** —— 连续创建多本都 201。
 
-    # 临时还原旧 Pro=1 配额(测试快照机制 + quota enforce 逻辑)
-    old_pro = PLAN_LIMITS["pro"]
-    monkeypatch.setitem(PLAN_LIMITS, "pro", PlanLimits(
-        monthly_credits_quota=old_pro.monthly_credits_quota,
-        single_credit_price_cents=old_pro.single_credit_price_cents,
-        characters_per_project=old_pro.characters_per_project,
-        projects_total=old_pro.projects_total,
-        reshape_max_percent=old_pro.reshape_max_percent,
-        comics_per_month=1,
-    ))
-
-    u = make_user("comic_pro_quota")
+    历史:曾是"Pro=1 本/月,第 2 本 429";v5 下线漫画包 + comics_per_month 闸门,
+    订阅费已覆盖平台图像成本,不再按本限流。
+    """
+    u = make_user("comic_pro_unlocked")
     _upgrade_to_plan(u["user_id"], "pro")
     sim_id = _seed_done_simulation(client, u["headers"], u["user_id"])
 
-    # 第 1 本应成功
-    r1 = client.post(
-        "/api/comics", headers=u["headers"],
-        json={"name": "pro 第 1 本",
-              "source": {"type": "internal", "simulation_ids": [sim_id]}},
-    )
-    assert r1.status_code == 201
-
-    # 第 2 本应 429
-    r2 = client.post(
-        "/api/comics", headers=u["headers"],
-        json={"name": "pro 第 2 本",
-              "source": {"type": "internal", "simulation_ids": [sim_id]}},
-    )
-    assert r2.status_code == 429
-    detail = r2.json()["detail"]
-    assert detail["code"] == "QUOTA_EXCEEDED"
-    assert detail["kind"] == "comics_per_month"
-    assert detail["used"] == 1
-    assert detail["limit"] == 1
+    for i in range(3):
+        r = client.post(
+            "/api/comics", headers=u["headers"],
+            json={"name": f"pro 第 {i + 1} 本",
+                  "source": {"type": "internal", "simulation_ids": [sim_id]}},
+        )
+        assert r.status_code == 201, f"Pro 订阅应无次数闸门,第 {i + 1} 本却被拦:{r.text}"
 
 
 def test_count_user_comics_excludes_cancelled(
@@ -2727,49 +2703,30 @@ def test_count_user_comics_excludes_failed(client: TestClient, make_user):
         conn.close()
 
 
-def test_create_comic_super_max_four_per_month(client: TestClient, make_user, monkeypatch):
-    """超级 Max:ECON-1 后 comics_per_month=0,测试用 monkeypatch 还原旧 4 本配额逻辑."""
-    from app.services.quota_service import PLAN_LIMITS, PlanLimits
-
-    old_sm = PLAN_LIMITS["super_max"]
-    monkeypatch.setitem(PLAN_LIMITS, "super_max", PlanLimits(
-        monthly_credits_quota=old_sm.monthly_credits_quota,
-        single_credit_price_cents=old_sm.single_credit_price_cents,
-        characters_per_project=old_sm.characters_per_project,
-        projects_total=old_sm.projects_total,
-        reshape_max_percent=old_sm.reshape_max_percent,
-        comics_per_month=4,
-    ))
-
-    u = make_user("comic_super_max_quota")
+def test_create_comic_super_max_four_per_month(client: TestClient, make_user):
+    """v5(2026-07-02):super_max 虽已下架不可售,历史订阅用户仍解锁漫创态(老规则保护),
+    且与其它订阅档一样**无次数闸门** —— 连续创建多本都 201。"""
+    u = make_user("comic_super_max_legacy")
     _upgrade_to_plan(u["user_id"], "super_max")
     sim_id = _seed_done_simulation(client, u["headers"], u["user_id"])
 
-    for i in range(4):
+    for i in range(5):
         r = client.post(
             "/api/comics", headers=u["headers"],
             json={"name": f"super 第 {i + 1} 本",
                   "source": {"type": "internal", "simulation_ids": [sim_id]}},
         )
-        assert r.status_code == 201, f"第 {i + 1} 本应成功 (super_max quota=4):{r.json()}"
-
-    # 第 5 本超额
-    r5 = client.post(
-        "/api/comics", headers=u["headers"],
-        json={"name": "super 第 5 本",
-              "source": {"type": "internal", "simulation_ids": [sim_id]}},
-    )
-    assert r5.status_code == 429
-    assert r5.json()["detail"]["kind"] == "comics_per_month"
-    assert r5.json()["detail"]["limit"] == 4
+        assert r.status_code == 201, f"super_max 历史订阅应无次数闸门,第 {i + 1} 本却被拦:{r.text}"
 
 
 def test_plan_limits_comics_per_month_values():
-    """ECON-1(2026-05-27 末⁴):漫创态全档清零,改为单买漫画包(ECON-2 sprint)."""
+    """v5(2026-07-02)漫创态解锁:订阅档 comics_per_month 置 999999(等同不限),
+    自由通行由 comics 路由的 BYOK/订阅准入闸门统一把关,不再靠本次数池限流。
+    free 保持 0(免费无订阅需走 BYOK);super_max 保持 0(下架,历史用户靠 plan 准入)。"""
     from app.services.quota_service import PLAN_LIMITS
 
     assert PLAN_LIMITS["free"].comics_per_month == 0
-    assert PLAN_LIMITS["pro"].comics_per_month == 0          # ECON-1: 1 → 0
-    assert PLAN_LIMITS["max"].comics_per_month == 0          # ECON-1: 2 → 0
-    assert PLAN_LIMITS["super_max"].comics_per_month == 0    # ECON-1: 4 → 0
+    assert PLAN_LIMITS["pro"].comics_per_month >= 999999     # v5: 0 → 999999(订阅解锁)
+    assert PLAN_LIMITS["max"].comics_per_month >= 999999     # v5: 0 → 999999(订阅解锁)
+    assert PLAN_LIMITS["super_max"].comics_per_month == 0    # 下架不动,历史用户靠 plan 准入
     assert PLAN_LIMITS["founder"].comics_per_month >= 999999

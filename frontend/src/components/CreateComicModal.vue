@@ -76,6 +76,17 @@ const uploadsError = ref<string | null>(null);
 /** 提交进行中 — 防双击 + 禁所有交互 */
 const submitting = ref<boolean>(false);
 const submitError = ref<string | null>(null);
+// v5 item2:准入类错误(需开自携密钥 / 需配图像模型)→ 显示直达 CTA
+const submitErrorCode = ref<string | null>(null);
+const showByokCta = computed(
+  () =>
+    submitErrorCode.value === "COMIC_ACCESS_REQUIRED" ||
+    submitErrorCode.value === "COMIC_IMAGE_KEY_REQUIRED",
+);
+function goToByokConfig(): void {
+  emit("close");
+  router.push("/byok-config");
+}
 
 // ============================================================
 // Sprint C.4 AI Planner state
@@ -377,6 +388,7 @@ async function handleSubmit(): Promise<void> {
   if (!canSubmit.value) return;
   submitting.value = true;
   submitError.value = null;
+  submitErrorCode.value = null;
   try {
     const comic = await api.post<Comic>("/comics", {
       name: name.value.trim(),
@@ -411,10 +423,12 @@ async function handleSubmit(): Promise<void> {
     emit("created", comic.id);
   } catch (e) {
     if (e instanceof ApiError) {
-      const detail = (e.detail as { message?: string } | null)?.message;
-      submitError.value = detail || e.message;
+      const d = e.detail as { message?: string; code?: string } | null;
+      submitError.value = d?.message || e.message;
+      submitErrorCode.value = d?.code ?? null;
     } else {
       submitError.value = "创建失败,请重试";
+      submitErrorCode.value = null;
     }
   } finally {
     submitting.value = false;
@@ -781,6 +795,13 @@ function formatTime(iso: string): string {
 
           <!-- 提交错误展示 -->
           <p v-if="submitError" class="submit-error">{{ submitError }}</p>
+          <!-- v5 item2:准入类错误 → 直达自携密钥配置 -->
+          <button
+            v-if="showByokCta"
+            type="button"
+            class="byok-cta-inline"
+            @click="goToByokConfig"
+          >开通 / 配置自携密钥 →</button>
 
           <!-- 底部 CTA -->
           <footer class="modal-footer">
@@ -1326,6 +1347,23 @@ function formatTime(iso: string): string {
   border-radius: var(--radius-md);
   margin: 0;
 }
+
+/* v5 item2:准入错误直达自携密钥 CTA */
+.byok-cta-inline {
+  align-self: flex-start;
+  margin-top: var(--space-2);
+  padding: 8px 16px;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(135deg, #8b5cf6, #6d28d9);
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: opacity var(--duration-fast) var(--ease-out);
+}
+
+.byok-cta-inline:hover { opacity: 0.9; }
 
 /* ===== footer CTA ===== */
 .modal-footer {

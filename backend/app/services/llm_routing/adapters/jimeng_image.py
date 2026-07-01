@@ -85,12 +85,13 @@ _ZHIPU_ASPECT_TO_SIZE: dict[str, str] = {
 }
 
 
-def _detect_vendor() -> str:
-    """从 jimeng_api_base 域名探测 vendor。
+def _detect_vendor(base_url: Optional[str] = None) -> str:
+    """从 base_url 域名探测 vendor(未传则用平台 settings.jimeng_api_base)。
 
+    v5 item2:加 base_url 形参 —— BYOK 用户自带图像 key 时按其 base_url 探测 vendor。
     返回:"siliconflow" | "ark" | "zhipu" | "unknown"
     """
-    base = (settings.jimeng_api_base or "").lower()
+    base = (base_url if base_url is not None else (settings.jimeng_api_base or "")).lower()
     if "siliconflow.cn" in base or "siliconflow.com" in base:
         return "siliconflow"
     if "ark.cn-beijing.volces.com" in base or "volces.com" in base:
@@ -100,10 +101,10 @@ def _detect_vendor() -> str:
     return "unknown"
 
 
-def _vendor_label() -> str:
+def _vendor_label(base_url: Optional[str] = None, model: Optional[str] = None) -> str:
     """动态生成 vendor_label(用于日志 / 错误信息),包含 model 名便于排错。"""
-    vendor = _detect_vendor()
-    model = settings.jimeng_model or "?"
+    vendor = _detect_vendor(base_url)
+    model = model or settings.jimeng_model or "?"
     if vendor == "siliconflow":
         return f"SiliconFlow-{model}"
     if vendor == "ark":
@@ -132,27 +133,39 @@ class JimengImageAdapter:
         ref_image_url: Optional[str] = None,
         aspect_ratio: str = "1:1",
         seed: Optional[int] = None,
+        override_api_key: Optional[str] = None,
+        override_base_url: Optional[str] = None,
+        override_model: Optional[str] = None,
     ) -> ImageResult:
+        """v5 item2:override_* 三件套 —— BYOK 用户漫创态生图走自己的图像 key。
+        任一为 None 则该项回落平台 settings。三者要么齐全(BYOK),要么全 None(平台)。
+        """
         from openai import OpenAI
 
-        if not settings.jimeng_api_key:
+        # 有效凭证:override 优先,否则平台 settings
+        api_key = override_api_key or settings.jimeng_api_key
+        base_url = override_base_url or settings.jimeng_api_base
+        model = override_model or settings.jimeng_model
+        label = _vendor_label(base_url, model)
+
+        if not api_key:
             raise LlmCallFailed(
-                "HUIMENG_JIMENG_API_KEY 未配置 — 请在项目根 .env 填入 "
-                "SiliconFlow / 火山方舟 / 其它 OpenAI 兼容图像 vendor 的 API key"
+                "图像 API key 未配置 — 平台侧请在 .env 填 HUIMENG_JIMENG_API_KEY;"
+                "BYOK 用户请在「自携密钥」里配置一个图像模型"
             )
         try:
-            settings.jimeng_api_key.encode("ascii")
+            api_key.encode("ascii")
         except UnicodeEncodeError as e:
             raise LlmCallFailed(
-                f"HUIMENG_JIMENG_API_KEY 含非 ASCII 字符(可能是占位符):{e}"
+                f"图像 API key 含非 ASCII 字符(可能是占位符):{e}"
             ) from e
 
         client = OpenAI(
-            api_key=settings.jimeng_api_key,
-            base_url=settings.jimeng_api_base,
+            api_key=api_key,
+            base_url=base_url,
         )
 
-        vendor = _detect_vendor()
+        vendor = _detect_vendor(base_url)
         # vendor → size table 映射;未知 vendor 走 ARK 表(保守兜底)
         if vendor == "siliconflow":
             size_table = _SF_ASPECT_TO_SIZE
@@ -186,7 +199,7 @@ class JimengImageAdapter:
                     if seed is not None:
                         extra_body["seed"] = seed
                     resp = client.images.generate(
-                        model=settings.jimeng_model,
+                        model=model,
                         prompt=full_prompt,
                         extra_body=extra_body,
                     )
@@ -195,14 +208,14 @@ class JimengImageAdapter:
                     # 多图需多次调用);seed 字段未在公开文档列出,暂不透传
                     # quality 字段可选 "standard" / "hd",默认 standard 已够 t2i 漫画用
                     resp = client.images.generate(
-                        model=settings.jimeng_model,
+                        model=model,
                         prompt=full_prompt,
                         size=size,
                     )
                 else:
                     # ARK 走 OpenAI 标准(size + n)
                     resp = client.images.generate(
-                        model=settings.jimeng_model,
+                        model=model,
                         prompt=full_prompt,
                         size=size,
                         n=1,
@@ -222,19 +235,19 @@ class JimengImageAdapter:
                 )
                 if not is_transient or attempt >= len(retry_delays):
                     raise LlmCallFailed(
-                        f"{self.vendor_label} 调用失败({err_name},"
+                        f"{label} 调用失败({err_name},"
                         f"已重试 {attempt} 次):{e}"
                     ) from e
                 # transient 错,backoff 后重试
                 _time.sleep(retry_delays[attempt])
         if last_err:
             raise LlmCallFailed(
-                f"{self.vendor_label} 重试全失败({type(last_err).__name__}):{last_err}"
+                f"{label} 重试全失败({type(last_err).__name__}):{last_err}"
             ) from last_err
 
         if not resp.data or not resp.data[0].url:
             raise LlmCallFailed(
-                f"{self.vendor_label} 返回为空(可能限流 / 内容审核拦截)"
+                f"{label} 返回为空(可能限流 / 内容审核拦截)"
             )
 
         image_url = resp.data[0].url

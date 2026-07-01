@@ -318,14 +318,15 @@ def create_comic(
         # 上限从 Sprint C.4 临时回退的 12 重新放开到 18(对齐 schemas/comic.py)
         raise ValueError(f"target_pages 必须在 6-18 之间,实际:{target_pages}")
 
-    # 2026-06-02 产品决策:漫创态仅限 Pro 及以上(不让 Free 白嫖,激发订阅意愿)
-    # 防绕过前端直接 POST 创建
+    # v5(2026-07-02)漫创态解锁重构:准入 = 订阅(pro/max/super_max/founder)或 BYOK 图像配置。
+    # 与 routers/comics.py 的闸门同源(防绕过前端直接 POST 的 defense-in-depth)。
     user_row = fetch_one(conn, "SELECT plan FROM users WHERE id=?", (user_id,))
-    if user_row:
-        user_plan = user_row["plan"] or "free"
-        if user_plan == "free":
+    user_plan = (user_row["plan"] if user_row else "free") or "free"
+    if user_plan not in ("pro", "max", "super_max", "founder"):
+        from app.services.byok_service import get_active_image_config
+        if get_active_image_config(conn, user_id) is None:
             raise ComicPlanRequired(
-                "漫创态是会员专属功能,升级 Pro 即可解锁"
+                "漫创态需开通「自携密钥」(¥5/月,配上图像模型)或订阅 Pro / Max 才能使用"
             )
 
     _validate_source(conn, user_id, source)
@@ -356,10 +357,8 @@ def create_comic(
         ),
     )
 
-    # ECON-2(2026-05-27 末⁴⁴):创建漫画时扣 1 个漫画包(如有);无包则跳过(走 founder 路径).
-    # 该函数自身不 commit,与本 create_comic 同事务,失败时一并回滚.
-    from app.services.credit_service import consume_one_comic_pack_if_available
-    consume_one_comic_pack_if_available(conn, user_id, comic_id)
+    # v5(2026-07-02)漫创态解锁重构:漫画包机制下线,创建时不再扣包
+    # (准入改由 comics 路由的 BYOK/订阅闸门把关;历史遗留 comic_pack_lots 不再被消耗)。
 
     conn.commit()
 
@@ -463,11 +462,7 @@ def _update_state(
         tuple(args),
     )
 
-    # ECON-2.1(2026-05-27 末⁴⁴⁻¹):漫画失败/取消时退还漫画包,与 state 改动同事务.
-    # 完成(done)不退 — 消耗正常.
-    if new_state in ("failed", "cancelled"):
-        from app.services.credit_service import refund_comic_pack_for_comic
-        refund_comic_pack_for_comic(conn, comic_id)
+    # v5(2026-07-02):漫画包机制下线,失败/取消不再退包(创建也不再扣包)。
 
     conn.commit()
 
@@ -568,8 +563,13 @@ def _run_comic_inner(conn: sqlite3.Connection, comic_id: str) -> None:
 def _process_single_panel(
     comic_id: str,
     panel_dict_with_page: dict,
+    byok_override: dict | None = None,
 ) -> tuple[dict, dict]:
     """Sprint 5.1(2026-05-13)并行生图 worker — 单 panel 完整处理(director + image_gen)。
+
+    v5 item2:byok_override 由主线程(run_comic,ContextVar 可读处)解析后显式下传 ——
+    子线程不继承 ContextVar,故不能在此处 get_current_user_id()。非 None = 用户自带
+    图像 key,此时**跳过平台 Qwen-VL 视觉校验**(BYOK 图像模型无视觉端点 + 防白嫖平台视觉 API)。
 
     设计:
       - 在 worker thread 内独立创建 conn(SQLite check_same_thread=True 限制),
@@ -648,16 +648,18 @@ def _process_single_panel(
         # Stage B:Image Generator(Sprint 4.D+:1:1 与 reader grid 对齐)
         image_url, img_usage = _agent_image_generator(
             comic_local, prompt_text, aspect_ratio="1:1",
+            byok_override=byok_override,
         )
         image_ok = bool(image_url)
 
         # Stage C(Sprint 5.11 Reflexion,2026-05-14):Qwen-VL Max 视觉校验 +
         # 推荐组合 1A+2B+3A — 重生上限 1 次;只 speaker_missing fail 触发;
         # verifier_result 落 panel JSON(零 schema migration)
+        # v5 item2:BYOK 自带图像 key 的用户跳过平台视觉校验(防白嫖 Qwen-VL + 图像模型无视觉端点)
         verifier_result: dict = {}
         regen_image_usage: dict = {}
         regenerated = False
-        if image_ok:
+        if image_ok and byok_override is None:
             try:
                 verifier_result = _agent_visual_verifier(
                     comic_local, panel_dict_with_page, image_url, conn,
@@ -775,6 +777,18 @@ def _generate_all_panels(
     total_verifier_out = 0   # Qwen-VL Max 校验消耗 output token 汇总
     panel_errors: list[str] = []
 
+    # v5 item2:主线程解析一次 BYOK 图像 override(ThreadPoolExecutor 子线程不继承
+    # ContextVar,必须在此显式解析后作为参数下传给每个 panel worker)。
+    byok_image_override = _resolve_byok_image_override(conn)
+    if byok_image_override:
+        import logging as _logging
+        _logging.getLogger(__name__).info(
+            "comic %s 漫创态生图走 BYOK 图像 key(provider=%s model=%s)",
+            comic.id,
+            byok_image_override.get("provider"),
+            byok_image_override.get("model_name"),
+        )
+
     for page_idx, page in enumerate(pages, 1):
         if page_idx in existing_page_indexes:
             continue   # resume 时跳过
@@ -802,7 +816,9 @@ def _generate_all_panels(
             thread_name_prefix=f"panel-p{page_idx}",
         ) as executor:
             future_to_input = {
-                executor.submit(_process_single_panel, comic.id, pdw): pdw
+                executor.submit(
+                    _process_single_panel, comic.id, pdw, byok_image_override,
+                ): pdw
                 for pdw in panel_inputs
             }
             for future in as_completed(future_to_input):
@@ -1971,6 +1987,7 @@ def _agent_style_director_v2(
     # Sprint 5.x bug fix:Stage 3 progress 60 → 68(每张图 +N%)
     _STAGE3_LO, _STAGE3_HI = 60, 68
     image_gen = get_image_gen()
+    byok_image_override = _resolve_byok_image_override(conn)   # v5 item2:BYOK 走自带图像 key
     candidates: list[dict] = []
     image_cost_per = 0.20   # Seedream 单价
     for i, variant_hint in enumerate(variants, 1):
@@ -1979,7 +1996,12 @@ def _agent_style_director_v2(
         try:
             # Sprint 4.D+(2026-05-13):候选样张改 1:1 — 与最终漫画 panel 比例一致,
             # 用户预览所见即所得(原 3:4 让用户误判,实际生成时格子被裁)
-            result = image_gen.generate(panel_prompt, aspect_ratio="1:1")
+            result = image_gen.generate(
+                panel_prompt, aspect_ratio="1:1",
+                override_api_key=(byok_image_override or {}).get("api_key"),
+                override_base_url=(byok_image_override or {}).get("base_url"),
+                override_model=(byok_image_override or {}).get("model_name"),
+            )
             candidates.append({
                 "index": i,
                 "variant_hint": variant_hint,
@@ -2179,6 +2201,7 @@ def _run_style_candidates_stage(
         ]
 
     image_gen = get_image_gen()
+    byok_image_override = _resolve_byok_image_override(conn)   # v5 item2:BYOK 走自带图像 key
     candidates: list[dict] = []
     detailed_prompt_with_negative = comic.style_detailed_prompt
     errors: list[str] = []
@@ -2186,7 +2209,12 @@ def _run_style_candidates_stage(
     for i, variant_hint in enumerate(variants, 1):
         panel_prompt = f"{detailed_prompt_with_negative}\n\n本张差异提示:{variant_hint}"
         try:
-            result = image_gen.generate(panel_prompt, aspect_ratio="1:1")
+            result = image_gen.generate(
+                panel_prompt, aspect_ratio="1:1",
+                override_api_key=(byok_image_override or {}).get("api_key"),
+                override_base_url=(byok_image_override or {}).get("base_url"),
+                override_model=(byok_image_override or {}).get("model_name"),
+            )
             candidates.append({
                 "index": i,
                 "variant_hint": variant_hint,
@@ -2317,6 +2345,7 @@ def _agent_character_anchor(
 
     system_prompt = _load_prompt("character_anchor_v2.md")
     image_gen = get_image_gen()
+    byok_image_override = _resolve_byok_image_override(conn)   # v5 item2:BYOK 走自带图像 key
     now = _now_iso()
 
     counts = {"created": 0, "failed": 0, "graph_known": 0, "script_only": 0}
@@ -2424,7 +2453,12 @@ def _agent_character_anchor(
                 f"角色描述:{descriptor}\n\n"
                 f"正面立绘,中景半身,中性表情,纯色背景。"
             )
-            result = image_gen.generate(anchor_prompt, aspect_ratio="3:4")
+            result = image_gen.generate(
+                anchor_prompt, aspect_ratio="3:4",
+                override_api_key=(byok_image_override or {}).get("api_key"),
+                override_base_url=(byok_image_override or {}).get("base_url"),
+                override_model=(byok_image_override or {}).get("model_name"),
+            )
             card_url = result.url
         except Exception as e:
             counts["failed"] += 1
@@ -3049,10 +3083,36 @@ def _safe_json(text: str | None, fallback):
         return fallback
 
 
+def _resolve_byok_image_override(conn: sqlite3.Connection) -> dict | None:
+    """v5 item2:解析当前用户的 BYOK 图像模型配置(有 → 漫创态生图走用户自己的 key)。
+
+    读 byok_context ContextVar 里的 user_id(endpoint / kick_off 主线程已设置),
+    → get_active_image_config(需有效 BYOK 订阅 + 默认 image 配置)。
+    返回 dict{provider/base_url/model_name/api_key} 或 None(回落平台图像 key)。
+
+    注意:必须在**已注入 BYOK context 的线程**里调用(请求线程 / kick_off 主线程),
+    ThreadPoolExecutor 的 panel 子线程不继承 ContextVar,故在主线程解析后显式下传。
+    异常隔离:任何失败返 None(绝不阻断生图)。
+    """
+    try:
+        from app.services.byok_context import get_current_user_id
+        uid = get_current_user_id()
+    except Exception:
+        uid = None
+    if not uid:
+        return None
+    try:
+        from app.services.byok_service import get_active_image_config
+        return get_active_image_config(conn, uid)
+    except Exception:
+        return None
+
+
 def _agent_image_generator(
     comic: Comic,
     prompt: str,
     aspect_ratio: str = "3:4",
+    byok_override: dict | None = None,
 ) -> tuple[str | None, dict]:
     """Agent #7 图像生成 — 调 Seedream 4.0 出图。Sprint 3(2026-05-13)落地。
 
@@ -3064,6 +3124,7 @@ def _agent_image_generator(
     Args:
         prompt:Agent #6 输出的 200-400 字完整 prompt
         aspect_ratio:漫画格典型 3:4(竖版),也可 4:3 / 16:9
+        byok_override:v5 item2 —— 非 None 时走用户自带图像 key(不占平台图像额度)
 
     Returns:
         (image_url, usage_dict) — 失败时 image_url=None + usage 含 error 字段
@@ -3071,22 +3132,27 @@ def _agent_image_generator(
         image_url=None,Sprint 4 inpainter 让用户补 / 重生。
     """
     image_gen = get_image_gen()
+    ov = byok_override or {}
+    is_byok = bool(byok_override)
     try:
         result = image_gen.generate(
             prompt,
             aspect_ratio=aspect_ratio,
             seed=comic.generation_seed,    # L4 同 seed
+            override_api_key=ov.get("api_key"),
+            override_base_url=ov.get("base_url"),
+            override_model=ov.get("model_name"),
         )
         return result.url, {
             "image_count": 1,
-            "vendor": "jimeng",
-            "model": settings.jimeng_model,
+            "vendor": "byok" if is_byok else "jimeng",
+            "model": ov.get("model_name") or settings.jimeng_model,
         }
     except Exception as e:  # noqa: BLE001
         # 单格失败不阻塞 — 留空位让 inpainter 后补
         return None, {
             "image_count": 0,
-            "vendor": "jimeng",
+            "vendor": "byok" if is_byok else "jimeng",
             "error": f"{type(e).__name__}: {str(e)[:200]}",
         }
 

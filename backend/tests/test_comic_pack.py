@@ -130,102 +130,47 @@ def test_get_comic_pack_balance(client: TestClient, make_user):
 # ============================================================
 
 def test_create_comic_with_pack_consumes_one(client: TestClient, make_user):
-    """Pro 用户买 1 包 → 创建漫画成功 → 包 used → 再创建 429."""
+    """v5(2026-07-02)漫画包下线:Pro 订阅即可无限创建,创建**不再消耗**遗留漫画包。"""
     u = make_user("comic_with_pack")
     _upgrade_to_pro(u["user_id"])
 
-    # 买 1 包
+    # 遗留:买了包也不会被消耗(机制已下线,仅作向后兼容验证)
     client.post("/api/credit/comic_pack/purchase", headers=u["headers"])
     sim_id = _seed_done_simulation(client, u["headers"], u["user_id"])
 
-    # 创建漫画 — 应该成功(消耗 1 包)
     r1 = client.post(
         "/api/comics", headers=u["headers"],
-        json={"name": "用包创建", "source": {"type": "internal", "simulation_ids": [sim_id]}},
+        json={"name": "创建 1", "source": {"type": "internal", "simulation_ids": [sim_id]}},
     )
     assert r1.status_code == 201, r1.text
 
-    # 此时余量 0
+    # 包未被消耗 —— 仍为 1(创建不再扣包)
     r_bal = client.get("/api/credit/comic_pack/available", headers=u["headers"])
-    assert r_bal.json()["available_packs"] == 0
+    assert r_bal.json()["available_packs"] == 1
 
-    # 再创建 → 429(没包了)
+    # 再创建仍 201(订阅无次数闸门)
     r2 = client.post(
         "/api/comics", headers=u["headers"],
-        json={"name": "第 2 本无包", "source": {"type": "internal", "simulation_ids": [sim_id]}},
+        json={"name": "创建 2", "source": {"type": "internal", "simulation_ids": [sim_id]}},
     )
-    assert r2.status_code == 429
-    detail = r2.json()["detail"]
-    assert detail["code"] == "QUOTA_EXCEEDED"
-    assert detail["kind"] == "comics_per_month"
-    # ECON-2:错误消息含"漫画包" 关键字(引导购买)
-    assert "漫画包" in detail["message"]
+    assert r2.status_code == 201, r2.text
 
 
 def test_create_comic_without_pack_returns_429(client: TestClient, make_user):
-    """Pro 用户不买包,创建漫画直接 429(ECON-1 后 comics_per_month=0)."""
+    """v5(2026-07-02):Pro 无包也能创建 —— 订阅即解锁漫创态,不再需要漫画包。"""
     u = make_user("no_pack_pro")
     _upgrade_to_pro(u["user_id"])
     sim_id = _seed_done_simulation(client, u["headers"], u["user_id"])
 
     r = client.post(
         "/api/comics", headers=u["headers"],
-        json={"name": "无包尝试", "source": {"type": "internal", "simulation_ids": [sim_id]}},
+        json={"name": "无包创建", "source": {"type": "internal", "simulation_ids": [sim_id]}},
     )
-    assert r.status_code == 429
-    assert r.json()["detail"]["kind"] == "comics_per_month"
-
-
-def test_fifo_consume_order(client: TestClient, make_user):
-    """ECON-2 FIFO:先买的包先被扣(按 purchased_at ASC)."""
-    from app.db import get_connection
-    u = make_user("fifo_test")
-    _upgrade_to_pro(u["user_id"])
-
-    # 买 2 个包
-    client.post("/api/credit/comic_pack/purchase", headers=u["headers"])
-    client.post("/api/credit/comic_pack/purchase", headers=u["headers"])
-
-    # 拿两个 lot 的 id(按 purchased_at ASC)
-    conn = get_connection()
-    try:
-        rows = conn.execute(
-            """SELECT id FROM comic_pack_lots
-               WHERE user_id=? ORDER BY purchased_at ASC""",
-            (u["user_id"],),
-        ).fetchall()
-        assert len(rows) == 2
-        first_lot_id = rows[0]["id"]
-        second_lot_id = rows[1]["id"]
-    finally:
-        conn.close()
-
-    # 创建漫画(扣 1 个,应该扣 first_lot_id)
-    sim_id = _seed_done_simulation(client, u["headers"], u["user_id"])
-    client.post(
-        "/api/comics", headers=u["headers"],
-        json={"name": "FIFO 检查", "source": {"type": "internal", "simulation_ids": [sim_id]}},
-    )
-
-    # 验证:first_lot_id is_used=1,second_lot_id 仍 is_used=0
-    conn = get_connection()
-    try:
-        first_row = conn.execute(
-            "SELECT is_used FROM comic_pack_lots WHERE id=?",
-            (first_lot_id,),
-        ).fetchone()
-        second_row = conn.execute(
-            "SELECT is_used FROM comic_pack_lots WHERE id=?",
-            (second_lot_id,),
-        ).fetchone()
-        assert first_row["is_used"] == 1, "先买的包应先被扣(FIFO)"
-        assert second_row["is_used"] == 0, "后买的包应保留"
-    finally:
-        conn.close()
+    assert r.status_code == 201, r.text
 
 
 # ============================================================
-# C. Service 层 helpers
+# C. Service 层 helpers(漫画包购买/计数 endpoint 仍在,但创建不再消耗;dormant 保留)
 # ============================================================
 
 def test_consume_one_returns_false_when_no_pack(client: TestClient, make_user):
@@ -256,133 +201,14 @@ def test_count_zero_for_new_user(client: TestClient, make_user):
 
 
 # ============================================================
-# D. ECON-2.1 — 漫画失败/取消退还漫画包
+# D. v5(2026-07-02)漫画包机制下线 —— 创建不再消耗、失败/取消不再退还。
+#    原 ECON-2.1 退还测试(refund_on_cancel / refund_on_fail / no_refund_on_done)
+#    随机制一并删除;购买/计数 endpoint 与 cron 过期仍保留(dormant 兼容)。
 # ============================================================
-
-def test_refund_on_cancel_restores_pack(client: TestClient, make_user):
-    """漫画取消 → 漫画包退还(is_used=0,可重新创建)."""
-    from app.db import get_connection
-    from app.services.credit_service import count_available_comic_packs
-
-    u = make_user("refund_cancel")
-    _upgrade_to_pro(u["user_id"])
-
-    # 买 1 包 → 创建漫画 → 余量 0
-    client.post("/api/credit/comic_pack/purchase", headers=u["headers"])
-    sim_id = _seed_done_simulation(client, u["headers"], u["user_id"])
-    r_create = client.post(
-        "/api/comics", headers=u["headers"],
-        json={"name": "待取消", "source": {"type": "internal", "simulation_ids": [sim_id]}},
-    )
-    assert r_create.status_code == 201
-    comic_id = r_create.json()["id"]
-
-    conn = get_connection()
-    try:
-        assert count_available_comic_packs(conn, u["user_id"]) == 0
-    finally:
-        conn.close()
-
-    # 取消漫画
-    r_cancel = client.post(f"/api/comics/{comic_id}/cancel", headers=u["headers"])
-    assert r_cancel.status_code == 200, r_cancel.text
-
-    # 余量应恢复为 1(退还)
-    conn = get_connection()
-    try:
-        assert count_available_comic_packs(conn, u["user_id"]) == 1, (
-            "取消后漫画包应退还(is_used=0)"
-        )
-
-        # 验证 lot 字段确实被清回
-        row = conn.execute(
-            "SELECT is_used, used_at, used_comic_id FROM comic_pack_lots WHERE user_id=?",
-            (u["user_id"],),
-        ).fetchone()
-        assert row["is_used"] == 0
-        assert row["used_at"] is None
-        assert row["used_comic_id"] is None
-    finally:
-        conn.close()
-
-
-def test_refund_on_fail_restores_pack(client: TestClient, make_user):
-    """漫画失败(state='failed')→ 漫画包退还."""
-    from app.db import get_connection
-    from app.services.comic_service import _update_state
-    from app.services.credit_service import count_available_comic_packs
-
-    u = make_user("refund_fail")
-    _upgrade_to_pro(u["user_id"])
-
-    client.post("/api/credit/comic_pack/purchase", headers=u["headers"])
-    sim_id = _seed_done_simulation(client, u["headers"], u["user_id"])
-    r_create = client.post(
-        "/api/comics", headers=u["headers"],
-        json={"name": "待失败", "source": {"type": "internal", "simulation_ids": [sim_id]}},
-    )
-    comic_id = r_create.json()["id"]
-
-    # 模拟 worker 失败 — 直接调 _update_state 把 state 改成 failed
-    conn = get_connection()
-    try:
-        _update_state(conn, comic_id, "failed", error_message="模拟失败")
-    finally:
-        conn.close()
-
-    # 余量应恢复为 1
-    conn = get_connection()
-    try:
-        assert count_available_comic_packs(conn, u["user_id"]) == 1, (
-            "失败后漫画包应退还"
-        )
-    finally:
-        conn.close()
-
-
-def test_no_refund_on_done(client: TestClient, make_user):
-    """漫画完成(state='done')→ 漫画包**不**退还(消耗正常)."""
-    from app.db import get_connection
-    from app.services.comic_service import _update_state
-    from app.services.credit_service import count_available_comic_packs
-
-    u = make_user("no_refund_done")
-    _upgrade_to_pro(u["user_id"])
-
-    client.post("/api/credit/comic_pack/purchase", headers=u["headers"])
-    sim_id = _seed_done_simulation(client, u["headers"], u["user_id"])
-    r_create = client.post(
-        "/api/comics", headers=u["headers"],
-        json={"name": "待完成", "source": {"type": "internal", "simulation_ids": [sim_id]}},
-    )
-    comic_id = r_create.json()["id"]
-
-    # 推到 done
-    conn = get_connection()
-    try:
-        _update_state(conn, comic_id, "done")
-    finally:
-        conn.close()
-
-    # 余量保持 0(不退)
-    conn = get_connection()
-    try:
-        assert count_available_comic_packs(conn, u["user_id"]) == 0, (
-            "完成后漫画包**不**退还(消耗正常)"
-        )
-
-        # lot 仍为 is_used=1
-        row = conn.execute(
-            "SELECT is_used FROM comic_pack_lots WHERE user_id=?",
-            (u["user_id"],),
-        ).fetchone()
-        assert row["is_used"] == 1
-    finally:
-        conn.close()
 
 
 # ============================================================
-# E. ECON-2.2 — cron 过期处理
+# E. ECON-2.2 — cron 过期处理(漫画包购买 endpoint 仍在,过期清理照常)
 # ============================================================
 
 def test_cron_expire_old_comic_packs(client: TestClient, make_user):
@@ -434,13 +260,19 @@ def test_cron_does_not_expire_used_packs(client: TestClient, make_user):
     u = make_user("cron_used_safe")
     _upgrade_to_pro(u["user_id"])
 
-    # 买 + 用(创建漫画扣 1 个)
+    # 买 1 包,然后**直接 SQL 标记 is_used=1**(v5 起创建漫画不再消耗包,
+    # 故不能靠创建来标 used;本测试只验证 cron 对 used lot 的保护语义)
     client.post("/api/credit/comic_pack/purchase", headers=u["headers"])
-    sim_id = _seed_done_simulation(client, u["headers"], u["user_id"])
-    client.post(
-        "/api/comics", headers=u["headers"],
-        json={"name": "used_safe 测试", "source": {"type": "internal", "simulation_ids": [sim_id]}},
-    )
+    conn = get_connection()
+    try:
+        conn.execute(
+            "UPDATE comic_pack_lots SET is_used=1, used_at='2026-07-01T00:00:00+00:00' "
+            "WHERE user_id=?",
+            (u["user_id"],),
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
     # 手工把 expires_at 改成过去
     conn = get_connection()

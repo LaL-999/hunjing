@@ -201,33 +201,41 @@ def api_create_comic(
       - 通过后落 state='queued',pipeline 跑完只 log cost audit,**不扣 credit**
       - 失败 / 取消的漫画不占用次数(count 时 NOT IN failed/cancelled)
     """
-    # 2026-06-02 产品决策:漫创态仅限 Pro 及以上(防绕过前端直接 POST)
-    # 必须先于配额校验 — Free 用户应看到"会员专属"而不是"需购买漫画包"
-    if user.plan == "free":
+    # v5(2026-07-02)漫创态解锁重构(item4 + item6):
+    #   - 漫画包 / comics_per_month 次数闸门**全部下线**(不再 enforce_comic_count_quota)
+    #   - 准入改为二选一:
+    #       a) 订阅 Pro / Max / founder → 用平台图像 key(订阅费已覆盖)
+    #       b) 开通自携密钥(BYOK)且配了『图像模型』→ 用自带 key,不占平台图像额度(主打路径)
+    #   - 防白嫖:免费无订阅、又没配 BYOK 图像 key 的用户拦在门外(否则生图会回落平台 key = 白嫖创始人)
+    from app.services.byok_service import (
+        get_active_image_config,
+        get_active_llm_config,
+    )
+
+    # super_max:v5 已下架不可售,但历史订阅用户老规则保护 —— 仍解锁漫创态
+    has_subscription = user.plan in ("pro", "max", "super_max", "founder")
+    has_byok_image = get_active_image_config(conn, user.id) is not None
+    if not (has_subscription or has_byok_image):
+        # 已开通 BYOK 文本但缺图像模型 → 精准引导去补;否则引导开通 BYOK(主打)/ 订阅
+        has_byok_active = get_active_llm_config(conn, user.id) is not None
+        if has_byok_active:
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                detail={
+                    "code": "COMIC_IMAGE_KEY_REQUIRED",
+                    "message": (
+                        "漫创态还差一个图像模型:你已开通自携密钥,请到「自携密钥」里再加配一个"
+                        "『图像模型』(硅基流动 / 火山 Seedream / 智谱 CogView 等),即可开始创作漫画。"
+                    ),
+                },
+            )
         raise HTTPException(
             status.HTTP_403_FORBIDDEN,
             detail={
-                "code": "COMIC_PLAN_REQUIRED",
-                "message": "漫创态是会员专属功能,升级 Pro 即可解锁",
-            },
-        )
-
-    # ECON-2(2026-05-27 末⁴⁴):漫画包优先 + PLAN_LIMITS 兜底双轨
-    try:
-        enforce_comic_count_quota(conn, user.id, user.plan)
-    except QuotaExceeded as e:
-        raise HTTPException(
-            status.HTTP_429_TOO_MANY_REQUESTS,
-            detail={
-                "code": "QUOTA_EXCEEDED",
-                "kind": e.kind,           # 'comics_per_month'
-                "used": e.used,
-                "limit": e.limit,
-                "plan": e.plan,
+                "code": "COMIC_ACCESS_REQUIRED",
                 "message": (
-                    "需要购买漫画包才能创建漫画。"
-                    "漫画态采用单买制:¥30/次,有效期 6 个月。"
-                    "请到「账号 / 加购」购买漫画包后再创建。"
+                    "漫创态需先开通「自携密钥」(¥5/月,配上你自己的图像模型 key 即可无限用),"
+                    "或订阅 Pro / Max。点击主页左下角个人头像卡片即可开通自携密钥。"
                 ),
             },
         )

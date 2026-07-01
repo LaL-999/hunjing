@@ -380,13 +380,14 @@ def upsert_config(
     ).fetchone()
 
     if req.is_default:
-        # 清掉该用户其他所有 default
+        # v5 item2:清默认按 modality 隔离 —— 一个用户可各留一个 text 默认 + 一个 image 默认,
+        # 互不覆盖(否则配了图像模型会把文本默认清掉)。
         conn.execute(
             """
             UPDATE byok_configs SET is_default = 0, updated_at = ?
-             WHERE user_id = ? AND is_default = 1
+             WHERE user_id = ? AND is_default = 1 AND modality = ?
             """,
-            (now_iso, user_id),
+            (now_iso, user_id, req.modality),
         )
 
     if existing:
@@ -400,6 +401,7 @@ def upsert_config(
                    api_key_encrypted = ?,
                    api_key_mask = ?,
                    is_default = ?,
+                   modality = ?,
                    updated_at = ?
              WHERE id = ?
             """,
@@ -409,6 +411,7 @@ def upsert_config(
                 encrypted,
                 mask,
                 int(req.is_default),
+                req.modality,
                 now_iso,
                 config_id,
             ),
@@ -420,9 +423,9 @@ def upsert_config(
             """
             INSERT INTO byok_configs
                 (id, user_id, provider, display_name, base_url, model_name,
-                 api_key_encrypted, api_key_mask, is_default,
+                 api_key_encrypted, api_key_mask, is_default, modality,
                  created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 config_id,
@@ -434,6 +437,7 @@ def upsert_config(
                 encrypted,
                 mask,
                 int(req.is_default),
+                req.modality,
                 created_at,
                 now_iso,
             ),
@@ -455,6 +459,7 @@ def upsert_config(
         api_key_encrypted=encrypted,
         api_key_mask=mask,
         is_default=req.is_default,
+        modality=req.modality,
         last_test_ok=None,
         last_test_at=None,
         last_test_error=None,
@@ -480,12 +485,18 @@ def set_default_config(
         return None
 
     now_iso = _now_iso()
+    # v5 item2:清默认按目标 config 的 modality 隔离(不误清另一模态的默认)
+    try:
+        target_modality = row["modality"]
+    except (KeyError, IndexError):
+        target_modality = "text"
+    target_modality = target_modality or "text"
     conn.execute(
         """
         UPDATE byok_configs SET is_default = 0, updated_at = ?
-         WHERE user_id = ? AND is_default = 1
+         WHERE user_id = ? AND is_default = 1 AND modality = ?
         """,
-        (now_iso, user_id),
+        (now_iso, user_id, target_modality),
     )
     conn.execute(
         """
@@ -568,11 +579,11 @@ def get_active_llm_config(
     if sub_row is None:
         return None
 
-    # 必须:有 default config
+    # 必须:有 default 文本 config(v5 item2:加 modality='text' 过滤,不误取图像配置)
     cfg_row = conn.execute(
         """
         SELECT * FROM byok_configs
-         WHERE user_id = ? AND is_default = 1
+         WHERE user_id = ? AND is_default = 1 AND modality = 'text'
          LIMIT 1
         """,
         (user_id,),
@@ -584,6 +595,59 @@ def get_active_llm_config(
         api_key = decrypt_api_key(cfg_row["api_key_encrypted"])
     except Exception:
         logger.exception("BYOK config 解密失败 — user_id=%s config_id=%s", user_id, cfg_row["id"])
+        return None
+
+    return {
+        "provider": cfg_row["provider"],
+        "base_url": cfg_row["base_url"],
+        "model_name": cfg_row["model_name"],
+        "api_key": api_key,
+    }
+
+
+def get_active_image_config(
+    conn: sqlite3.Connection,
+    user_id: str,
+) -> Optional[dict]:
+    """v5 item2 —— 给漫创态图像生成用:返回当前用户应走的 BYOK 图像模型配置(含明文 key)。
+
+    返回 None = 用户没有(有效订阅 + 默认图像配置),漫创态生图应回落平台 key
+                (此时 comics 路由的准入闸门会拦住免费无订阅用户,避免白嫖平台图像 API)。
+    返回 dict = 用户自带图像 key,字段与 get_active_llm_config 对称:
+        - provider / base_url / model_name / api_key(明文,调用完即丢)
+
+    与文本配置同源约束:必须有 is_active 且未过期的 BYOK 订阅(自携密钥本质是"月卡")。
+    """
+    now_iso = _now_iso()
+
+    sub_row = conn.execute(
+        """
+        SELECT 1 FROM byok_subscriptions
+         WHERE user_id = ? AND is_active = 1 AND expires_at > ?
+         LIMIT 1
+        """,
+        (user_id, now_iso),
+    ).fetchone()
+    if sub_row is None:
+        return None
+
+    cfg_row = conn.execute(
+        """
+        SELECT * FROM byok_configs
+         WHERE user_id = ? AND is_default = 1 AND modality = 'image'
+         LIMIT 1
+        """,
+        (user_id,),
+    ).fetchone()
+    if cfg_row is None:
+        return None
+
+    try:
+        api_key = decrypt_api_key(cfg_row["api_key_encrypted"])
+    except Exception:
+        logger.exception(
+            "BYOK 图像 config 解密失败 — user_id=%s config_id=%s", user_id, cfg_row["id"],
+        )
         return None
 
     return {
@@ -633,6 +697,7 @@ def to_response(config: BYOKConfig) -> BYOKConfigResponse:
         model_name=config.model_name,
         api_key_mask=config.api_key_mask,
         is_default=config.is_default,
+        modality=config.modality,
         last_test_ok=config.last_test_ok,
         last_test_at=config.last_test_at,
         last_test_error=config.last_test_error,
