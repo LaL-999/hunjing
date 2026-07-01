@@ -37,6 +37,7 @@ import { COMIC_STATE_LABEL } from "../api/types";
 import { useAuthStore } from "../stores/auth";
 import { useEventBus } from "../stores/events";
 import { useQuotaStore } from "../stores/quota";
+import { useBYOKStore } from "../stores/byok";
 import { useLoginModal } from "../composables/useLoginModal";
 import { useUpgradeModal } from "../composables/useUpgradeModal";
 import { confirm as confirmDialog } from "../composables/useConfirm";
@@ -47,19 +48,25 @@ const router = useRouter();
 const auth = useAuthStore();
 const events = useEventBus();
 const quota = useQuotaStore();
+const byok = useBYOKStore();
 const loginModal = useLoginModal();
 const upgradeModal = useUpgradeModal();
 
-// 2026-06-02:漫创态仅限 Pro 及以上(产品决策 — 不让 Free 白嫖,激发订阅意愿)
+// v5(2026-07-02):漫创态解锁 = 订阅(Pro/Max/超级Max/founder)或 开通自携密钥。
 // 注意:quota.status 未加载完成时,两者都返 false → 走 loading 分支,避免闪烁
 const isFreeTier = computed(() => quota.status?.plan === "free");
 const isPaidTier = computed(() => {
   const plan = quota.status?.plan;
   return plan === "pro" || plan === "max" || plan === "super_max" || plan === "founder";
 });
+// 只有"免费档 且 未开自携密钥"才拦门;BYOK 用户即使 free 也能用漫创态(item6)
+const showUpgradeGate = computed(() => isFreeTier.value && !byok.isActive);
 
 function handleUpgradeCta() {
   upgradeModal.open();
+}
+function handleByokCta() {
+  router.push("/byok-config");
 }
 
 const comics = ref<Comic[]>([]);
@@ -110,6 +117,8 @@ function _onComicsVisibilityChange() {
 const _comicUnsubs: Array<() => void> = [];
 onMounted(() => {
   void loadComics();
+  // v5:拉一次 BYOK 状态,让"解锁引导"能识别已开自携密钥的免费用户(不误拦)
+  if (auth.isAuthed) void byok.refreshStatus();
   try {
     _comicUnsubs.push(events.on("comic:created", () => void loadComics()));
     _comicUnsubs.push(events.on("comic:done", () => void loadComics()));
@@ -293,7 +302,7 @@ const empty = computed<boolean>(() => !loading.value && comics.value.length === 
         <strong class="banner-title">漫创态尝鲜版</strong>
         <p class="banner-text">
           AI 生图风格仍在迭代,产物会逐步惊艳。
-          按订阅福利使用,不消耗 credit:Pro 1 · Max 2 · 超级 Max 4 本/月。
+          订阅(Pro / Max)或开通自携密钥即解锁,不限本数。
         </p>
       </div>
     </div>
@@ -304,21 +313,23 @@ const empty = computed<boolean>(() => !loading.value && comics.value.length === 
       <button class="primary-btn" @click="handleLoginCta">登录</button>
     </div>
 
-    <!-- 2026-06-02:Free 档升级引导(漫创态仅限付费档) -->
-    <div v-else-if="isFreeTier" class="upgrade-gate">
+    <!-- v5(2026-07-02):Free 且未开自携密钥 → 解锁引导(BYOK 主打 + 订阅) -->
+    <div v-else-if="showUpgradeGate" class="upgrade-gate">
       <div class="upgrade-gate-icon" aria-hidden="true">⚭</div>
-      <h2 class="upgrade-gate-title">漫创态是会员专属功能</h2>
+      <h2 class="upgrade-gate-title">解锁漫创态</h2>
       <p class="upgrade-gate-text">
-        升级到 Pro 及以上档位,即可解锁<strong> AI 漫画创作 </strong>—
-        从文本一键生成漫画分镜 / 立绘 / 排版。
+        接上你自己的图像模型 key,或订阅 Pro / Max,即可解锁<strong> AI 漫画创作 </strong>—
+        从文本一键生成漫画分镜 / 立绘 / 排版,不限本数。
       </p>
       <ul class="upgrade-gate-perks">
-        <li><span class="perk-tier">Pro</span> 每月 1 本</li>
-        <li><span class="perk-tier">Max</span> 每月 2 本</li>
-        <li><span class="perk-tier">超级 Max</span> 每月 4 本</li>
+        <li><span class="perk-tier">自携密钥</span> ¥5/月 · 配图像模型即用</li>
+        <li><span class="perk-tier">Pro / Max</span> 订阅即解锁</li>
       </ul>
-      <button class="primary-btn" @click="handleUpgradeCta">升级解锁 →</button>
-      <p class="upgrade-gate-hint">订阅福利使用,不额外消耗 credit</p>
+      <div class="upgrade-gate-actions">
+        <button class="primary-btn" @click="handleByokCta">开通自携密钥 →</button>
+        <button class="ghost-btn" @click="handleUpgradeCta">看订阅方案</button>
+      </div>
+      <p class="upgrade-gate-hint">漫创态生图走你自己的 key,不占平台额度</p>
     </div>
 
     <!-- Loading 骨架 -->
@@ -578,6 +589,30 @@ const empty = computed<boolean>(() => !loading.value && comics.value.length === 
 }
 .upgrade-gate .primary-btn:hover {
   background: var(--color-accent-hover);
+}
+.upgrade-gate-actions {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  margin-top: var(--space-2);
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.upgrade-gate-actions .primary-btn { margin-top: 0; }
+.upgrade-gate .ghost-btn {
+  padding: var(--space-2) var(--space-5);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--color-text);
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out);
+}
+.upgrade-gate .ghost-btn:hover {
+  background: var(--color-surface-hover);
+  border-color: var(--color-border-strong);
 }
 .banner-icon {
   font-size: var(--text-xl);

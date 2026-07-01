@@ -359,24 +359,31 @@ def upsert_config(
     req: BYOKConfigUpsertRequest,
 ) -> BYOKConfig:
     """
-    新建 / 更新配置。同 (user_id, provider, model_name) 三元组覆盖。
+    新建 / 更新配置。同 (user_id, provider, model_name, modality) 四元组覆盖。
 
     流程:
     1. 加密 api_key + 生成 mask
-    2. 若指定 is_default=True,先把该用户所有 configs is_default=0
-    3. INSERT OR REPLACE(三元组 UNIQUE 自动触发 REPLACE)
+    2. 若指定 is_default=True,先把该用户同 modality 的 configs is_default=0
+    3. 查四元组:命中 → UPDATE;未命中 → INSERT
+
+    v5(2026-07-02)item2 不变量:表级 UNIQUE 仍是 (user_id, provider, model_name)
+    (migration 083,未加 modality —— 改动需重建表,production 有真实密钥不冒险)。
+    之所以安全:PROVIDER_LITERAL 让文本 provider(deepseek/qwen/...)与图像 provider
+    (siliconflow/seedream/cogview/custom_image)**名称互斥**,故同 (provider, model_name)
+    不会跨 modality 撞车。**务必保持文本/图像 provider 名不重叠**,否则 UNIQUE 会 500。
+    这里的 lookup 仍带上 modality,保证 SELECT-then-UPDATE 语义与 modality 一致。
     """
     now_iso = _now_iso()
     encrypted = encrypt_api_key(req.api_key)
     mask = mask_api_key(req.api_key)
 
-    # 看是否已有同 三元组
+    # 看是否已有同四元组(含 modality,防跨模态误更新)
     existing = conn.execute(
         """
         SELECT id, created_at FROM byok_configs
-         WHERE user_id = ? AND provider = ? AND model_name = ?
+         WHERE user_id = ? AND provider = ? AND model_name = ? AND modality = ?
         """,
-        (user_id, req.provider, req.model_name),
+        (user_id, req.provider, req.model_name, req.modality),
     ).fetchone()
 
     if req.is_default:

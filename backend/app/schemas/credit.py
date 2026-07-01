@@ -17,14 +17,14 @@ AddonPackageSize = Literal["small", "medium", "large"]
 class AddonPurchaseRequest(BaseModel):
     """加购包购买请求(当前 mock,Sprint C.5 接 webhook 后 deprecate 此端点 → 改 Stripe / 微信 / 支付宝)。
 
-    定价见 credit_service.ADDON_PACKAGES:
-      small  → 100 c / ¥18
-      medium → 500 c / ¥85
-      large  → 2000 c / ¥320
+    定价见 credit_service.ADDON_PACKAGES(v5 2026-07-02):
+      small  → 100 c / ¥10
+      medium → 500 c / ¥42
+      large  → 2000 c / ¥160
     """
     package_size: AddonPackageSize = Field(
         ...,
-        description="加购包规格:small=100c/¥18 / medium=500c/¥85 / large=2000c/¥320",
+        description="加购包规格:small=100c/¥10 / medium=500c/¥42 / large=2000c/¥160",
     )
     notes: Optional[str] = Field(
         default=None, max_length=200,

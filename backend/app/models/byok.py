@@ -162,7 +162,7 @@ class BYOKPurchaseRequest(BaseModel):
 class BYOKPurchaseResponse(BaseModel):
     code: str                  # BYOK-XXXX-XXXX-XXXX
     expires_at: str            # ISO
-    price_cents: int           # 实际付的总价(months × 3000)
+    price_cents: int           # 实际付的总价(months × BYOK_MONTHLY_PRICE_CENTS = 500)
 
 
 class BYOKActivateRequest(BaseModel):
