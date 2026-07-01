@@ -21,8 +21,9 @@ from app.services.billing_service import PLAN_PRICE_CENTS
 from app.services.credit_service import ADDON_PACKAGES
 
 
-# BYOK 月单价(分)— 与 byok_subscriptions.price_cents DEFAULT 一致
-BYOK_PRICE_PER_MONTH_CENTS = 3000
+# BYOK 月单价(分)— v5(2026-06-26)主打钩子:¥30 → ¥5/月
+# 与 models/byok.py BYOK_MONTHLY_PRICE_CENTS 必须同步
+BYOK_PRICE_PER_MONTH_CENTS = 500
 
 # 三大类目(履约路由 key)
 CATEGORY_SUBSCRIPTION = "subscription"
@@ -30,7 +31,7 @@ CATEGORY_BYOK = "byok"
 CATEGORY_CREDIT = "credit"
 
 # 订阅档中文名(显示用)
-_PLAN_LABEL = {"pro": "Pro", "max": "Max", "super_max": "Super Max"}
+_PLAN_LABEL = {"pro": "Pro", "max": "Max"}   # v5:super_max 下架,不再可售
 _CYCLE_LABEL = {"monthly": "月付", "yearly": "年付"}
 # 配额包中文名
 _PACK_LABEL = {"small": "小包 100", "medium": "中包 500", "large": "大包 2000"}
@@ -129,8 +130,8 @@ def get_sku(code: str) -> Optional[SKU]:
 def list_skus(category: Optional[str] = None) -> list[SKU]:
     """列出所有(或某类目)上架 SKU — 前端定价页 / 购买弹窗用。"""
     skus: list[SKU] = []
-    # 订阅:3 档 × 2 周期
-    for plan in ("pro", "max", "super_max"):
+    # 订阅:2 档 × 2 周期(v5:super_max 下架)
+    for plan in ("pro", "max"):
         for cycle in ("monthly", "yearly"):
             s = build_subscription_sku(plan, cycle)
             if s:

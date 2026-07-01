@@ -21,8 +21,9 @@ from pydantic import BaseModel, Field
 # 常量
 # ============================================================
 
-#: 单次月卡价格(单位:分)— 30 元 = 3000 分
-BYOK_MONTHLY_PRICE_CENTS = 3000
+#: 单次月卡价格(单位:分)— v5(2026-06-26)主打钩子:¥30 → ¥5 = 500 分
+#: 与 services/payments/catalog.py BYOK_PRICE_PER_MONTH_CENTS 必须同步
+BYOK_MONTHLY_PRICE_CENTS = 500
 
 #: 月卡有效期(天)— 30 天
 BYOK_VALIDITY_DAYS = 30

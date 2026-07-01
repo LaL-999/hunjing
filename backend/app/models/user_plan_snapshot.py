@@ -25,7 +25,7 @@ from typing import Any, Optional
 # 快照状态白名单(对齐 migration 022 v2 CHECK + service 校验)
 VALID_SNAPSHOT_STATES = ("active", "cancelled", "expired", "upgraded")
 VALID_BILLING_CYCLES = ("monthly", "yearly")
-VALID_PAID_PLANS = ("pro", "max", "super_max")   # free / founder 不写快照
+VALID_PAID_PLANS = ("pro", "max")   # v5:super_max 下架不可售;free / founder 不写快照
 
 
 @dataclass

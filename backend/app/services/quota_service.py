@@ -90,24 +90,22 @@ PLAN_LIMITS: dict[str, PlanLimits] = {
         comics_per_month=0,              # 不送(原本就是 0)
     ),
     "pro": PlanLimits(
-        # ¥138/月 ¥1407.60/年 — 基准档,单 credit ¥0.23(成本 ¥0.13 × 1.77)
-        # 满配额毛利 44% / 实跑 30% 假设下毛利 80%+
-        monthly_credits_quota=600,       # ECON-1:970 → 600(约 90 次中等推演)
-        single_credit_price_cents=23,    # ECON-1:14 → 23(¥0.23,月付反算 138/600)
+        # v5(2026-06-26):¥68/月 ¥693.60/年 — 单 credit ¥0.11(降价约半)
+        monthly_credits_quota=600,       # 沿用(约 90 次中等推演)
+        single_credit_price_cents=11,    # v5:23 → 11(¥0.11,月付反算 68/600)
         characters_per_project=30,
         projects_total=5,
         reshape_max_percent=80,
-        comics_per_month=0,              # ECON-1:1 → 0(漫画单买,详见 comic_pack)
+        comics_per_month=999999,         # item3(2026-06-26):订阅即解锁漫创态,去漫画包门槛
     ),
     "max": PlanLimits(
-        # ¥438/月 ¥4467.60/年 — 单 credit ¥0.22(-4.3% 比 Pro)
-        # 满配额毛利 41%
-        monthly_credits_quota=2000,      # ECON-1:3400 → 2000(约 300 次中等推演)
-        single_credit_price_cents=22,    # ECON-1:13 → 22(¥0.22,月付反算 438/2000)
+        # v5(2026-06-26):¥218/月 ¥2223.60/年 — 单 credit ¥0.11(降价约半)
+        monthly_credits_quota=2000,      # 沿用(约 300 次中等推演)
+        single_credit_price_cents=11,    # v5:22 → 11(¥0.11,月付反算 218/2000)
         characters_per_project=50,
         projects_total=20,
         reshape_max_percent=90,
-        comics_per_month=0,              # ECON-1:2 → 0
+        comics_per_month=999999,         # item3:订阅即解锁漫创态
     ),
     "super_max": PlanLimits(
         # ¥1388/月 ¥14157.60/年 — 单 credit ¥0.21(-8.7% 比 Pro)

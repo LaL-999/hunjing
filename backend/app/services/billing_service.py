@@ -58,18 +58,20 @@ from app.services.quota_service import PLAN_LIMITS
 #   - 单 credit 售价从 ¥0.14/0.13/0.12 升到 ¥0.23/0.22/0.21(实际毛利 44%+)
 #   - 漫创态从订阅福利改为"单买漫画包 ¥30/次"(comics_per_month 全档清零)
 # 详见 memory/session_tech_decisions_20260526.md 第十一章 ECON-1
+# v5(BYOK 主打转向,2026-06-26)— 用户拍板"BYOK ¥5/月 主打 → 订阅激进降价约半":
+#   - pro ¥138 → ¥68(-51%);max ¥438 → ¥218(-50%);super_max 删除
+#   - credit 数不变(600/2000),等于"单 credit 更便宜"(¥0.23→¥0.11)
+#   - 年付仍 = 月付 × 12 × 0.85
+#   - super_max 不再可售(从 VALID_PAID_PLANS / catalog / 前端全删),users.plan CHECK
+#     保留 super_max 仅为老数据兜底,不新写
 PLAN_PRICE_CENTS: dict[str, dict[str, int]] = {
     "pro": {
-        "monthly": 13800,    # ¥138(v3 不变)
-        "yearly":  140760,   # ¥1407.60(月付 × 12 × 0.85,v3 ¥1488 → -15%)
+        "monthly": 6800,     # ¥68(v4 ¥138 → -51%)
+        "yearly":  69360,    # ¥693.60(月付 × 12 × 0.85)
     },
     "max": {
-        "monthly": 43800,    # ¥438(v3 不变)
-        "yearly":  446760,   # ¥4467.60(月付 × 12 × 0.85,v3 ¥4728 → -15%)
-    },
-    "super_max": {
-        "monthly": 138800,   # ¥1388(v3 不变)
-        "yearly":  1415760,  # ¥14157.60(月付 × 12 × 0.85,v3 ¥14988 → -15%)
+        "monthly": 21800,    # ¥218(v4 ¥438 → -50%)
+        "yearly":  222360,   # ¥2223.60(月付 × 12 × 0.85)
     },
 }
 

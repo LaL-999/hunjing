@@ -23,6 +23,7 @@ from fastapi.responses import JSONResponse
 
 from app.config import settings
 from app.deps import get_current_user, get_db
+from app.models.byok import BYOK_MONTHLY_PRICE_CENTS
 from app.models.byok_payment import (
     CreatePaymentOrderRequest,
     CreatePaymentOrderResponse,
@@ -61,7 +62,7 @@ def api_payment_config():
         "payee_name": settings.byok_payee_name,
         "wechat_qr_url": _exists_url(settings.byok_wechat_qr_filename),
         "alipay_qr_url": _exists_url(settings.byok_alipay_qr_filename),
-        "monthly_price_yuan": 30,
+        "monthly_price_yuan": BYOK_MONTHLY_PRICE_CENTS // 100,   # v5:¥5(从常量派生,勿写死)
     }
 
 
