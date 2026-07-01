@@ -58,6 +58,7 @@ interface UserProfileResp {
     subscription_credits: number;
     addon_credits: number;
     available_comic_packs: number;
+    byok_active?: boolean;
   } | null;
   total_consumed_yuan: number | null;
   works: Work[];
@@ -152,7 +153,11 @@ function planLabel(p: string): string {
           </div>
           <div class="num-item">
             <div class="num-val">{{ data.balance.available_comic_packs }}</div>
-            <div class="num-label">可用漫画包</div>
+            <div class="num-label">可用漫画包(已下线)</div>
+          </div>
+          <div class="num-item">
+            <div class="num-val">{{ data.balance.byok_active ? "是" : "否" }}</div>
+            <div class="num-label">自携密钥激活</div>
           </div>
           <div class="num-item accent">
             <div class="num-val">{{ data.total_consumed_yuan === null ? "—" : `¥${data.total_consumed_yuan.toFixed(2)}` }}</div>

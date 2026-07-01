@@ -341,12 +341,15 @@ async def get_funnel(
         r = fetch_one(conn, sql9)
         steps_list.append({"name": "二次创作", "count": r["c"] if r else 0})
 
-        # 步骤 10:付费转化(active 订阅 OR 买过漫画包 OR 买过 addon)
+        # 步骤 10:付费转化(active 订阅 OR 开过自携密钥 OR 买过漫画包 OR 买过 addon)
+        # v5(2026-07-02):自携密钥(BYOK)升为主打付费方式,必须计入转化,否则严重低估
+        # (漫画包已下线,但历史购买记录仍算"曾转化",保留)。
         sql10_parts = []
         sql10_parts.append(
             "SELECT DISTINCT user_id FROM huimeng.user_plan_snapshots "
             "WHERE state='active'"
         )
+        sql10_parts.append("SELECT DISTINCT user_id FROM huimeng.byok_subscriptions")
         sql10_parts.append("SELECT DISTINCT user_id FROM huimeng.comic_pack_lots")
         sql10_parts.append("SELECT DISTINCT user_id FROM huimeng.addon_credit_lots")
         sql10 = (
@@ -728,10 +731,22 @@ async def get_user_profile(
                         "WHERE user_id=? AND is_used=0 AND is_expired=0",
                         (user_id,),
                     )
+                    # v5(2026-07-02):自携密钥主打后,用户详情加 BYOK 是否激活(付费主信号)
+                    try:
+                        byok_row = fetch_one(
+                            conn,
+                            "SELECT COUNT(*) AS c FROM huimeng.byok_subscriptions "
+                            "WHERE user_id=? AND is_active=1",
+                            (user_id,),
+                        )
+                        byok_active = bool(byok_row["c"]) if byok_row else False
+                    except Exception:  # noqa: BLE001
+                        byok_active = False
                     balance = {
                         "subscription_credits": b["subscription_credits"],
                         "addon_credits": b["addon_credits"],
                         "available_comic_packs": comic_pack_row["c"] if comic_pack_row else 0,
+                        "byok_active": byok_active,
                     }
 
                 # 累计消费 ¥
