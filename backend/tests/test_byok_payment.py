@@ -60,8 +60,8 @@ def mock_vision_llm(monkeypatch):
 # settings.byok_payee_name 默认就是 "李爽"(见 config.py),无需 patch
 
 
-def _good_detection(amount_yuan=30, payee="李*爽", txid="WX2026060512345678", pay_time=None):
-    """构造一份完美的 detection dict"""
+def _good_detection(amount_yuan=5, payee="李*爽", txid="WX2026060512345678", pay_time=None):
+    """构造一份完美的 detection dict(v5:BYOK 月卡 ¥30 → ¥5)"""
     if pay_time is None:
         # 默认 5 分钟前(在订单 24h 窗内)
         pay_time = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
@@ -72,7 +72,7 @@ def _good_detection(amount_yuan=30, payee="李*爽", txid="WX2026060512345678", 
         "transaction_id": txid,
         "is_success": True,
         "confidence": 0.95,
-        "raw_text_observed": "付款成功 ¥30.00",
+        "raw_text_observed": "付款成功 ¥5.00",
     }
 
 
@@ -112,7 +112,7 @@ def test_create_order_returns_pending(make_user, client):
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["order_id"].startswith("ORD-")
-    assert body["amount_cents"] == 3000
+    assert body["amount_cents"] == 500       # v5:BYOK 月卡 ¥5
     assert body["months"] == 1
     assert "扫描下方二维码" in body["instruction_text"]
 
@@ -167,7 +167,7 @@ def test_amount_mismatch_goes_to_manual_review(
     r = client.post("/api/byok/payment/orders", json={"months": 1}, headers=u["headers"])
     order_id = r.json()["order_id"]
 
-    # 截图识别出 ¥10(订单是 ¥30)
+    # 截图识别出 ¥10(订单是 ¥5,金额不符)
     mock_vision_llm["return_value"] = _good_detection(amount_yuan=10)
     fake_png = b"\x89PNG\r\n\x1a\n" + b"a" * 1000
     client.post(

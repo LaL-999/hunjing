@@ -33,13 +33,13 @@ def test_subscribe_happy_creates_active_snapshot(
     body = r.json()
     assert body["plan"] == "pro"
     assert body["billing_cycle"] == "monthly"
-    assert body["price_cents"] == 13800   # ¥138
-    assert body["price_yuan_fmt"] == "138.00"
+    assert body["price_cents"] == 6800   # v5:¥68(¥138 → ¥68 约减半)
+    assert body["price_yuan_fmt"] == "68.00"
     assert body["state"] == "active"
     assert body["notes"] == "测试"
-    # 快照里的 limits 跟当前 PLAN_LIMITS["pro"] 一致(ECON-1 v5:Pro 配额 600/¥0.23)
+    # 快照里的 limits 跟当前 PLAN_LIMITS["pro"] 一致(v5:Pro 配额 600/¥0.11)
     assert body["limits"]["monthly_credits_quota"] == 600
-    assert body["limits"]["single_credit_price_cents"] == 23
+    assert body["limits"]["single_credit_price_cents"] == 11
     assert body["limits"]["characters_per_project"] == 30
     assert body["limits"]["projects_total"] == 5
     assert body["limits"]["reshape_max_percent"] == 80
@@ -58,14 +58,14 @@ def test_subscribe_max_yearly_price_correct(
         json={"plan": "max", "billing_cycle": "yearly"},
     )
     assert r.status_code == 201
-    # ECON-1:Max yearly ¥4728 → ¥4467.60(月付 × 12 × 0.85 严格 -15%)
-    assert r.json()["price_cents"] == 446760
+    # v5:Max yearly ¥218 × 12 × 0.85 = ¥2223.60
+    assert r.json()["price_cents"] == 222360
     assert r.json()["plan"] == "max"
     assert r.json()["billing_cycle"] == "yearly"
 
 
 def test_subscribe_super_max_correct(client: TestClient, make_user, monkeypatch):
-    # ECON-1.4:本测试关注非 promo 路径
+    """v5(2026-07-02):超级 Max 已下架不可售 —— 订阅请求被拒(非 201)。"""
     from app.services import billing_service
     monkeypatch.setattr(billing_service, "is_first_subscription", lambda *a, **k: False)
 
@@ -74,11 +74,8 @@ def test_subscribe_super_max_correct(client: TestClient, make_user, monkeypatch)
         "/api/billing/subscribe", headers=user["headers"],
         json={"plan": "super_max", "billing_cycle": "monthly"},
     )
-    assert r.status_code == 201
-    assert r.json()["price_cents"] == 138800
-    # ECON-1:超级 Max 月度 credit 池 6500(v5,12000 → 6500 收紧)
-    assert r.json()["limits"]["monthly_credits_quota"] == 6500
-    assert r.json()["limits"]["single_credit_price_cents"] == 21
+    # 已下架:PaidPlan Literal 或 PLAN_PRICE_CENTS 缺失 → 400/422,绝不 201
+    assert r.status_code in (400, 422), r.text
 
 
 def test_subscribe_invalid_plan_returns_422(client: TestClient, make_user):
@@ -199,8 +196,8 @@ def test_upgrade_archives_old_creates_new_active(
     new = r2.json()
     assert new["plan"] == "max"
     assert new["billing_cycle"] == "yearly"
-    # ECON-1:Max yearly ¥4467.60(月付 × 12 × 0.85)
-    assert new["price_cents"] == 446760
+    # v5:Max yearly ¥2223.60(¥218 × 12 × 0.85)
+    assert new["price_cents"] == 222360
     assert new["id"] != old_id   # 新 snapshot
     assert new["state"] == "active"
 
@@ -382,8 +379,8 @@ def test_subscribe_first_month_promo_applied(
     )
     assert r.status_code == 201, r.text
     body = r.json()
-    # Pro 月付原价 ¥138 = 13800 分 → 5 折 6900 分
-    assert body["price_cents"] == 6900, f"首月 5 折应是 6900,实际 {body['price_cents']}"
+    # v5:Pro 月付原价 ¥68 = 6800 分 → 5 折 3400 分
+    assert body["price_cents"] == 3400, f"首月 5 折应是 3400,实际 {body['price_cents']}"
     # notes 应含 ECON-1.4 promo 标记(审计可追)
     assert body["notes"] is not None
     assert "first_month_promo" in body["notes"]
@@ -402,7 +399,7 @@ def test_subscribe_second_time_no_first_month_promo(
     )
     assert r1.status_code == 201
     first_price = r1.json()["price_cents"]
-    assert first_price == 6900   # 5 折确认
+    assert first_price == 3400   # v5:5 折确认(6800 × 0.5)
 
     # 取消订阅
     rc = client.post("/api/billing/cancel", headers=h)
@@ -414,9 +411,9 @@ def test_subscribe_second_time_no_first_month_promo(
         json={"plan": "pro", "billing_cycle": "monthly"},
     )
     assert r2.status_code == 201
-    # 第 2 次走 grandfather(沿用第 1 次 6900),而非全价 13800,也不是再次 5 折(基于全价 6900)
-    assert r2.json()["price_cents"] == 6900, (
-        f"6 月价保应沿用老价 6900,实际 {r2.json()['price_cents']}"
+    # 第 2 次走 grandfather(沿用第 1 次 3400),而非全价 6800,也不是再次 5 折
+    assert r2.json()["price_cents"] == 3400, (
+        f"6 月价保应沿用老价 3400,实际 {r2.json()['price_cents']}"
     )
     assert "grandfather" in r2.json()["notes"]
 
@@ -438,18 +435,18 @@ def test_subscribe_grandfather_only_same_plan_cycle(
         json={"plan": "pro", "billing_cycle": "monthly"},
     )
     assert r1.status_code == 201
-    assert r1.json()["price_cents"] == 13800   # 全价
+    assert r1.json()["price_cents"] == 6800   # v5 全价
 
     # 取消
     client.post("/api/billing/cancel", headers=h)
 
-    # 重订相同 Pro monthly → grandfather 命中(沿用 13800,虽然就是当前价)
+    # 重订相同 Pro monthly → grandfather 命中(沿用 6800,虽然就是当前价)
     r2 = client.post(
         "/api/billing/subscribe", headers=h,
         json={"plan": "pro", "billing_cycle": "monthly"},
     )
     assert r2.status_code == 201
-    assert r2.json()["price_cents"] == 13800
+    assert r2.json()["price_cents"] == 6800
 
     # cancel,再订**不同 cycle**(Pro yearly)→ grandfather 不命中,走当前全价
     client.post("/api/billing/cancel", headers=h)
@@ -458,9 +455,9 @@ def test_subscribe_grandfather_only_same_plan_cycle(
         json={"plan": "pro", "billing_cycle": "yearly"},
     )
     assert r3.status_code == 201
-    # Pro yearly 当前全价 140760(¥1407.60)
-    assert r3.json()["price_cents"] == 140760, (
-        f"跨 cycle 不享 grandfather,应走全价 140760,实际 {r3.json()['price_cents']}"
+    # v5:Pro yearly 当前全价 69360(¥693.60)
+    assert r3.json()["price_cents"] == 69360, (
+        f"跨 cycle 不享 grandfather,应走全价 69360,实际 {r3.json()['price_cents']}"
     )
 
 
@@ -480,9 +477,9 @@ def test_compute_subscribe_price_helpers(client: TestClient, make_user):
         assert is_first_subscription(conn, user["user_id"]) is True
         assert find_grandfather_price_cents(conn, user["user_id"], "pro", "monthly") is None
 
-        # 2. compute 应返 5 折(因为是 first sub)
+        # 2. compute 应返 5 折(因为是 first sub;v5:6800 × 0.5 = 3400)
         price, rule = compute_subscribe_price_cents(conn, user["user_id"], "pro", "monthly")
-        assert price == 6900
+        assert price == 3400
         assert rule == "first_month_promo"
     finally:
         conn.close()
