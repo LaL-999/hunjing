@@ -4,6 +4,8 @@
 .env.*.local
 backend/.env
 insights-backend/.env
+# 洞察前端生产 env 含 VITE_ADMIN_TOKEN(会内联进 bundle)—— 绝不入库
+insights-frontend/.env.production
 
 # Tauri 更新器签名私钥 — 绝不入库(.key 是私钥;.key.pub 公钥也不放文件,直接进 conf)
 **/.tauri/

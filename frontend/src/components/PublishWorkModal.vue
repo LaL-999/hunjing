@@ -74,10 +74,6 @@ const submitError = ref<string | null>(null);
 
 const fileInput = ref<HTMLInputElement | null>(null);
 
-const selectedSim = computed(() =>
-  sims.value.find((s) => s.sim_id === selectedSimId.value) ?? null,
-);
-
 /** 剧本发布:episodes/both 必须选中一个分集方案 */
 const screenplayReady = computed(() => {
   if (!selectedNovelId.value) return false;
