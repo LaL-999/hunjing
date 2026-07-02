@@ -17,6 +17,7 @@ insights-frontend/.env.production
 # Python 虚拟环境与缓存
 .venv/
 venv/
+*.egg-info/
 __pycache__/
 *.pyc
 *.pyo
