@@ -41,6 +41,7 @@ from app.models.user import User
 from app.services import plaza_service
 from app.services.plaza_service import (
     PlazaError,
+    PublishComicInput,
     PublishInput,
     PublishScreenplayInput,
 )
@@ -129,6 +130,8 @@ class PublishBody(BaseModel):
     summary: Optional[str] = Field(None, description="简介,空则自动截取正文前 80 字")
     cover_image_path: Optional[str] = Field(None, description="封面图内部 URL(先调 /plaza/cover 上传)")
     cover_gradient: int = Field(1, ge=1, le=9, description="无封面图时用的默认渐变编号 1-9")
+    is_public: int = Field(1, ge=0, le=1, description="1 公开(上广场)/ 0 私人(仅作者)")
+    allow_download: int = Field(1, ge=0, le=1, description="公开时是否允许他人下载正文")
 
 
 class PublishScreenplayBody(BaseModel):
@@ -140,6 +143,23 @@ class PublishScreenplayBody(BaseModel):
     summary: Optional[str] = Field(None, description="简介,空则自动截取正文前 80 字")
     cover_image_path: Optional[str] = Field(None, description="封面图内部 URL")
     cover_gradient: int = Field(1, ge=1, le=9, description="无封面图时用的默认渐变 1-9")
+    is_public: int = Field(1, ge=0, le=1)
+    allow_download: int = Field(1, ge=0, le=1)
+
+
+class PublishComicBody(BaseModel):
+    comic_id: str = Field(..., description="要上架的漫画 comic id(需 state=done + 已排版)")
+    title: str = Field(..., description="作品名(1-60 字)")
+    summary: Optional[str] = Field(None, description="简介,空则自动生成")
+    cover_image_path: Optional[str] = Field(None, description="封面图内部 URL,空则用第一页")
+    cover_gradient: int = Field(1, ge=1, le=9)
+    is_public: int = Field(1, ge=0, le=1)
+    allow_download: int = Field(1, ge=0, le=1)
+
+
+class VisibilityBody(BaseModel):
+    is_public: Optional[int] = Field(None, ge=0, le=1)
+    allow_download: Optional[int] = Field(None, ge=0, le=1)
 
 
 class LikeBody(BaseModel):
@@ -218,6 +238,8 @@ def api_publish(
                 summary=body.summary,
                 cover_image_path=body.cover_image_path,
                 cover_gradient=body.cover_gradient,
+                is_public=body.is_public,
+                allow_download=body.allow_download,
             ),
         )
     except PlazaError as exc:
@@ -245,6 +267,44 @@ def api_publish_screenplay(
                 summary=body.summary,
                 cover_image_path=body.cover_image_path,
                 cover_gradient=body.cover_gradient,
+                is_public=body.is_public,
+                allow_download=body.allow_download,
+            ),
+        )
+    except PlazaError as exc:
+        raise _map_plaza_error(exc)
+    conn.commit()
+    return work
+
+
+@router.get("/plaza/publishable-comics")
+def api_list_publishable_comics(
+    user: User = Depends(get_current_user),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict:
+    """我可上架的漫画(state=done 且有已排版整页)。"""
+    return {"items": plaza_service.list_publishable_comics(conn, user.id)}
+
+
+@router.post("/plaza/publish-comic", status_code=status.HTTP_201_CREATED)
+def api_publish_comic(
+    body: PublishComicBody,
+    user: User = Depends(get_current_user),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict:
+    """把已完成的漫画上架到广场(快照整页 PNG 稳定 URL)。"""
+    try:
+        work = plaza_service.publish_comic(
+            conn,
+            user.id,
+            PublishComicInput(
+                comic_id=body.comic_id,
+                title=body.title,
+                summary=body.summary,
+                cover_image_path=body.cover_image_path,
+                cover_gradient=body.cover_gradient,
+                is_public=body.is_public,
+                allow_download=body.allow_download,
             ),
         )
     except PlazaError as exc:
@@ -254,6 +314,19 @@ def api_publish_screenplay(
 
 
 @router.get("/plaza/works/{work_id}")
+def api_work_detail(
+    work_id: str,
+    user: User = Depends(get_current_user),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict:
+    """作品详情落地页:元信息 + 预览 + 权限(**不 +阅读量、不返全文**)。"""
+    try:
+        return plaza_service.get_work_detail(conn, work_id, user.id)
+    except ResourceNotFoundOrForbidden:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="作品不存在或已下架")
+
+
+@router.get("/plaza/works/{work_id}/content")
 def api_read_work(
     work_id: str,
     user: User = Depends(get_current_user),
@@ -264,6 +337,56 @@ def api_read_work(
         work = plaza_service.read_work(conn, work_id, user.id)
     except ResourceNotFoundOrForbidden:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="作品不存在或已下架")
+    conn.commit()
+    return work
+
+
+@router.get("/plaza/works/{work_id}/download")
+def api_download_work(
+    work_id: str,
+    user: User = Depends(get_current_user),
+    conn: sqlite3.Connection = Depends(get_db),
+):
+    """下载作品正文(Markdown)。权限:作者本人,或 公开+允许下载。漫画不支持文本下载。"""
+    from fastapi.responses import Response as _Response
+    from urllib.parse import quote
+
+    try:
+        data = plaza_service.get_work_for_download(conn, work_id, user.id)
+    except ResourceNotFoundOrForbidden:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="作品不存在")
+    except PlazaError as exc:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail={"code": exc.code, "message": exc.message})
+    if data["source_type"] == "comic":
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail={"code": "COMIC_NO_TEXT_DOWNLOAD", "message": "漫画作品请用在线阅读浏览整页"},
+        )
+    title = (data["title"] or "作品").strip()
+    md = f"# {title}\n\n{data['content'] or ''}\n"
+    fname = quote(f"{title}.md")
+    return _Response(
+        content=md.encode("utf-8"),
+        media_type="text/markdown; charset=utf-8",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{fname}"},
+    )
+
+
+@router.patch("/plaza/works/{work_id}/visibility")
+def api_set_visibility(
+    work_id: str,
+    body: VisibilityBody,
+    user: User = Depends(get_current_user),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict:
+    """作者改作品权限(公开/私人 + 是否允许下载)。"""
+    try:
+        work = plaza_service.set_work_visibility(
+            conn, work_id, user.id,
+            is_public=body.is_public, allow_download=body.allow_download,
+        )
+    except ResourceNotFoundOrForbidden:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="作品不存在或无权修改")
     conn.commit()
     return work
 

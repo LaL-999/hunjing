@@ -15,6 +15,7 @@ import {
   plazaApi,
   type PublishableSim,
   type PublishableScreenplay,
+  type PublishableComic,
   type ScreenplayPublishKind,
 } from "../api/plaza";
 import { toast } from "../composables/useToast";
@@ -34,8 +35,8 @@ const MODE_LABELS: Record<string, string> = {
 };
 const GRADIENTS = [1, 2, 3, 4, 5, 6, 7, 8, 9];
 
-// v5 item8:发布来源 —— 推演作品(simulation)/ 剧本(screenplay)
-type SourceType = "sim" | "screenplay";
+// 发布来源 —— 推演(simulation)/ 剧本(screenplay)/ 漫画(comic)
+type SourceType = "sim" | "screenplay" | "comic";
 const sourceType = ref<SourceType>("sim");
 
 const sims = ref<PublishableSim[]>([]);
@@ -47,6 +48,14 @@ const screenplays = ref<PublishableScreenplay[]>([]);
 const selectedNovelId = ref<string | null>(null);
 const screenplayKind = ref<ScreenplayPublishKind>("global");
 const selectedPlanId = ref<string | null>(null);
+
+// 漫画可发布素材
+const comics = ref<PublishableComic[]>([]);
+const selectedComicId = ref<string | null>(null);
+
+// 作品权限(v5)
+const isPublic = ref(true);
+const allowDownload = ref(true);
 
 const selectedNovel = computed(() =>
   screenplays.value.find((s) => s.novel_id === selectedNovelId.value) ?? null,
@@ -76,9 +85,11 @@ const screenplayReady = computed(() => {
   return true;
 });
 
-const hasSelection = computed(() =>
-  sourceType.value === "sim" ? !!selectedSimId.value : screenplayReady.value,
-);
+const hasSelection = computed(() => {
+  if (sourceType.value === "sim") return !!selectedSimId.value;
+  if (sourceType.value === "comic") return !!selectedComicId.value;
+  return screenplayReady.value;
+});
 
 const canSubmit = computed(
   () =>
@@ -115,24 +126,45 @@ async function loadPublishableScreenplays(): Promise<void> {
   }
 }
 
+async function loadPublishableComics(): Promise<void> {
+  loadingSims.value = true;
+  loadError.value = null;
+  try {
+    const resp = await plazaApi.publishableComics();
+    comics.value = resp.items;
+  } catch (e) {
+    loadError.value = e instanceof ApiError ? e.message : "加载可上架漫画失败";
+  } finally {
+    loadingSims.value = false;
+  }
+}
+
 function resetForm(): void {
   selectedSimId.value = null;
   selectedNovelId.value = null;
   selectedPlanId.value = null;
+  selectedComicId.value = null;
   screenplayKind.value = "global";
   title.value = "";
   summary.value = "";
   coverGradient.value = 1;
   coverImagePath.value = null;
+  isPublic.value = true;
+  allowDownload.value = true;
   submitError.value = null;
+}
+
+function reloadCurrent(): void {
+  if (sourceType.value === "sim") void loadPublishable();
+  else if (sourceType.value === "screenplay") void loadPublishableScreenplays();
+  else void loadPublishableComics();
 }
 
 function switchSource(t: SourceType): void {
   if (sourceType.value === t) return;
   sourceType.value = t;
   resetForm();
-  if (t === "sim") void loadPublishable();
-  else void loadPublishableScreenplays();
+  reloadCurrent();
 }
 
 watch(
@@ -160,6 +192,11 @@ function pickNovel(sp: PublishableScreenplay): void {
   // 若没有全局剧本,默认切到分集
   screenplayKind.value = sp.has_global ? "global" : "episodes";
   if (!title.value.trim()) title.value = sp.novel_title || "我的剧本";
+}
+
+function pickComic(c: PublishableComic): void {
+  selectedComicId.value = c.comic_id;
+  if (!title.value.trim()) title.value = c.name || "我的漫画";
 }
 
 function triggerUpload(): void {
@@ -194,6 +231,10 @@ async function handleSubmit(): Promise<void> {
   if (!canSubmit.value) return;
   submitting.value = true;
   submitError.value = null;
+  const vis = {
+    is_public: isPublic.value ? 1 : 0,
+    allow_download: allowDownload.value ? 1 : 0,
+  };
   try {
     if (sourceType.value === "sim") {
       if (!selectedSimId.value) return;
@@ -203,6 +244,17 @@ async function handleSubmit(): Promise<void> {
         summary: summary.value.trim() || null,
         cover_image_path: coverImagePath.value,
         cover_gradient: coverGradient.value,
+        ...vis,
+      });
+    } else if (sourceType.value === "comic") {
+      if (!selectedComicId.value) return;
+      await plazaApi.publishComic({
+        comic_id: selectedComicId.value,
+        title: title.value.trim(),
+        summary: summary.value.trim() || null,
+        cover_image_path: coverImagePath.value,
+        cover_gradient: coverGradient.value,
+        ...vis,
       });
     } else {
       if (!selectedNovelId.value) return;
@@ -214,6 +266,7 @@ async function handleSubmit(): Promise<void> {
         summary: summary.value.trim() || null,
         cover_image_path: coverImagePath.value,
         cover_gradient: coverGradient.value,
+        ...vis,
       });
     }
     emit("published");
@@ -276,7 +329,7 @@ function fmtDate(iso: string): string {
             <p class="modal-subtitle">选一部已完成的作品,分享到广场免费给大家阅读</p>
           </header>
 
-          <!-- v5 item8:发布来源 tab -->
+          <!-- 发布来源 tab -->
           <div class="source-tabs" role="tablist">
             <button
               type="button" class="source-tab"
@@ -289,7 +342,13 @@ function fmtDate(iso: string): string {
               :class="{ 'is-active': sourceType === 'screenplay' }"
               role="tab" :aria-selected="sourceType === 'screenplay'"
               @click="switchSource('screenplay')"
-            >剧本(剧创态)</button>
+            >剧本</button>
+            <button
+              type="button" class="source-tab"
+              :class="{ 'is-active': sourceType === 'comic' }"
+              role="tab" :aria-selected="sourceType === 'comic'"
+              @click="switchSource('comic')"
+            >漫画</button>
           </div>
 
           <!-- 选作品 -->
@@ -299,8 +358,7 @@ function fmtDate(iso: string): string {
             <div v-if="loadingSims" class="state-msg">加载可上架作品…</div>
             <div v-else-if="loadError" class="state-msg state-error">
               {{ loadError }}
-              <button class="retry-btn" type="button"
-                @click="sourceType === 'sim' ? loadPublishable() : loadPublishableScreenplays()">重试</button>
+              <button class="retry-btn" type="button" @click="reloadCurrent">重试</button>
             </div>
 
             <!-- 推演作品列表 -->
@@ -338,7 +396,7 @@ function fmtDate(iso: string): string {
             </template>
 
             <!-- 剧本列表 -->
-            <template v-else>
+            <template v-else-if="sourceType === 'screenplay'">
               <div v-if="screenplays.length === 0" class="state-msg">
                 还没有可上架的剧本 — 请先在剧创态生成「全局剧本」或「分集方案」。
               </div>
@@ -366,6 +424,43 @@ function fmtDate(iso: string): string {
                       <template v-if="sp.has_global">含全局剧本 · </template>
                       {{ sp.episode_plans.length }} 套分集方案
                     </p>
+                  </div>
+                </li>
+              </ul>
+            </template>
+
+            <!-- 漫画列表 -->
+            <template v-else>
+              <div v-if="comics.length === 0" class="state-msg">
+                还没有可上架的漫画 — 请先在漫创态完成一部漫画(生成 + 排版)。
+              </div>
+              <ul v-else class="sim-list" role="listbox">
+                <li
+                  v-for="c in comics"
+                  :key="c.comic_id"
+                  class="sim-row"
+                  :class="{ 'is-selected': selectedComicId === c.comic_id }"
+                  role="option"
+                  :aria-selected="selectedComicId === c.comic_id"
+                  tabindex="0"
+                  @click="pickComic(c)"
+                  @keydown.enter.prevent="pickComic(c)"
+                >
+                  <span class="sim-radio" aria-hidden="true">
+                    <span v-if="selectedComicId === c.comic_id" class="dot" />
+                  </span>
+                  <img
+                    v-if="c.cover_url"
+                    :src="apiAssetUrl(c.cover_url)"
+                    class="comic-thumb"
+                    alt=""
+                  />
+                  <div class="sim-content">
+                    <div class="sim-head">
+                      <span class="sim-mode">漫创态</span>
+                      <span class="sim-project">{{ c.name || "未命名漫画" }}</span>
+                    </div>
+                    <p class="sim-summary">共 {{ c.page_count }} 页</p>
                   </div>
                 </li>
               </ul>
@@ -491,6 +586,36 @@ function fmtDate(iso: string): string {
                 @change="onFilePicked"
               />
             </div>
+
+            <!-- 作品权限(v5)-->
+            <div class="field">
+              <label class="field-label">作品权限</label>
+              <div class="vis-seg">
+                <button
+                  type="button" class="vis-opt"
+                  :class="{ 'is-on': isPublic }"
+                  @click="isPublic = true"
+                >
+                  <span class="vis-opt-name">公开</span>
+                  <span class="vis-opt-desc">展示在广场,所有人可阅读</span>
+                </button>
+                <button
+                  type="button" class="vis-opt"
+                  :class="{ 'is-on': !isPublic }"
+                  @click="isPublic = false"
+                >
+                  <span class="vis-opt-name">私人</span>
+                  <span class="vis-opt-desc">仅自己可见,不在广场展示</span>
+                </button>
+              </div>
+              <label
+                v-if="isPublic && sourceType !== 'comic'"
+                class="checkbox-row vis-dl"
+              >
+                <input v-model="allowDownload" type="checkbox" />
+                <span>允许其他用户下载正文(Markdown)</span>
+              </label>
+            </div>
           </template>
 
           <p v-if="submitError" class="submit-error">{{ submitError }}</p>
@@ -609,6 +734,38 @@ function fmtDate(iso: string): string {
 }
 .kind-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .plan-select { display: flex; flex-direction: column; gap: 4px; margin-top: var(--space-2); }
+
+/* v5:作品权限 */
+.vis-seg { display: flex; gap: var(--space-2); }
+.vis-opt {
+  flex: 1;
+  display: flex; flex-direction: column; gap: 2px;
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out);
+}
+.vis-opt:hover { border-color: var(--color-accent-border); }
+.vis-opt.is-on {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+.vis-opt-name { font-size: var(--text-sm); font-weight: 600; color: var(--color-text); }
+.vis-opt.is-on .vis-opt-name { color: var(--color-accent-text); }
+.vis-opt-desc { font-size: var(--text-xs); color: var(--color-text-muted); }
+.checkbox-row {
+  display: flex; align-items: center; gap: var(--space-2);
+  font-size: var(--text-sm); color: var(--color-text); cursor: pointer;
+}
+.vis-dl { margin-top: var(--space-2); }
+.comic-thumb {
+  width: 38px; height: 52px; flex-shrink: 0;
+  object-fit: cover; border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+}
 
 .field { display: flex; flex-direction: column; gap: var(--space-2); }
 .field-label { font-size: var(--text-sm); font-weight: 500; color: var(--color-text); }

@@ -81,8 +81,17 @@ def test_plaza_full_flow(client, make_user):
         ids = [c["id"] for c in r.json()["items"]]
         assert work_id in ids, f"{sort} 排序未列出作品"
 
-    # 5. 在线阅读:返回正文 + 阅读量 +1
+    # 5a. 详情落地页:元信息 + 预览,不 +阅读量、不返全文(v5)
     r = client.get(f"/api/plaza/works/{work_id}", headers=author["headers"])
+    assert r.status_code == 200, r.text
+    detail = r.json()
+    assert "content" not in detail          # 详情不返全文
+    assert detail["read_count"] == 0        # 详情不 +阅读量
+    assert detail["is_owner"] is True
+    assert detail.get("preview")            # 有预览节选
+
+    # 5b. 在线阅读(/content):返回正文 + 阅读量 +1
+    r = client.get(f"/api/plaza/works/{work_id}/content", headers=author["headers"])
     assert r.status_code == 200, r.text
     assert "第一章" in r.json()["content"]
     assert r.json()["read_count"] == 1

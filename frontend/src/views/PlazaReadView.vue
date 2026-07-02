@@ -16,7 +16,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
-import { ApiError } from "../api/client";
+import { ApiError, apiAssetUrl } from "../api/client";
 import { plazaApi, type PlazaWork } from "../api/plaza";
 import { useAuthStore } from "../stores/auth";
 import { useLoginModal } from "../composables/useLoginModal";
@@ -100,7 +100,20 @@ const items = computed<RenderItem[]>(() => {
       return { type: "p", text: s.replace(/\n/g, " ") };
     });
 });
-const isEmpty = computed(() => items.value.length === 0);
+// v5:漫画作品 —— content 是整页图 URL 的 JSON 数组,走图片阅读分支(非文本分栏引擎)
+const isComic = computed(() => work.value?.source_type === "comic");
+const comicPages = computed<string[]>(() => {
+  if (!isComic.value) return [];
+  try {
+    const arr = JSON.parse(work.value?.content || "[]");
+    return Array.isArray(arr) ? arr : [];
+  } catch {
+    return [];
+  }
+});
+const isEmpty = computed(() =>
+  isComic.value ? comicPages.value.length === 0 : items.value.length === 0,
+);
 
 const charCount = computed(
   () => work.value?.word_count ?? (work.value?.content?.match(/[一-鿿]/g) || []).length,
@@ -162,7 +175,7 @@ const fontSizeLabel = computed(() =>
 // ============================================================
 // 返回广场
 // ============================================================
-function exitReader() { router.push("/plaza"); }
+function exitReader() { router.push(`/plaza/works/${workId.value}`); }
 
 // ============================================================
 // 点赞(plaza 专属)
@@ -255,7 +268,7 @@ async function recalcStable(resetScroll = false) {
   recalcPagination();
 }
 watch(loading, (isLoading) => {
-  if (!isLoading && work.value && !isEmpty.value) void recalcStable(true);
+  if (!isLoading && work.value && !isEmpty.value && !isComic.value) void recalcStable(true);
 });
 watch(() => [prefs.value.fontSize, prefs.value.spread], () => { void recalcStable(true); });
 
@@ -312,7 +325,8 @@ function fmtCount(n: number): string {
         <span class="title-text">{{ work?.title || "在线阅读" }}</span>
       </h1>
 
-      <div class="reader-tools">
+      <!-- 文本工具(漫画不需要字号/单双页)-->
+      <div v-if="!isComic" class="reader-tools">
         <div class="tool-group">
           <button class="tool-btn" @click="adjustFontSize(-1)" title="缩小字号 (-)">A−</button>
           <span class="tool-label">{{ fontSizeLabel }}</span>
@@ -323,6 +337,7 @@ function fmtCount(n: number): string {
         <span class="tool-sep" aria-hidden="true">·</span>
         <button class="tool-btn" @click="cycleTheme" title="主题切换 (T)">{{ themeLabel }}</button>
       </div>
+      <div v-else class="reader-tools comic-pagecount">共 {{ comicPages.length }} 页</div>
     </header>
 
     <!-- loading / error / empty -->
@@ -336,7 +351,20 @@ function fmtCount(n: number): string {
       <button class="ghost-btn" @click="exitReader">返回广场</button>
     </div>
 
-    <!-- 内容区(CSS column 分页) -->
+    <!-- 漫画:整页图竖向阅读 -->
+    <main v-else-if="isComic" class="comic-scroll">
+      <img
+        v-for="(p, i) in comicPages"
+        :key="i"
+        :src="apiAssetUrl(p)"
+        class="comic-page"
+        :alt="`第 ${i + 1} 页`"
+        loading="lazy"
+        draggable="false"
+      />
+    </main>
+
+    <!-- 文本内容区(CSS column 分页) -->
     <main
       v-else
       ref="pagerEl"
@@ -373,14 +401,18 @@ function fmtCount(n: number): string {
       </div>
     </main>
 
-    <!-- 底部 footer:翻页 + 进度 + 点赞 -->
+    <!-- 底部 footer:文本翻页 + 进度 + 点赞 / 漫画仅点赞 -->
     <footer v-if="!loading && !errorMsg && !isEmpty" class="reader-toolbar reader-toolbar--bottom">
-      <button class="page-btn" :disabled="currentPage <= 1" @click="prevPage" aria-label="上一页">‹</button>
-      <span class="page-meta">{{ currentPage }} / {{ totalPages }}</span>
-      <div class="progress-track" role="progressbar"
-        :aria-valuenow="progressPct" aria-valuemin="0" aria-valuemax="100">
-        <div class="progress-fill" :style="{ width: `${progressPct}%` }"></div>
-      </div>
+      <template v-if="!isComic">
+        <button class="page-btn" :disabled="currentPage <= 1" @click="prevPage" aria-label="上一页">‹</button>
+        <span class="page-meta">{{ currentPage }} / {{ totalPages }}</span>
+        <div class="progress-track" role="progressbar"
+          :aria-valuenow="progressPct" aria-valuemin="0" aria-valuemax="100">
+          <div class="progress-fill" :style="{ width: `${progressPct}%` }"></div>
+        </div>
+      </template>
+      <span v-else class="comic-foot-spacer"></span>
+
       <button
         v-if="work"
         type="button"
@@ -396,8 +428,10 @@ function fmtCount(n: number): string {
         </svg>
         <span>{{ fmtCount(work.like_count) }}</span>
       </button>
-      <span class="char-count">{{ charCount.toLocaleString() }} 字</span>
-      <button class="page-btn" :disabled="currentPage >= totalPages" @click="nextPage" aria-label="下一页">›</button>
+      <span v-if="!isComic" class="char-count">{{ charCount.toLocaleString() }} 字</span>
+      <template v-if="!isComic">
+        <button class="page-btn" :disabled="currentPage >= totalPages" @click="nextPage" aria-label="下一页">›</button>
+      </template>
     </footer>
   </div>
 </template>
@@ -640,6 +674,27 @@ function fmtCount(n: number): string {
 .like-pill:hover:not(:disabled) { border-color: #E8B4B4; color: #D9534F; }
 .like-pill.on { border-color: #E8B4B4; color: #D9534F; background: rgba(217, 83, 79, 0.08); }
 .like-pill:disabled { opacity: 0.6; cursor: default; }
+
+/* 漫画竖向阅读 */
+.comic-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 64px 0 64px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+.comic-page {
+  width: 100%;
+  max-width: 820px;
+  height: auto;
+  display: block;
+  border-radius: 4px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12);
+}
+.comic-pagecount { font-size: var(--text-sm); color: var(--r-muted); }
+.comic-foot-spacer { flex: 1; }
 
 @media (prefers-reduced-motion: reduce) {
   .reader, .reader-toolbar, .progress-fill { transition: none !important; }

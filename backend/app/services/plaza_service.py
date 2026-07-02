@@ -42,6 +42,8 @@ class PublishInput:
     summary: Optional[str] = None
     cover_image_path: Optional[str] = None
     cover_gradient: int = 1
+    is_public: int = 1        # v5:1 公开(上广场)/ 0 私人(仅作者可见)
+    allow_download: int = 1   # v5:公开时是否允许他人下载正文
 
 
 @dataclass
@@ -54,6 +56,28 @@ class PublishScreenplayInput:
     summary: Optional[str] = None
     cover_image_path: Optional[str] = None
     cover_gradient: int = 1
+    is_public: int = 1
+    allow_download: int = 1
+
+
+@dataclass
+class PublishComicInput:
+    """漫创态发布(v5)—— content 存已排版整页 PNG 的稳定 URL 数组(JSON)。"""
+    comic_id: str
+    title: str = ""
+    summary: Optional[str] = None
+    cover_image_path: Optional[str] = None
+    cover_gradient: int = 1
+    is_public: int = 1
+    allow_download: int = 1
+
+
+def _norm_bool(v) -> int:
+    """归一化 0/1(接受 bool / int / '0'/'1')。"""
+    try:
+        return 1 if int(v) != 0 else 0
+    except (TypeError, ValueError):
+        return 1 if v else 0
 
 
 def _excerpt(text: str, n: int = 80) -> str:
@@ -109,12 +133,14 @@ def publish_work(conn, user_id: str, inp: PublishInput) -> dict:
         """INSERT INTO published_works
             (id, user_id, source_type, source_id, project_id, title, summary,
              mode, original_title, cover_image_path, cover_gradient, content,
-             word_count, like_count, read_count, is_public, published_at, updated_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,0,0,1,?,?)""",
+             word_count, like_count, read_count, is_public, allow_download,
+             published_at, updated_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,0,0,?,?,?,?)""",
         (
             work_id, user_id, "simulation", inp.sim_id, project_id, title, summary,
             mode, original_title, inp.cover_image_path, grad, content,
-            word_count, now, now,
+            word_count, _norm_bool(inp.is_public), _norm_bool(inp.allow_download),
+            now, now,
         ),
     )
     return get_work_meta(conn, work_id, viewer_id=user_id)
@@ -259,12 +285,14 @@ def publish_screenplay(conn, user_id: str, inp: "PublishScreenplayInput") -> dic
         """INSERT INTO published_works
             (id, user_id, source_type, source_id, project_id, title, summary,
              mode, original_title, cover_image_path, cover_gradient, content,
-             word_count, like_count, read_count, is_public, published_at, updated_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,0,0,1,?,?)""",
+             word_count, like_count, read_count, is_public, allow_download,
+             published_at, updated_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,0,0,?,?,?,?)""",
         (
             work_id, user_id, "screenplay", source_id, None, title, summary,
             "screenplay", original_title, inp.cover_image_path, grad, content,
-            word_count, now, now,
+            word_count, _norm_bool(inp.is_public), _norm_bool(inp.allow_download),
+            now, now,
         ),
     )
     return get_work_meta(conn, work_id, viewer_id=user_id)
@@ -287,6 +315,9 @@ def _row_to_card(row, liked: bool = False) -> dict:
         "author_id": row["user_id"],
         "author_nickname": row["nickname"] if "nickname" in row.keys() else None,
         "author_avatar_url": row["avatar_url"] if "avatar_url" in row.keys() else None,
+        "source_type": row["source_type"] if "source_type" in row.keys() else "simulation",
+        "is_public": row["is_public"] if "is_public" in row.keys() else 1,
+        "allow_download": row["allow_download"] if "allow_download" in row.keys() else 1,
         "liked": liked,
     }
 
@@ -394,16 +425,111 @@ def get_work_meta(conn, work_id: str, viewer_id: str) -> dict:
     return _row_to_card(row, liked=liked)
 
 
+def get_work_detail(conn, work_id: str, viewer_id: str) -> dict:
+    """作品详情落地页数据(v5)—— 元信息 + 预览节选 + 权限,**不 +阅读量、不返全文**。
+
+    私人作品(is_public=0)仅作者可见详情;其余人 404。
+    """
+    row = fetch_one(
+        conn,
+        """SELECT w.*, u.nickname AS nickname, u.avatar_url AS avatar_url
+           FROM published_works w LEFT JOIN users u ON w.user_id=u.id
+           WHERE w.id=?""",
+        (work_id,),
+    )
+    if row is None:
+        raise ResourceNotFoundOrForbidden("published_work", work_id)
+    is_owner = (row["user_id"] == viewer_id)
+    if row["is_public"] != 1 and not is_owner:
+        raise ResourceNotFoundOrForbidden("published_work", work_id)
+
+    liked = fetch_one(
+        conn,
+        "SELECT 1 FROM published_work_likes WHERE work_id=? AND user_id=?",
+        (work_id, viewer_id),
+    ) is not None
+    meta = _row_to_card(row, liked=liked)
+    meta["is_owner"] = is_owner
+    allow_dl = meta.get("allow_download", 1)
+    meta["can_download"] = bool(is_owner or (row["is_public"] == 1 and allow_dl == 1))
+
+    # 预览:漫画返回页图 URL 数组;文本返回节选。
+    if meta.get("source_type") == "comic":
+        try:
+            import json as _json
+            pages = _json.loads(row["content"] or "[]")
+            meta["comic_pages"] = pages if isinstance(pages, list) else []
+        except Exception:  # noqa: BLE001
+            meta["comic_pages"] = []
+        meta["preview"] = None
+    else:
+        meta["preview"] = _excerpt(row["content"] or "", 320)
+    return meta
+
+
 def read_work(conn, work_id: str, viewer_id: str) -> dict:
-    """在线阅读:返回正文 + 元信息,并阅读量 +1。"""
+    """在线阅读:返回正文 + 元信息,并阅读量 +1。私人作品仅作者可读。"""
     meta = get_work_meta(conn, work_id, viewer_id)
-    row = fetch_one(conn, "SELECT content, is_public FROM published_works WHERE id=?", (work_id,))
-    if row is None or row["is_public"] != 1:
+    row = fetch_one(
+        conn,
+        "SELECT content, is_public, user_id FROM published_works WHERE id=?",
+        (work_id,),
+    )
+    if row is None or (row["is_public"] != 1 and row["user_id"] != viewer_id):
         raise ResourceNotFoundOrForbidden("published_work", work_id)
     execute(conn, "UPDATE published_works SET read_count = read_count + 1 WHERE id=?", (work_id,))
     meta["read_count"] = (meta.get("read_count") or 0) + 1
     meta["content"] = row["content"]
     return meta
+
+
+def get_work_for_download(conn, work_id: str, viewer_id: str) -> dict:
+    """下载正文(不 +阅读量)。权限:作者本人,或 公开 + 允许下载。
+
+    返回 {title, content, source_type, mode}。无权则 raise。
+    """
+    row = fetch_one(
+        conn,
+        "SELECT title, content, source_type, mode, is_public, allow_download, user_id "
+        "FROM published_works WHERE id=?",
+        (work_id,),
+    )
+    if row is None:
+        raise ResourceNotFoundOrForbidden("published_work", work_id)
+    is_owner = (row["user_id"] == viewer_id)
+    allow_dl = row["allow_download"] if "allow_download" in row.keys() else 1
+    can = is_owner or (row["is_public"] == 1 and allow_dl == 1)
+    if not can:
+        raise PlazaError("DOWNLOAD_FORBIDDEN", "该作品不允许下载")
+    return {
+        "title": row["title"],
+        "content": row["content"] or "",
+        "source_type": row["source_type"],
+        "mode": row["mode"],
+    }
+
+
+def set_work_visibility(
+    conn, work_id: str, user_id: str,
+    is_public: Optional[int] = None, allow_download: Optional[int] = None,
+) -> dict:
+    """作者改作品权限(公开/私人 + 是否允许下载)。"""
+    row = fetch_one(conn, "SELECT user_id FROM published_works WHERE id=?", (work_id,))
+    if row is None or row["user_id"] != user_id:
+        raise ResourceNotFoundOrForbidden("published_work", work_id)
+    sets, args = [], []
+    if is_public is not None:
+        sets.append("is_public=?")
+        args.append(_norm_bool(is_public))
+    if allow_download is not None:
+        sets.append("allow_download=?")
+        args.append(_norm_bool(allow_download))
+    if sets:
+        sets.append("updated_at=?")
+        args.append(iso_now())
+        args.append(work_id)
+        execute(conn, f"UPDATE published_works SET {', '.join(sets)} WHERE id=?", tuple(args))
+    return get_work_meta(conn, work_id, viewer_id=user_id)
 
 
 def set_like(conn, work_id: str, user_id: str, liked: bool) -> dict:
@@ -448,6 +574,96 @@ def unpublish(conn, work_id: str, user_id: str) -> None:
         "UPDATE published_works SET is_public=0, updated_at=? WHERE id=?",
         (iso_now(), work_id),
     )
+
+
+def publish_comic(conn, user_id: str, inp: "PublishComicInput") -> dict:
+    """把已完成的漫画(state=done + 整页已排版)上架到广场(v5)。
+
+    content 存已排版整页 PNG 的稳定 URL 数组(/api/comic-composed/<id>/page_N.png,
+    这些是本地永久文件,非 vendor 临时链;panels_json 里的 vendor URL 会过期,不用)。
+    """
+    title = (inp.title or "").strip()
+    if not title:
+        raise PlazaError("TITLE_REQUIRED", "作品名不能为空")
+    if len(title) > 60:
+        raise PlazaError("TITLE_TOO_LONG", "作品名最多 60 字")
+
+    comic = fetch_one(
+        conn,
+        "SELECT id, name, state FROM comic_projects WHERE id=? AND user_id=?",
+        (inp.comic_id, user_id),
+    )
+    if comic is None:
+        raise PlazaError("SOURCE_NOT_FOUND", "找不到该漫画或无权发布")
+    if comic["state"] != "done":
+        raise PlazaError("SOURCE_NOT_DONE", "只能上架已完成的漫画")
+
+    pages = fetch_all(
+        conn,
+        """SELECT page_index, composed_url FROM comic_pages
+           WHERE comic_id=? AND composed_url IS NOT NULL AND composed_url <> ''
+           ORDER BY page_index ASC""",
+        (inp.comic_id,),
+    )
+    page_urls = [p["composed_url"] for p in pages]
+    if not page_urls:
+        raise PlazaError("EMPTY_CONTENT", "漫画还没有排版好的整页,无法上架")
+
+    import json as _json
+    content = _json.dumps(page_urls, ensure_ascii=False)
+    grad = inp.cover_gradient if 1 <= inp.cover_gradient <= _GRADIENT_COUNT else 1
+    # 封面:用户未上传则用第一页
+    cover = inp.cover_image_path or page_urls[0]
+    summary = (inp.summary or "").strip() or f"漫画作品 · 共 {len(page_urls)} 页"
+    now = iso_now()
+    work_id = str(uuid.uuid4())
+
+    execute(
+        conn,
+        """INSERT INTO published_works
+            (id, user_id, source_type, source_id, project_id, title, summary,
+             mode, original_title, cover_image_path, cover_gradient, content,
+             word_count, like_count, read_count, is_public, allow_download,
+             published_at, updated_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,0,0,?,?,?,?)""",
+        (
+            work_id, user_id, "comic", inp.comic_id, None, title, summary,
+            "cycle", None, cover, grad, content,
+            len(page_urls),   # word_count 复用为"页数",前端按 source_type 显"N 页"
+            _norm_bool(inp.is_public), _norm_bool(inp.allow_download),
+            now, now,
+        ),
+    )
+    return get_work_meta(conn, work_id, viewer_id=user_id)
+
+
+def list_publishable_comics(conn, user_id: str) -> list[dict]:
+    """用户可上架的漫画:state=done 且有 ≥1 张已排版整页。"""
+    rows = fetch_all(
+        conn,
+        """SELECT c.id, c.name, c.updated_at,
+                  (SELECT COUNT(*) FROM comic_pages p
+                    WHERE p.comic_id=c.id AND p.composed_url IS NOT NULL AND p.composed_url<>'') AS page_count,
+                  (SELECT composed_url FROM comic_pages p2
+                    WHERE p2.comic_id=c.id AND p2.composed_url IS NOT NULL AND p2.composed_url<>''
+                    ORDER BY p2.page_index ASC LIMIT 1) AS cover_url
+           FROM comic_projects c
+           WHERE c.user_id=? AND c.state='done'
+           ORDER BY c.updated_at DESC LIMIT 100""",
+        (user_id,),
+    )
+    out = []
+    for r in rows:
+        if not r["page_count"]:
+            continue   # 没有排版好的页 → 不可上架
+        out.append({
+            "comic_id": r["id"],
+            "name": r["name"],
+            "page_count": r["page_count"],
+            "cover_url": r["cover_url"],
+            "updated_at": r["updated_at"],
+        })
+    return out
 
 
 def list_publishable_sims(conn, user_id: str) -> list[dict]:

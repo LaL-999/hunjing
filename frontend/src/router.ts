@@ -191,11 +191,19 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: false, depth: 2 },
   },
   {
-    // 2026-06-25:作品在线阅读页;v5(2026-07-02)item9:升级为沉浸式全屏阅读器
+    // v5(2026-07-02):作品详情落地页(预览 + 元信息 + 在线阅读/下载/权限)
     path: "/plaza/works/:id",
+    name: "plaza-detail",
+    component: () => import("./views/PlazaWorkDetailView.vue"),
+    meta: { requiresAuth: false, depth: 3 },
+    props: true,
+  },
+  {
+    // v5:沉浸式全屏阅读器(从详情页点"在线阅读"进入)
+    path: "/plaza/works/:id/read",
     name: "plaza-read",
     component: () => import("./views/PlazaReadView.vue"),
-    meta: { requiresAuth: false, fullscreen: true, depth: 3 },
+    meta: { requiresAuth: false, fullscreen: true, depth: 4 },
     props: true,
   },
   {
