@@ -166,6 +166,10 @@ class LikeBody(BaseModel):
     liked: bool = Field(..., description="true=点赞 false=取消")
 
 
+class CommentBody(BaseModel):
+    content: str = Field(..., description="评论内容(1-1000 字)")
+
+
 # ---------- 列表 / 素材 ----------
 
 @router.get("/plaza/works")
@@ -389,6 +393,52 @@ def api_set_visibility(
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="作品不存在或无权修改")
     conn.commit()
     return work
+
+
+@router.get("/plaza/works/{work_id}/comments")
+def api_list_comments(
+    work_id: str,
+    user: User = Depends(get_current_user),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict:
+    """作品评论列表(新→旧)。"""
+    try:
+        return {"items": plaza_service.list_comments(conn, work_id, user.id)}
+    except ResourceNotFoundOrForbidden:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="作品不存在或已下架")
+
+
+@router.post("/plaza/works/{work_id}/comments", status_code=status.HTTP_201_CREATED)
+def api_add_comment(
+    work_id: str,
+    body: CommentBody,
+    user: User = Depends(get_current_user),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict:
+    """发表评论。"""
+    try:
+        c = plaza_service.add_comment(conn, work_id, user.id, body.content)
+    except ResourceNotFoundOrForbidden:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="作品不存在或已下架")
+    except PlazaError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail={"code": exc.code, "message": exc.message})
+    conn.commit()
+    return c
+
+
+@router.delete("/plaza/comments/{comment_id}")
+def api_delete_comment(
+    comment_id: str,
+    user: User = Depends(get_current_user),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict:
+    """删评论(评论人本人 或 作品作者)。"""
+    try:
+        plaza_service.delete_comment(conn, comment_id, user.id)
+    except ResourceNotFoundOrForbidden:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="评论不存在或无权删除")
+    conn.commit()
+    return {"deleted": True}
 
 
 @router.post("/plaza/works/{work_id}/like")

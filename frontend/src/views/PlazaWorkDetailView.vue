@@ -10,7 +10,7 @@ import { computed, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
 import { apiAssetUrl, ApiError } from "../api/client";
-import { plazaApi, type PlazaWorkDetail } from "../api/plaza";
+import { plazaApi, type PlazaWorkDetail, type PlazaComment } from "../api/plaza";
 import { useAuthStore } from "../stores/auth";
 import { useLoginModal } from "../composables/useLoginModal";
 import { confirm as confirmDialog } from "../composables/useConfirm";
@@ -36,11 +36,18 @@ const visBusy = ref(false);
 
 const isComic = computed(() => work.value?.source_type === "comic");
 
+// ===== 评论区 =====
+const comments = ref<PlazaComment[]>([]);
+const commentText = ref("");
+const commentsLoading = ref(false);
+const posting = ref(false);
+
 async function load(): Promise<void> {
   loading.value = true;
   errorMsg.value = null;
   try {
     work.value = await plazaApi.detail(workId.value);
+    void loadComments();
   } catch (e) {
     if (e instanceof ApiError && e.status === 404) errorMsg.value = "作品不存在或已下架";
     else errorMsg.value = e instanceof ApiError ? e.message : "加载失败";
@@ -49,6 +56,66 @@ async function load(): Promise<void> {
   }
 }
 onMounted(load);
+
+async function loadComments(): Promise<void> {
+  commentsLoading.value = true;
+  try {
+    comments.value = (await plazaApi.listComments(workId.value)).items;
+  } catch {
+    /* 评论加载失败不阻塞详情 */
+  } finally {
+    commentsLoading.value = false;
+  }
+}
+
+async function postComment(): Promise<void> {
+  const text = commentText.value.trim();
+  if (!text || posting.value) return;
+  if (!auth.isAuthed) { loginModal.open(`/plaza/works/${workId.value}`); return; }
+  posting.value = true;
+  try {
+    const c = await plazaApi.addComment(workId.value, text);
+    comments.value.unshift(c);
+    commentText.value = "";
+  } catch (e) {
+    toast.error(e instanceof ApiError ? e.message : "评论失败");
+  } finally {
+    posting.value = false;
+  }
+}
+
+async function removeComment(c: PlazaComment): Promise<void> {
+  const ok = await confirmDialog({
+    title: "删除这条评论?", message: "删除后无法恢复。", danger: true, confirmLabel: "删除",
+  });
+  if (!ok) return;
+  try {
+    await plazaApi.deleteComment(c.id);
+    comments.value = comments.value.filter((x) => x.id !== c.id);
+  } catch (e) {
+    toast.error(e instanceof ApiError ? e.message : "删除失败");
+  }
+}
+
+/** 能否删这条评论:本人 或 作品作者 */
+function canDelete(c: PlazaComment): boolean {
+  return c.is_mine || !!work.value?.is_owner;
+}
+function commentAuthorName(c: PlazaComment): string { return c.author_nickname || "浑晶用户"; }
+function fmtRelTime(iso: string): string {
+  try {
+    const d = new Date(iso).getTime();
+    const diff = Date.now() - d;
+    const min = Math.floor(diff / 60000);
+    if (min < 1) return "刚刚";
+    if (min < 60) return `${min} 分钟前`;
+    const h = Math.floor(min / 60);
+    if (h < 24) return `${h} 小时前`;
+    const day = Math.floor(h / 24);
+    if (day < 30) return `${day} 天前`;
+    return new Date(iso).toLocaleDateString("zh-CN");
+  } catch { return iso; }
+}
 
 function goRead(): void {
   router.push(`/plaza/works/${workId.value}/read`);
@@ -272,6 +339,50 @@ function fmtDate(iso: string): string {
         </div>
         <button class="unpub-btn" @click="unpublish">下架作品</button>
       </section>
+
+      <!-- 评论区 -->
+      <section class="comments">
+        <h3 class="cm-title">评论 <span class="cm-count">{{ comments.length }}</span></h3>
+
+        <!-- 发评论 -->
+        <div class="cm-editor">
+          <textarea
+            v-model="commentText"
+            class="cm-input"
+            rows="3"
+            maxlength="1000"
+            :placeholder="auth.isAuthed ? '说点什么…' : '登录后即可评论'"
+          />
+          <div class="cm-editor-foot">
+            <span class="cm-len">{{ commentText.length }}/1000</span>
+            <button
+              class="cm-post"
+              :disabled="!commentText.trim() || posting"
+              @click="postComment"
+            >{{ posting ? "发布中…" : "发表评论" }}</button>
+          </div>
+        </div>
+
+        <!-- 列表 -->
+        <div v-if="commentsLoading" class="cm-state">加载评论中…</div>
+        <div v-else-if="comments.length === 0" class="cm-state">还没有评论,来做第一个吧。</div>
+        <ul v-else class="cm-list">
+          <li v-for="c in comments" :key="c.id" class="cm-item">
+            <span class="cm-av">
+              <img v-if="c.author_avatar_url" :src="apiAssetUrl(c.author_avatar_url)" alt="" />
+              <template v-else>{{ commentAuthorName(c)[0]?.toUpperCase() }}</template>
+            </span>
+            <div class="cm-body">
+              <div class="cm-meta">
+                <span class="cm-name">{{ commentAuthorName(c) }}</span>
+                <span class="cm-time">{{ fmtRelTime(c.created_at) }}</span>
+                <button v-if="canDelete(c)" class="cm-del" title="删除" @click="removeComment(c)">删除</button>
+              </div>
+              <p class="cm-text">{{ c.content }}</p>
+            </div>
+          </li>
+        </ul>
+      </section>
     </template>
   </div>
 </template>
@@ -414,6 +525,62 @@ function fmtDate(iso: string): string {
   cursor: pointer; text-decoration: underline;
 }
 .unpub-btn:hover { opacity: 0.8; }
+
+/* 评论区 */
+.comments { margin-top: var(--space-6); padding-top: var(--space-5); border-top: 1px solid var(--color-border); }
+.cm-title { font-size: var(--text-base); font-weight: 600; color: var(--color-text); margin: 0 0 var(--space-4); }
+.cm-count { color: var(--color-text-muted); font-weight: 400; margin-left: 4px; }
+.cm-editor {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+.cm-input {
+  width: 100%;
+  border: none;
+  background: transparent;
+  resize: vertical;
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  color: var(--color-text);
+  outline: none;
+  font-family: inherit;
+}
+.cm-editor-foot { display: flex; align-items: center; justify-content: space-between; margin-top: var(--space-2); }
+.cm-len { font-size: var(--text-xs); color: var(--color-text-subtle); }
+.cm-post {
+  padding: 6px 16px; font-size: var(--text-sm); font-weight: 600;
+  color: #fff; background: linear-gradient(135deg, #8b5cf6, #6d28d9);
+  border: none; border-radius: var(--radius-md); cursor: pointer;
+  transition: opacity var(--duration-fast) var(--ease-out);
+}
+.cm-post:hover:not(:disabled) { opacity: 0.9; }
+.cm-post:disabled { opacity: 0.5; cursor: default; }
+.cm-state { padding: var(--space-5); text-align: center; font-size: var(--text-sm); color: var(--color-text-muted); }
+.cm-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-4); }
+.cm-item { display: flex; gap: var(--space-3); }
+.cm-av {
+  width: 34px; height: 34px; flex-shrink: 0; border-radius: 50%;
+  background: linear-gradient(135deg, #7C3AED, #22D3A8);
+  display: inline-flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 13px; font-weight: 600; overflow: hidden;
+}
+.cm-av img { width: 100%; height: 100%; object-fit: cover; }
+.cm-body { flex: 1; min-width: 0; }
+.cm-meta { display: flex; align-items: center; gap: var(--space-2); }
+.cm-name { font-size: var(--text-sm); font-weight: 500; color: var(--color-text); }
+.cm-time { font-size: var(--text-xs); color: var(--color-text-subtle); }
+.cm-del {
+  margin-left: auto; font-size: var(--text-xs); color: var(--color-text-subtle);
+  background: transparent; border: none; cursor: pointer;
+}
+.cm-del:hover { color: var(--color-danger); }
+.cm-text {
+  font-size: var(--text-sm); line-height: 1.7; color: var(--color-text);
+  margin: 4px 0 0; white-space: pre-wrap; word-break: break-word;
+}
 
 .state { padding: var(--space-8); text-align: center; font-size: var(--text-sm); color: var(--color-text-muted); }
 .state--err { color: var(--color-danger); }

@@ -532,6 +532,78 @@ def set_work_visibility(
     return get_work_meta(conn, work_id, viewer_id=user_id)
 
 
+def _comment_to_dict(row, viewer_id: str) -> dict:
+    return {
+        "id": row["id"],
+        "work_id": row["work_id"],
+        "content": row["content"],
+        "created_at": row["created_at"],
+        "author_id": row["user_id"],
+        "author_nickname": row["nickname"] if "nickname" in row.keys() else None,
+        "author_avatar_url": row["avatar_url"] if "avatar_url" in row.keys() else None,
+        "is_mine": row["user_id"] == viewer_id,
+    }
+
+
+def list_comments(conn, work_id: str, viewer_id: str) -> list[dict]:
+    """列出作品评论(新→旧)。作品必须存在且(公开 或 viewer 是作者)。"""
+    w = fetch_one(conn, "SELECT is_public, user_id FROM published_works WHERE id=?", (work_id,))
+    if w is None or (w["is_public"] != 1 and w["user_id"] != viewer_id):
+        raise ResourceNotFoundOrForbidden("published_work", work_id)
+    rows = fetch_all(
+        conn,
+        """SELECT c.*, u.nickname AS nickname, u.avatar_url AS avatar_url
+           FROM published_work_comments c LEFT JOIN users u ON c.user_id=u.id
+           WHERE c.work_id=? ORDER BY c.created_at DESC""",
+        (work_id,),
+    )
+    return [_comment_to_dict(r, viewer_id) for r in rows]
+
+
+def add_comment(conn, work_id: str, user_id: str, content: str) -> dict:
+    """发表评论。作品必须存在且(公开 或 本人作品)。content 1-1000 字。"""
+    text = (content or "").strip()
+    if not text:
+        raise PlazaError("COMMENT_EMPTY", "评论内容不能为空")
+    if len(text) > 1000:
+        raise PlazaError("COMMENT_TOO_LONG", "评论最多 1000 字")
+    w = fetch_one(conn, "SELECT is_public, user_id FROM published_works WHERE id=?", (work_id,))
+    if w is None or (w["is_public"] != 1 and w["user_id"] != user_id):
+        raise ResourceNotFoundOrForbidden("published_work", work_id)
+    cid = str(uuid.uuid4())
+    now = iso_now()
+    execute(
+        conn,
+        "INSERT INTO published_work_comments (id, work_id, user_id, content, created_at) VALUES (?,?,?,?,?)",
+        (cid, work_id, user_id, text, now),
+    )
+    row = fetch_one(
+        conn,
+        """SELECT c.*, u.nickname AS nickname, u.avatar_url AS avatar_url
+           FROM published_work_comments c LEFT JOIN users u ON c.user_id=u.id
+           WHERE c.id=?""",
+        (cid,),
+    )
+    return _comment_to_dict(row, user_id)
+
+
+def delete_comment(conn, comment_id: str, user_id: str) -> None:
+    """删评论。权限:评论人本人,或该作品的作者。"""
+    row = fetch_one(
+        conn,
+        """SELECT c.user_id AS commenter, w.user_id AS work_owner
+           FROM published_work_comments c
+           JOIN published_works w ON c.work_id = w.id
+           WHERE c.id=?""",
+        (comment_id,),
+    )
+    if row is None:
+        raise ResourceNotFoundOrForbidden("published_work_comment", comment_id)
+    if user_id != row["commenter"] and user_id != row["work_owner"]:
+        raise ResourceNotFoundOrForbidden("published_work_comment", comment_id)
+    execute(conn, "DELETE FROM published_work_comments WHERE id=?", (comment_id,))
+
+
 def set_like(conn, work_id: str, user_id: str, liked: bool) -> dict:
     """点赞 / 取消点赞(幂等)。返回 {liked, like_count}。"""
     exists = fetch_one(conn, "SELECT 1 FROM published_works WHERE id=?", (work_id,))

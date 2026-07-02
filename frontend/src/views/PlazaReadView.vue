@@ -21,6 +21,8 @@ import { plazaApi, type PlazaWork } from "../api/plaza";
 import { useAuthStore } from "../stores/auth";
 import { useLoginModal } from "../composables/useLoginModal";
 import { toast } from "../composables/useToast";
+import Icon from "../components/Icon.vue";
+import ChapterJumpPopover from "../components/ChapterJumpPopover.vue";
 
 const route = useRoute();
 const router = useRouter();
@@ -85,21 +87,73 @@ async function load(): Promise<void> {
 }
 
 // ============================================================
-// 内容拆块(# → 标题起新页;其余 → 段落)
+// 内容分章(有 # 标题 → 按标题分章;无标题 → 按字数切"第 N 章")
+// 复刻 SimulationReadView 的章节系统,供目录跳转用。
 // ============================================================
-type RenderItem = { type: "h"; text: string } | { type: "p"; text: string };
-const items = computed<RenderItem[]>(() => {
+type RenderItem =
+  | { type: "chapter"; chapter: number; title: string }
+  | { type: "para"; text: string };
+
+const CHAPTER_SIZE = 2500;   // 无标题时约每 2500 中文字切一章
+
+const chunkedItems = computed<RenderItem[]>(() => {
   const raw = work.value?.content ?? "";
-  return raw
-    .split(/\n{2,}/)
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .map((s): RenderItem => {
-      const m = s.match(/^#{1,6}\s+(.*)$/);
-      if (m) return { type: "h", text: m[1].trim() };
-      return { type: "p", text: s.replace(/\n/g, " ") };
-    });
+  const blocks = raw.split(/\n{2,}/).map((s) => s.trim()).filter(Boolean);
+  if (blocks.length === 0) return [];
+  const hasHeadings = blocks.some((b) => /^#{1,6}\s+/.test(b));
+  const out: RenderItem[] = [];
+  let ch = 0;
+
+  if (hasHeadings) {
+    let started = false;
+    for (const b of blocks) {
+      const m = b.match(/^#{1,6}\s+(.*)$/);
+      if (m) {
+        ch += 1;
+        out.push({ type: "chapter", chapter: ch, title: m[1].trim() });
+        started = true;
+      } else {
+        if (!started) { ch += 1; out.push({ type: "chapter", chapter: ch, title: "开篇" }); started = true; }
+        out.push({ type: "para", text: b.replace(/\n/g, " ") });
+      }
+    }
+  } else {
+    let chars = 0;
+    ch = 1;
+    out.push({ type: "chapter", chapter: 1, title: "" });
+    for (const b of blocks) {
+      const cn = (b.match(/[一-鿿]/g) || []).length;
+      if (chars >= CHAPTER_SIZE) { ch += 1; chars = 0; out.push({ type: "chapter", chapter: ch, title: "" }); }
+      out.push({ type: "para", text: b.replace(/\n/g, " ") });
+      chars += cn;
+    }
+  }
+  return out;
 });
+
+// 目录条目(给 ChapterJumpPopover)—— firstWords 取标题,无标题取首段节选
+interface ChapterEntry { chapter: number; firstWords: string; charCount: number; itemIndex: number }
+const chapterEntries = computed<ChapterEntry[]>(() => {
+  const out: ChapterEntry[] = [];
+  let buf: ChapterEntry | null = null;
+  let gotFirst = false;
+  chunkedItems.value.forEach((it, idx) => {
+    if (it.type === "chapter") {
+      if (buf) out.push(buf);
+      buf = { chapter: it.chapter, firstWords: it.title || "", charCount: 0, itemIndex: idx };
+      gotFirst = !!it.title;
+    } else if (buf) {
+      if (!gotFirst) {
+        gotFirst = true;
+        buf.firstWords = it.text.slice(0, 18) + (it.text.length > 18 ? "…" : "");
+      }
+      buf.charCount += (it.text.match(/[一-鿿]/g) || []).length;
+    }
+  });
+  if (buf) out.push(buf);
+  return out;
+});
+
 // v5:漫画作品 —— content 是整页图 URL 的 JSON 数组,走图片阅读分支(非文本分栏引擎)
 const isComic = computed(() => work.value?.source_type === "comic");
 const comicPages = computed<string[]>(() => {
@@ -112,7 +166,7 @@ const comicPages = computed<string[]>(() => {
   }
 });
 const isEmpty = computed(() =>
-  isComic.value ? comicPages.value.length === 0 : items.value.length === 0,
+  isComic.value ? comicPages.value.length === 0 : chunkedItems.value.length === 0,
 );
 
 const charCount = computed(
@@ -147,6 +201,47 @@ function prevPage() { if (currentPage.value > 1) goToPage(currentPage.value - 1)
 const progressPct = computed(() =>
   totalPages.value <= 1 ? 100 : Math.round((currentPage.value / totalPages.value) * 100),
 );
+
+// ============================================================
+// 目录 / 章节跳转(复刻 SimulationReadView)
+// ============================================================
+const chapterPopoverOpen = ref(false);
+function toggleChapterPopover() { chapterPopoverOpen.value = !chapterPopoverOpen.value; }
+function closeChapterPopover() { chapterPopoverOpen.value = false; }
+
+function jumpToChapter(chapterNo: number) {
+  const el = pagerEl.value;
+  if (!el) return;
+  const titles = el.querySelectorAll<HTMLElement>(".reader-chapter-title");
+  const idx = chapterEntries.value.findIndex((e) => e.chapter === chapterNo);
+  if (idx === -1) return;
+  const target = titles[idx];
+  if (!target) return;
+  const pw = el.clientWidth;
+  if (pw <= 0) return;
+  goToPage(Math.max(1, Math.round(target.offsetLeft / pw) + 1));
+}
+function onChapterJumpFromPopover(chapterNo: number) {
+  jumpToChapter(chapterNo);
+  closeChapterPopover();
+}
+
+const currentChapterNo = computed<number>(() => {
+  const entries = chapterEntries.value;
+  if (entries.length === 0) return 1;
+  const el = pagerEl.value;
+  if (!el || totalPages.value <= 1) return entries[0].chapter;
+  const titles = el.querySelectorAll<HTMLElement>(".reader-chapter-title");
+  const pw = el.clientWidth;
+  if (pw <= 0) return entries[0].chapter;
+  const curScroll = (currentPage.value - 1) * pw;
+  let lastIdx = 0;
+  for (let i = 0; i < titles.length; i++) {
+    if (titles[i].offsetLeft <= curScroll + pw - 1) lastIdx = i;
+    else break;
+  }
+  return entries[lastIdx]?.chapter ?? entries[0].chapter;
+});
 
 // ============================================================
 // 字号 / 单双页 / 主题
@@ -336,6 +431,28 @@ function fmtCount(n: number): string {
         <button class="tool-btn" @click="toggleSpread" title="单 / 双页切换 (F)">{{ spreadLabel }}</button>
         <span class="tool-sep" aria-hidden="true">·</span>
         <button class="tool-btn" @click="cycleTheme" title="主题切换 (T)">{{ themeLabel }}</button>
+        <template v-if="chapterEntries.length > 1">
+          <span class="tool-sep" aria-hidden="true">·</span>
+          <div class="chapter-jump-wrap">
+            <button
+              class="tool-btn tool-btn--icon-only"
+              :class="{ 'is-active': chapterPopoverOpen }"
+              :title="`目录(共 ${chapterEntries.length} 章)`"
+              aria-label="目录"
+              @click="toggleChapterPopover"
+            >
+              <Icon name="menu" :size="16" />
+            </button>
+            <ChapterJumpPopover
+              v-if="chapterPopoverOpen"
+              :chapters="chapterEntries"
+              :current-chapter="currentChapterNo"
+              :reader-theme="prefs.theme"
+              @jump="onChapterJumpFromPopover"
+              @close="closeChapterPopover"
+            />
+          </div>
+        </template>
       </div>
       <div v-else class="reader-tools comic-pagecount">共 {{ comicPages.length }} 页</div>
     </header>
@@ -386,8 +503,10 @@ function fmtCount(n: number): string {
           <p class="fm-author">{{ authorName() }} · {{ modeLabel(work?.mode || "") }}</p>
         </div>
 
-        <template v-for="(item, i) in items" :key="i">
-          <h3 v-if="item.type === 'h'" class="reader-chapter-title">{{ item.text }}</h3>
+        <template v-for="(item, i) in chunkedItems" :key="i">
+          <h3 v-if="item.type === 'chapter'" class="reader-chapter-title">
+            {{ item.title || `第 ${item.chapter} 章` }}
+          </h3>
           <p v-else class="reader-para">{{ item.text }}</p>
         </template>
       </div>
@@ -533,6 +652,9 @@ function fmtCount(n: number): string {
 }
 .tool-btn:hover:not(:disabled) { background: var(--r-border); }
 .tool-btn--icon { padding-left: 8px; }
+.tool-btn--icon-only { padding: 5px 7px; display: inline-flex; align-items: center; justify-content: center; }
+.tool-btn--icon-only.is-active { background: var(--r-border); }
+.chapter-jump-wrap { position: relative; display: inline-flex; align-items: center; }
 .tool-label { font-size: var(--text-xs); color: var(--r-muted); min-width: 16px; text-align: center; }
 .tool-sep { color: var(--r-border); font-size: var(--text-xs); }
 

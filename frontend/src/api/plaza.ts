@@ -125,6 +125,18 @@ export interface PublishScreenplayPayload extends PublishVisibility {
   cover_gradient?: number;
 }
 
+/** 作品评论 */
+export interface PlazaComment {
+  id: string;
+  work_id: string;
+  content: string;
+  created_at: string;
+  author_id: string;
+  author_nickname: string | null;
+  author_avatar_url: string | null;
+  is_mine: boolean;
+}
+
 export type PlazaSort = "hot" | "new" | "classic";
 
 export const plazaApi = {
@@ -177,6 +189,15 @@ export const plazaApi = {
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
+  },
+  listComments(workId: string): Promise<{ items: PlazaComment[] }> {
+    return api.get<{ items: PlazaComment[] }>(`/plaza/works/${workId}/comments`);
+  },
+  addComment(workId: string, content: string): Promise<PlazaComment> {
+    return api.post<PlazaComment>(`/plaza/works/${workId}/comments`, { content });
+  },
+  deleteComment(commentId: string): Promise<{ deleted: boolean }> {
+    return api.delete<{ deleted: boolean }>(`/plaza/comments/${commentId}`);
   },
   like(workId: string, liked: boolean): Promise<{ liked: boolean; like_count: number }> {
     return api.post<{ liked: boolean; like_count: number }>(

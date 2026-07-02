@@ -147,3 +147,45 @@ def test_profile_update(client, make_user):
 
     # 再 GET 持久化
     assert client.get("/api/me/profile", headers=u["headers"]).json()["nickname"] == "晨星"
+
+
+def test_comments_flow(client, make_user):
+    """评论区:发 → 列 → 他人可见 → 评论人删自己 / 作品作者删他人评论。"""
+    author = make_user("cmt_author")
+    reader = make_user("cmt_reader")
+    sim_id = _seed_done_sim(author["user_id"], name="评论测试卷")
+    work_id = client.post(
+        "/api/plaza/publish", headers=author["headers"],
+        json={"title": "评论测试", "sim_id": sim_id},
+    ).json()["id"]
+
+    # reader 发评论
+    r = client.post(f"/api/plaza/works/{work_id}/comments",
+                    headers=reader["headers"], json={"content": "写得真好!"})
+    assert r.status_code == 201, r.text
+    cid_reader = r.json()["id"]
+    assert r.json()["is_mine"] is True
+    assert r.json()["content"] == "写得真好!"
+
+    # 空评论被拒
+    assert client.post(f"/api/plaza/works/{work_id}/comments",
+                       headers=reader["headers"], json={"content": "   "}).status_code == 400
+
+    # author 也发一条
+    cid_author = client.post(f"/api/plaza/works/{work_id}/comments",
+                             headers=author["headers"], json={"content": "谢谢支持"}).json()["id"]
+
+    # 列表:2 条,新→旧,author 视角 is_mine 正确
+    lst = client.get(f"/api/plaza/works/{work_id}/comments", headers=author["headers"]).json()["items"]
+    assert len(lst) == 2
+    mine = {c["id"]: c["is_mine"] for c in lst}
+    assert mine[cid_author] is True and mine[cid_reader] is False
+
+    # reader 删不了别人的(author 的)评论
+    assert client.delete(f"/api/plaza/comments/{cid_author}", headers=reader["headers"]).status_code == 404
+    # 但作品作者能删他人(reader 的)评论
+    assert client.delete(f"/api/plaza/comments/{cid_reader}", headers=author["headers"]).status_code == 200
+    # 评论人删自己的
+    assert client.delete(f"/api/plaza/comments/{cid_author}", headers=author["headers"]).status_code == 200
+
+    assert len(client.get(f"/api/plaza/works/{work_id}/comments", headers=author["headers"]).json()["items"]) == 0
