@@ -25,12 +25,8 @@ from app.schemas.credit import (
 )
 from app.services.credit_service import (
     ADDON_PACKAGES,
-    COMIC_PACK_PRICE_CENTS,
-    COMIC_PACK_VALIDITY_DAYS,
-    count_available_comic_packs,
     get_balance,
     purchase_addon,
-    purchase_comic_pack,
 )
 from app.services.quota_service import month_start_iso
 
@@ -93,62 +89,6 @@ def api_purchase_addon(
         "price_cents": price_cents,
         "expires_at": expires_at,
         "credit_balance": balance.to_dict(),
-    }
-
-
-# ============================================================
-# 漫画包(ECON-2,2026-05-27 末⁴⁴)
-# ============================================================
-#
-# 设计:漫画态从订阅福利改为单买漫画包,¥30/次,有效期 6 月(180 天).
-# 与 addon credit 包区别:漫画包是 1 次原子授权,不可拆分;addon 包是 credits 池.
-# 与 PLAN_LIMITS.comics_per_month 关系:双轨(漫画包优先,无包查老配额,目前全 0).
-
-
-@router.post(
-    "/credit/comic_pack/purchase",
-    status_code=status.HTTP_201_CREATED,
-)
-def api_purchase_comic_pack(
-    user: User = Depends(get_current_user),
-    conn: sqlite3.Connection = Depends(get_db),
-) -> dict:
-    """购买 1 个漫画包 ¥30,有效期 6 月.
-
-    Sprint ECON-2 暂为 mock(支付通道未接入).支付通道接入后由 webhook 调用本端点.
-    每次购买 INSERT 1 行 comic_pack_lots + 写 credit_transactions 审计.
-    """
-    try:
-        lot = purchase_comic_pack(conn, user.id)
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(
-            status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={
-                "code": "INTERNAL_ERROR",
-                "message": f"漫画包购买失败:{type(e).__name__}: {e}"[:300],
-            },
-        )
-
-    available = count_available_comic_packs(conn, user.id)
-    return {
-        "lot": lot,
-        "available_packs": available,
-        "validity_days": COMIC_PACK_VALIDITY_DAYS,
-    }
-
-
-@router.get("/credit/comic_pack/available")
-def api_get_comic_pack_balance(
-    user: User = Depends(get_current_user),
-    conn: sqlite3.Connection = Depends(get_db),
-) -> dict:
-    """查 user 当前可用漫画包数量 + 单价 + 有效期(供前端展示)."""
-    available = count_available_comic_packs(conn, user.id)
-    return {
-        "available_packs": available,
-        "price_cents": COMIC_PACK_PRICE_CENTS,
-        "validity_days": COMIC_PACK_VALIDITY_DAYS,
     }
 
 

@@ -204,86 +204,6 @@ def expire_addon_lots(conn: sqlite3.Connection | None = None) -> dict[str, Any]:
 
 
 # ============================================================
-# 漫画包 lot 过期处理(ECON-2.2,2026-05-27 末⁴⁴⁻²)
-# ============================================================
-
-def expire_old_comic_packs(conn: sqlite3.Connection | None = None) -> dict[str, Any]:
-    """漫画包 lot 到期处理 — 扫 expires_at < now AND is_expired=0 AND is_used=0 的 lot.
-
-    对每个匹配的 lot:
-      1. UPDATE is_expired=1 + expired_at=now
-      2. INSERT credit_transactions(kind='addon_expire', action='cron_comic_pack_expire')
-         — 复用 wallet='addon' + metadata.lot_type='comic_pack' 区分(同 ECON-2 设计)
-
-    注意:已 is_used=1 的 lot **不动**(保留 audit trail,用户已用过的就让它停在 used 状态).
-
-    返回:
-      {"lots_scanned": int, "lots_expired": int, "errors": [...]}
-
-    幂等:已 is_expired=1 的 lot 不会被再处理.重复跑同一天无副作用.
-    """
-    own_conn = conn is None
-    if own_conn:
-        conn = get_connection()
-
-    report = {
-        "lots_scanned": 0,
-        "lots_expired": 0,
-        "errors": [],
-    }
-    try:
-        now_iso = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
-        rows = fetch_all(
-            conn,
-            """SELECT id, user_id, expires_at FROM comic_pack_lots
-               WHERE expires_at < ? AND is_expired=0 AND is_used=0""",
-            (now_iso,),
-        )
-        report["lots_scanned"] = len(rows)
-
-        for row in rows:
-            lot_id = row["id"]
-            user_id = row["user_id"]
-            try:
-                execute(
-                    conn,
-                    """UPDATE comic_pack_lots
-                       SET is_expired=1, expired_at=?
-                       WHERE id=? AND is_expired=0""",
-                    (now_iso, lot_id),
-                )
-                _record_transaction(
-                    conn,
-                    user_id=user_id,
-                    delta=0,
-                    wallet="addon",
-                    kind="addon_expire",
-                    action="cron_comic_pack_expire",
-                    related_id=lot_id,
-                    cost_yuan=0,
-                    metadata={
-                        "lot_id":     lot_id,
-                        "expires_at": row["expires_at"],
-                        "lot_type":   "comic_pack",
-                    },
-                )
-                conn.commit()
-                report["lots_expired"] += 1
-                logger.info(
-                    f"comic_pack_expire: lot={lot_id} user={user_id} "
-                    f"expires_at={row['expires_at']}"
-                )
-            except Exception as e:  # noqa: BLE001
-                report["errors"].append({"lot_id": lot_id, "error": f"{type(e).__name__}: {e}"})
-                logger.warning(f"comic_pack_expire failed for lot={lot_id}: {e}")
-    finally:
-        if own_conn:
-            conn.close()
-
-    return report
-
-
-# ============================================================
 # 统一入口 — 每日 cron 调用
 # ============================================================
 
@@ -301,8 +221,6 @@ def run_daily_credit_jobs() -> dict[str, Any]:
         "started_at": started_at,
         "month_reset": month_reset_all_users(),
         "addon_expire": expire_addon_lots(),
-        # ECON-2.2(2026-05-27 末⁴⁴⁻²):漫画包 lot 过期处理
-        "comic_pack_expire": expire_old_comic_packs(),
     }
 
     # 邮件提醒(Sprint C.5 同步落地,失败不阻塞 cron)
@@ -325,7 +243,6 @@ def run_daily_credit_jobs() -> dict[str, Any]:
     logger.info(
         f"=== run_daily_credit_jobs completed: "
         f"reset={report['month_reset']['users_reset']} / "
-        f"addon_expired={report['addon_expire']['lots_expired']} / "
-        f"comic_pack_expired={report['comic_pack_expire']['lots_expired']} lots ==="
+        f"addon_expired={report['addon_expire']['lots_expired']} lots ==="
     )
     return report

@@ -69,10 +69,6 @@ from app.services.comic_service import (
     list_comics_for_user,
 )
 from app.services.credit_service import InsufficientCredits
-from app.services.quota_service import (
-    QuotaExceeded,
-    enforce_comic_count_quota,
-)
 
 
 router = APIRouter()

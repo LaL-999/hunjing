@@ -341,16 +341,15 @@ async def get_funnel(
         r = fetch_one(conn, sql9)
         steps_list.append({"name": "二次创作", "count": r["c"] if r else 0})
 
-        # 步骤 10:付费转化(active 订阅 OR 开过自携密钥 OR 买过漫画包 OR 买过 addon)
-        # v5(2026-07-02):自携密钥(BYOK)升为主打付费方式,必须计入转化,否则严重低估
-        # (漫画包已下线,但历史购买记录仍算"曾转化",保留)。
+        # 步骤 10:付费转化(active 订阅 OR 开过自携密钥 OR 买过 addon)
+        # v5(2026-07-02):自携密钥(BYOK)升为主打付费方式,必须计入转化,否则严重低估。
+        #   漫画包机制已彻底下线(表已 drop),不再参与转化统计。
         sql10_parts = []
         sql10_parts.append(
             "SELECT DISTINCT user_id FROM huimeng.user_plan_snapshots "
             "WHERE state='active'"
         )
         sql10_parts.append("SELECT DISTINCT user_id FROM huimeng.byok_subscriptions")
-        sql10_parts.append("SELECT DISTINCT user_id FROM huimeng.comic_pack_lots")
         sql10_parts.append("SELECT DISTINCT user_id FROM huimeng.addon_credit_lots")
         sql10 = (
             "SELECT COUNT(DISTINCT user_id) AS c FROM ("
@@ -725,13 +724,8 @@ async def get_user_profile(
                     (user_id,),
                 )
                 if b:
-                    comic_pack_row = fetch_one(
-                        conn,
-                        "SELECT COUNT(*) AS c FROM huimeng.comic_pack_lots "
-                        "WHERE user_id=? AND is_used=0 AND is_expired=0",
-                        (user_id,),
-                    )
-                    # v5(2026-07-02):自携密钥主打后,用户详情加 BYOK 是否激活(付费主信号)
+                    # v5(2026-07-02):自携密钥主打后,用户详情加 BYOK 是否激活(付费主信号);
+                    #   漫画包已下线,不再展示可用漫画包数。
                     try:
                         byok_row = fetch_one(
                             conn,
@@ -745,7 +739,6 @@ async def get_user_profile(
                     balance = {
                         "subscription_credits": b["subscription_credits"],
                         "addon_credits": b["addon_credits"],
-                        "available_comic_packs": comic_pack_row["c"] if comic_pack_row else 0,
                         "byok_active": byok_active,
                     }
 
@@ -937,7 +930,7 @@ async def get_business(_: None = Depends(require_admin)) -> dict:
                 "completed_sims": avg_row["c"],
             }
 
-        # --- 收入(订阅 + 漫画包 + addon)---
+        # --- 收入(订阅 + BYOK + addon;漫画包已下线 v5)---
         # 订阅:active snapshots 的 price_cents SUM(累计已收订阅费)
         sub_row = fetch_one(
             conn,
@@ -947,14 +940,19 @@ async def get_business(_: None = Depends(require_admin)) -> dict:
         subscription_revenue = round((sub_row["s"] or 0) / 100, 2) if sub_row else 0
         active_subscribers = sub_row["c"] if sub_row else 0
 
-        # 漫画包
-        comic_row = fetch_one(
-            conn,
-            "SELECT COALESCE(SUM(price_cents), 0) AS s, COUNT(*) AS c "
-            "FROM huimeng.comic_pack_lots",
-        )
-        comic_revenue = round((comic_row["s"] or 0) / 100, 2) if comic_row else 0
-        comic_packs_sold = comic_row["c"] if comic_row else 0
+        # 自携密钥(BYOK)收入 —— v5 主打付费方式,已付订单累计
+        byok_revenue = 0
+        byok_subs_sold = 0
+        try:
+            byok_row = fetch_one(
+                conn,
+                "SELECT COALESCE(SUM(amount_cents), 0) AS s, COUNT(*) AS c "
+                "FROM huimeng.byok_payment_orders WHERE status='paid'",
+            )
+            byok_revenue = round((byok_row["s"] or 0) / 100, 2) if byok_row else 0
+            byok_subs_sold = byok_row["c"] if byok_row else 0
+        except Exception:  # noqa: BLE001
+            pass
 
         # addon
         addon_row = fetch_one(
@@ -965,14 +963,14 @@ async def get_business(_: None = Depends(require_admin)) -> dict:
         addon_revenue = round((addon_row["s"] or 0) / 100, 2) if addon_row else 0
         addon_packs_sold = addon_row["c"] if addon_row else 0
 
-        total_revenue = round(subscription_revenue + comic_revenue + addon_revenue, 2)
+        total_revenue = round(subscription_revenue + byok_revenue + addon_revenue, 2)
         result["revenue"] = {
             "total_yuan": total_revenue,
             "subscription_yuan": subscription_revenue,
-            "comic_pack_yuan": comic_revenue,
+            "byok_yuan": byok_revenue,
             "addon_yuan": addon_revenue,
             "active_subscribers": active_subscribers,
-            "comic_packs_sold": comic_packs_sold,
+            "byok_subs_sold": byok_subs_sold,
             "addon_packs_sold": addon_packs_sold,
         }
 
@@ -990,7 +988,7 @@ async def get_business(_: None = Depends(require_admin)) -> dict:
             conn,
             "SELECT COUNT(DISTINCT user_id) AS c FROM ("
             "  SELECT user_id FROM huimeng.user_plan_snapshots WHERE state='active' "
-            "  UNION SELECT user_id FROM huimeng.comic_pack_lots "
+            "  UNION SELECT user_id FROM huimeng.byok_subscriptions "
             "  UNION SELECT user_id FROM huimeng.addon_credit_lots"
             ")",
         )
@@ -1027,10 +1025,8 @@ async def get_business(_: None = Depends(require_admin)) -> dict:
             )
             result["comic_economy"] = {
                 "llm_cost_yuan": round(float(comic_cost_row["s"]) if comic_cost_row else 0, 2),
-                "revenue_yuan": comic_revenue,
-                "packs_sold": comic_packs_sold,
                 "completed_comics": comic_done_row["c"] if comic_done_row else 0,
-                "note": "漫创态单列展示(用户偏好 5.0a),不混入主指标",
+                "note": "漫创态单列展示(用户偏好 5.0a);漫画包已下线,不再计收入",
             }
         except Exception:  # noqa: BLE001
             pass

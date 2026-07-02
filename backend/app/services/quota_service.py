@@ -308,37 +308,3 @@ def _count_user_comics_this_month(
         (user_id, month_start),
     )
     return int(row["cnt"]) if row else 0
-
-
-def enforce_comic_count_quota(
-    conn: sqlite3.Connection, user_id: str, plan: str,
-) -> None:
-    """漫画次数闸门 — 创建漫画前调,超额抛 QuotaExceeded.
-
-    ECON-2(2026-05-27 末⁴⁴)双轨:
-      1. **漫画包优先**:user 有 ≥ 1 个有效未用 comic_pack_lot → 放过(不抛错)
-      2. **PLAN_LIMITS.comics_per_month 兜底**:仍走老配额(目前 free/pro/max/super 全 0,
-         仅 founder=999999 走老路径)
-
-    Sprint 5.B(2026-05-18)初版:订阅福利免费次数(Free 0 / Pro 1 / Max 2 / 超级 4).
-    Sprint ECON-1(2026-05-27 末⁴)配额全档清零,改为单买漫画包.
-    Sprint ECON-2(2026-05-27 末⁴⁴)本闸门加漫画包检查.
-
-    Raises:
-      QuotaExceeded(kind='comics_per_month'):无漫画包 AND 本月配额已用完
-    """
-    # ECON-2:漫画包检查(在 PLAN_LIMITS 之前)
-    from app.services.credit_service import count_available_comic_packs
-    if count_available_comic_packs(conn, user_id) > 0:
-        return  # 有有效漫画包,放过
-
-    # 旧路径(founder 等保留通道)
-    limits = get_plan_limits_for_user(conn, user_id, plan)
-    used = _count_user_comics_this_month(conn, user_id)
-    if used >= limits.comics_per_month:
-        raise QuotaExceeded(
-            "comics_per_month",
-            used,
-            limits.comics_per_month,
-            plan,
-        )

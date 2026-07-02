@@ -29,10 +29,10 @@ interface BusinessResp {
   revenue: {
     total_yuan: number;
     subscription_yuan: number;
-    comic_pack_yuan: number;
+    byok_yuan: number;
     addon_yuan: number;
     active_subscribers: number;
-    comic_packs_sold: number;
+    byok_subs_sold: number;
     addon_packs_sold: number;
   } | null;
   plan_distribution: { plan: string; user_count: number }[];
@@ -45,8 +45,6 @@ interface BusinessResp {
   } | null;
   comic_economy: {
     llm_cost_yuan: number;
-    revenue_yuan: number;
-    packs_sold: number;
     completed_comics: number;
     note: string;
   } | null;
@@ -214,9 +212,9 @@ function actionLabel(a: string): string { return ACTION_LABELS[a] || a; }
             <div class="num-val">{{ fmtYuan(data.revenue.addon_yuan) }}</div>
             <div class="num-label">credit 包 ({{ data.revenue.addon_packs_sold }} 单)</div>
           </div>
-          <div class="num-item secondary-item">
-            <div class="num-val">{{ fmtYuan(data.revenue.comic_pack_yuan) }}</div>
-            <div class="num-label">漫画包 ({{ data.revenue.comic_packs_sold }} 单)</div>
+          <div class="num-item">
+            <div class="num-val">{{ fmtYuan(data.revenue.byok_yuan) }}</div>
+            <div class="num-label">自携密钥 ({{ data.revenue.byok_subs_sold }} 单)</div>
           </div>
         </div>
 
@@ -248,16 +246,8 @@ function actionLabel(a: string): string { return ACTION_LABELS[a] || a; }
         <p class="note">{{ data.comic_economy.note }}</p>
         <div class="num-grid">
           <div class="num-item secondary-item">
-            <div class="num-val">{{ fmtYuan(data.comic_economy.revenue_yuan) }}</div>
-            <div class="num-label">漫画包收入</div>
-          </div>
-          <div class="num-item secondary-item">
             <div class="num-val crit">{{ fmtYuan(data.comic_economy.llm_cost_yuan) }}</div>
             <div class="num-label">漫画 LLM 成本</div>
-          </div>
-          <div class="num-item secondary-item">
-            <div class="num-val">{{ data.comic_economy.packs_sold }}</div>
-            <div class="num-label">售出包数</div>
           </div>
           <div class="num-item secondary-item">
             <div class="num-val">{{ data.comic_economy.completed_comics }}</div>
