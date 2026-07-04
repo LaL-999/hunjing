@@ -93,9 +93,11 @@ const ACTION_LABELS: Record<string, string> = {
   comic_anchor_descriptor: "漫画锚描述",
 };
 
-function fmtYuan(n: number): string {
-  if (n >= 10000) return `¥${(n / 10000).toFixed(2)}万`;
-  return `¥${n.toFixed(2)}`;
+function fmtYuan(n: number | null | undefined): string {
+  // 防御:后端字段缺失 / 类型异常时不让 .toFixed 崩掉整个 tab(白屏根因)
+  const v = typeof n === "number" && Number.isFinite(n) ? n : 0;
+  if (v >= 10000) return `¥${(v / 10000).toFixed(2)}万`;
+  return `¥${v.toFixed(2)}`;
 }
 function planLabel(p: string): string { return PLAN_LABELS[p] || p; }
 function actionLabel(a: string): string { return ACTION_LABELS[a] || a; }
@@ -179,7 +181,7 @@ function actionLabel(a: string): string { return ACTION_LABELS[a] || a; }
 
         <!-- 按 action 分类成本 top 10 -->
         <h4 class="sub-h">业务动作成本归因 top 10</h4>
-        <table v-if="data.cost_by_action.length" class="data-table">
+        <table v-if="data.cost_by_action?.length" class="data-table">
           <thead>
             <tr>
               <th>业务动作</th>
@@ -220,7 +222,7 @@ function actionLabel(a: string): string { return ACTION_LABELS[a] || a; }
 
         <!-- 付费分层 -->
         <h4 class="sub-h">付费分层</h4>
-        <table v-if="data.plan_distribution.length" class="data-table compact">
+        <table v-if="data.plan_distribution?.length" class="data-table compact">
           <tr v-for="p in data.plan_distribution" :key="p.plan">
             <td>{{ planLabel(p.plan) }}</td>
             <td class="r"><b>{{ p.user_count }}</b> 人</td>

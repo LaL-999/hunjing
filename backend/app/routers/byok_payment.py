@@ -59,7 +59,7 @@ def api_payment_config():
         return None
 
     return {
-        "payee_name": settings.byok_payee_name,
+        "payee_name": settings.byok_payee_display_name,   # 展示名(对外只露品牌名)
         "wechat_qr_url": _exists_url(settings.byok_wechat_qr_filename),
         "alipay_qr_url": _exists_url(settings.byok_alipay_qr_filename),
         "monthly_price_yuan": BYOK_MONTHLY_PRICE_CENTS // 100,   # v5:¥5(从常量派生,勿写死)
@@ -93,7 +93,7 @@ def api_create_payment_order(
 
     amount_display = f"¥{order.amount_cents / 100:.2f}"
     instruction = (
-        f"1. 扫描下方二维码,使用微信向【{settings.byok_payee_name}】转账 {amount_display}\n"
+        f"1. 扫描下方二维码,使用微信向【{settings.byok_payee_display_name}】转账 {amount_display}\n"
         f"2. 转账完成后,截图付款成功页(含金额 / 收款方 / 时间 / 单号)\n"
         f"3. 在下方上传截图,系统自动识别并审核\n"
         f"4. 审核通常 30 秒内完成,通过后激活码自动填入解锁框\n"
@@ -105,7 +105,7 @@ def api_create_payment_order(
         amount_cents=order.amount_cents,
         amount_display=amount_display,
         months=order.months,
-        payee_name=settings.byok_payee_name,
+        payee_name=settings.byok_payee_display_name,   # 展示名(对外只露品牌名)
         wechat_qr_url=wechat_qr_url,
         alipay_qr_url=alipay_qr_url,
         expires_at=order.expires_at,

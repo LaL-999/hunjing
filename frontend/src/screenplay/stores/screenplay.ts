@@ -10,6 +10,7 @@ import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 
 import {
+  applyDecisions as applyDecisionsApi,
   composeScreenplay,
   getChapterParagraphs,
   getLatestScreenplay,
@@ -162,10 +163,12 @@ export const useScreenplayStore = defineStore("screenplay", () => {
     selectedSceneId.value = sceneId;
   }
 
-  /** 当前作者对每条决策的选择(本 PR 仅本地状态,不写后端)*/
+  /** 当前作者对每条决策的选择;初始从剧本里已落地的 chosen 字段水合 */
   const userDecisionChoices = ref<Map<string, AdaptationOptionType>>(
     new Map(),
   );
+  /** "确定生成"落地中(禁用按钮 + 转圈)*/
+  const applyingDecisions = ref<boolean>(false);
 
   function chooseAdaptationOption(
     decisionId: string,
@@ -180,6 +183,68 @@ export const useScreenplayStore = defineStore("screenplay", () => {
     decisionId: string,
   ): AdaptationOptionType | null {
     return userDecisionChoices.value.get(decisionId) ?? null;
+  }
+
+  /** 从剧本里已落地的 chosen 字段水合本地选择 —— 让面板一打开就反映"已应用"状态 */
+  function _hydrateChoicesFromScreenplay(parsed: Screenplay | null) {
+    const m = new Map<string, AdaptationOptionType>();
+    for (const d of parsed?.adaptation_decisions ?? []) {
+      if (d.chosen) m.set(d.id, d.chosen);
+    }
+    userDecisionChoices.value = m;
+  }
+
+  /** 尚未落地的选择数(本地选了但剧本里 chosen 还不等于它)*/
+  const pendingDecisionCount = computed<number>(() => {
+    if (!screenplay.value) return 0;
+    const decById = new Map(
+      (screenplay.value.adaptation_decisions ?? []).map((d) => [d.id, d]),
+    );
+    let n = 0;
+    userDecisionChoices.value.forEach((type, id) => {
+      const dec = decById.get(id);
+      if (dec && dec.chosen !== type) n += 1;
+    });
+    return n;
+  });
+
+  /**
+   * "确定生成" —— 把作者所有未落地的选择确定性地写进剧本正文(不调 LLM),
+   * 存为新版本并自动切过去,尽量停留在当前场景。
+   * 返回 { applied, skipped } 供 UI 提示;无可提交返 null。
+   */
+  async function applyDecisions(): Promise<
+    { applied: number; skipped: string[] } | null
+  > {
+    if (!screenplayId.value) return null;
+    const choicesObj: Record<string, AdaptationOptionType> = {};
+    userDecisionChoices.value.forEach((v, k) => {
+      choicesObj[k] = v;
+    });
+    if (Object.keys(choicesObj).length === 0) return null;
+
+    applyingDecisions.value = true;
+    const keepScene = selectedSceneId.value;
+    try {
+      const res = await applyDecisionsApi(screenplayId.value, choicesObj);
+      await loadVersions();
+      await switchToVersion(res.new_screenplay_id);
+      // switchToVersion 内部吞掉自己的异常(只置 loadingState=error),
+      // 这里显式上抛,避免"新版已存但没切过去"却报成功、UI 停在旧正文
+      if (loadingState.value === "error") {
+        throw new Error(lastError.value || "已生成新版本,但加载失败,请刷新后查看");
+      }
+      // 尽量停留在原场景(switchToVersion 默认跳到第一场)
+      if (
+        keepScene &&
+        screenplay.value?.scenes.some((s) => s.id === keepScene)
+      ) {
+        selectedSceneId.value = keepScene;
+      }
+      return { applied: res.applied_count, skipped: res.skipped };
+    } finally {
+      applyingDecisions.value = false;
+    }
   }
 
   /** 加载指定 novel 的最新剧本(若有)*/
@@ -223,6 +288,7 @@ export const useScreenplayStore = defineStore("screenplay", () => {
       rawYaml.value = r.yaml;
       const parsed = yaml.load(r.yaml) as Screenplay;
       screenplay.value = parsed;
+      _hydrateChoicesFromScreenplay(parsed);
       warnings.value = r.warnings;
       failedChapters.value = r.failed_chapters;
       stats.value = r.stats;
@@ -279,6 +345,7 @@ export const useScreenplayStore = defineStore("screenplay", () => {
       rawYaml.value = r.yaml;
       const parsed = yaml.load(r.yaml) as Screenplay;
       screenplay.value = parsed;
+      _hydrateChoicesFromScreenplay(parsed);
       warnings.value = r.warnings;
       failedChapters.value = r.failed_chapters;
       stats.value = r.stats;
@@ -378,6 +445,7 @@ export const useScreenplayStore = defineStore("screenplay", () => {
       rawYaml.value = r.yaml;
       const parsed = yaml.load(r.yaml) as Screenplay;
       screenplay.value = parsed;
+      _hydrateChoicesFromScreenplay(parsed);
       warnings.value = r.warnings;
       failedChapters.value = r.failed_chapters;
       stats.value = r.stats;
@@ -411,6 +479,8 @@ export const useScreenplayStore = defineStore("screenplay", () => {
     lastError,
     selectedSceneId,
     userDecisionChoices,
+    applyingDecisions,
+    pendingDecisionCount,
     structureReport,
     structureLoading,
     // 优化 + 版本(PR#16)
@@ -431,6 +501,7 @@ export const useScreenplayStore = defineStore("screenplay", () => {
     selectScene,
     chooseAdaptationOption,
     getDecisionChoice,
+    applyDecisions,
     loadLatestForNovel,
     triggerCompose,
     loadStructureReport,

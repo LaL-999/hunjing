@@ -23,6 +23,7 @@ import { useLoginModal } from "../composables/useLoginModal";
 import { toast } from "../composables/useToast";
 import Icon from "../components/Icon.vue";
 import ChapterJumpPopover from "../components/ChapterJumpPopover.vue";
+import ScreenplayScript from "../components/ScreenplayScript.vue";
 
 const route = useRoute();
 const router = useRouter();
@@ -165,9 +166,15 @@ const comicPages = computed<string[]>(() => {
     return [];
   }
 });
-const isEmpty = computed(() =>
-  isComic.value ? comicPages.value.length === 0 : chunkedItems.value.length === 0,
-);
+// 剧创态作品 —— content 是剧本 TXT,走专业剧本排版阅读器(非小说分栏引擎)
+const isScreenplay = computed(() => work.value?.source_type === "screenplay");
+// 小说分栏翻页引擎:既非漫画也非剧本时才启用
+const isPaged = computed(() => !isComic.value && !isScreenplay.value);
+const isEmpty = computed(() => {
+  if (isComic.value) return comicPages.value.length === 0;
+  if (isScreenplay.value) return !(work.value?.content || "").trim();
+  return chunkedItems.value.length === 0;
+});
 
 const charCount = computed(
   () => work.value?.word_count ?? (work.value?.content?.match(/[一-鿿]/g) || []).length,
@@ -177,6 +184,8 @@ const charCount = computed(
 // 翻页(CSS column + scrollLeft)—— 复刻 SimulationReadView
 // ============================================================
 const pagerEl = ref<HTMLElement | null>(null);
+// 剧本阅读器组件 ref(暴露 scrollStep/scrollByViewport/scrollToEdge 供键盘竖向滚动)
+const scriptRef = ref<InstanceType<typeof ScreenplayScript> | null>(null);
 const currentPage = ref(1);
 const totalPages = ref(1);
 
@@ -302,13 +311,29 @@ async function toggleLike(): Promise<void> {
 function onGlobalKey(e: KeyboardEvent) {
   const t = e.target as HTMLElement | null;
   if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
+  // 通用键(所有模式)
+  if (e.key === "Escape") { exitReader(); return; }
+  if (e.key === "+" || e.key === "=") { adjustFontSize(1); return; }
+  if (e.key === "-" || e.key === "_") { adjustFontSize(-1); return; }
+  if (e.key === "t" || e.key === "T") { cycleTheme(); return; }
+  // 剧本:竖向滚动(方向键/空格/翻页/Home/End 滚动剧本容器,而非横向翻页)
+  if (isScreenplay.value) {
+    const s = scriptRef.value;
+    if (!s) return;
+    if (e.key === "ArrowDown" || e.key === "PageDown" || e.key === " ") {
+      e.preventDefault();
+      if (e.key === "ArrowDown") s.scrollStep(120); else s.scrollByViewport(0.9);
+    } else if (e.key === "ArrowUp" || e.key === "PageUp") {
+      e.preventDefault();
+      if (e.key === "ArrowUp") s.scrollStep(-120); else s.scrollByViewport(-0.9);
+    } else if (e.key === "Home") { e.preventDefault(); s.scrollToEdge(false); }
+    else if (e.key === "End") { e.preventDefault(); s.scrollToEdge(true); }
+    return;
+  }
+  // 小说分栏:横向翻页(漫画时 pagerEl 为 null,page 函数自守空,行为不变)
   if (e.key === "ArrowRight" || e.key === "PageDown" || e.key === " ") { e.preventDefault(); nextPage(); }
   else if (e.key === "ArrowLeft" || e.key === "PageUp") { e.preventDefault(); prevPage(); }
-  else if (e.key === "Escape") exitReader();
-  else if (e.key === "+" || e.key === "=") adjustFontSize(1);
-  else if (e.key === "-" || e.key === "_") adjustFontSize(-1);
   else if (e.key === "f" || e.key === "F") toggleSpread();
-  else if (e.key === "t" || e.key === "T") cycleTheme();
   else if (e.key === "Home") { e.preventDefault(); goToPage(1); }
   else if (e.key === "End") { e.preventDefault(); goToPage(totalPages.value); }
 }
@@ -363,7 +388,7 @@ async function recalcStable(resetScroll = false) {
   recalcPagination();
 }
 watch(loading, (isLoading) => {
-  if (!isLoading && work.value && !isEmpty.value && !isComic.value) void recalcStable(true);
+  if (!isLoading && work.value && !isEmpty.value && isPaged.value) void recalcStable(true);
 });
 watch(() => [prefs.value.fontSize, prefs.value.spread], () => { void recalcStable(true); });
 
@@ -420,18 +445,20 @@ function fmtCount(n: number): string {
         <span class="title-text">{{ work?.title || "在线阅读" }}</span>
       </h1>
 
-      <!-- 文本工具(漫画不需要字号/单双页)-->
+      <!-- 文本工具(漫画不需要;剧本只需字号+主题,不需单双页/小说目录)-->
       <div v-if="!isComic" class="reader-tools">
         <div class="tool-group">
           <button class="tool-btn" @click="adjustFontSize(-1)" title="缩小字号 (-)">A−</button>
           <span class="tool-label">{{ fontSizeLabel }}</span>
           <button class="tool-btn" @click="adjustFontSize(1)" title="放大字号 (+)">A+</button>
         </div>
-        <span class="tool-sep" aria-hidden="true">·</span>
-        <button class="tool-btn" @click="toggleSpread" title="单 / 双页切换 (F)">{{ spreadLabel }}</button>
+        <template v-if="isPaged">
+          <span class="tool-sep" aria-hidden="true">·</span>
+          <button class="tool-btn" @click="toggleSpread" title="单 / 双页切换 (F)">{{ spreadLabel }}</button>
+        </template>
         <span class="tool-sep" aria-hidden="true">·</span>
         <button class="tool-btn" @click="cycleTheme" title="主题切换 (T)">{{ themeLabel }}</button>
-        <template v-if="chapterEntries.length > 1">
+        <template v-if="isPaged && chapterEntries.length > 1">
           <span class="tool-sep" aria-hidden="true">·</span>
           <div class="chapter-jump-wrap">
             <button
@@ -481,6 +508,15 @@ function fmtCount(n: number): string {
       />
     </main>
 
+    <!-- 剧创态:专业剧本排版阅读器(竖向滚动,场头/角色/台词/过场语义化)-->
+    <main v-else-if="isScreenplay" class="screenplay-scroll">
+      <ScreenplayScript
+        ref="scriptRef"
+        :content="work?.content || ''"
+        :font-size="prefs.fontSize"
+      />
+    </main>
+
     <!-- 文本内容区(CSS column 分页) -->
     <main
       v-else
@@ -522,7 +558,7 @@ function fmtCount(n: number): string {
 
     <!-- 底部 footer:文本翻页 + 进度 + 点赞 / 漫画仅点赞 -->
     <footer v-if="!loading && !errorMsg && !isEmpty" class="reader-toolbar reader-toolbar--bottom">
-      <template v-if="!isComic">
+      <template v-if="isPaged">
         <button class="page-btn" :disabled="currentPage <= 1" @click="prevPage" aria-label="上一页">‹</button>
         <span class="page-meta">{{ currentPage }} / {{ totalPages }}</span>
         <div class="progress-track" role="progressbar"
@@ -547,8 +583,8 @@ function fmtCount(n: number): string {
         </svg>
         <span>{{ fmtCount(work.like_count) }}</span>
       </button>
-      <span v-if="!isComic" class="char-count">{{ charCount.toLocaleString() }} 字</span>
-      <template v-if="!isComic">
+      <span v-if="isPaged" class="char-count">{{ charCount.toLocaleString() }} 字</span>
+      <template v-if="isPaged">
         <button class="page-btn" :disabled="currentPage >= totalPages" @click="nextPage" aria-label="下一页">›</button>
       </template>
     </footer>
@@ -817,6 +853,13 @@ function fmtCount(n: number): string {
 }
 .comic-pagecount { font-size: var(--text-sm); color: var(--r-muted); }
 .comic-foot-spacer { flex: 1; }
+
+/* 剧本竖向阅读:填满上下 toolbar 之间,内部组件自己滚 */
+.screenplay-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
 
 @media (prefers-reduced-motion: reduce) {
   .reader, .reader-toolbar, .progress-fill { transition: none !important; }

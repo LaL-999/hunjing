@@ -58,7 +58,7 @@ def api_pay_info() -> dict:
 
     return {
         "channel": "wechat_qr_manual",
-        "payee_name": settings.byok_payee_name,
+        "payee_name": settings.byok_payee_display_name,   # 展示名(对外只露品牌名)
         "wechat_qr_url": _qr_url(settings.byok_wechat_qr_filename),
         "alipay_qr_url": _qr_url(settings.byok_alipay_qr_filename),
         "note": "扫码支付后,请上传付款截图,我们将尽快人工核验并发放权益。",

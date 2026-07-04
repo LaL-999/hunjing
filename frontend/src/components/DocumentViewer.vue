@@ -47,7 +47,7 @@ function handleConfirmRead() {
             <div class="header-text">
               <h2 class="modal-title">
                 {{ LEGAL_DOCUMENT.title }}
-                <span class="status-badge">{{ LEGAL_DOCUMENT.status }}</span>
+                <span v-if="LEGAL_DOCUMENT.status" class="status-badge">{{ LEGAL_DOCUMENT.status }}</span>
               </h2>
               <p class="modal-subtitle">
                 版本 <span class="mono">{{ LEGAL_DOCUMENT.version }}</span>

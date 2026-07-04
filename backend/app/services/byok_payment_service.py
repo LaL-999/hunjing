@@ -354,13 +354,15 @@ def _validate_detection(
 
     # 3. 收款方姓名校验
     payee = detection.get("payee_name") or ""
-    expected = settings.byok_payee_name
+    expected = settings.byok_payee_name          # 真实姓名,仅用于比对,绝不外泄
     # 微信会脱敏中间字(如"李*爽"),只要首字 + 尾字一致即过
     if not payee:
         return False, "未识别到收款方姓名"
     if not _payee_name_match(payee, expected):
+        # 用户可见文案只提展示名(品牌名),不回显真实姓名
         return False, (
-            f"收款方姓名不符:截图 '{payee}' vs 平台 '{expected}'"
+            f"收款方姓名不符:截图识别为 '{payee}',"
+            f"请确认扫的是平台【{settings.byok_payee_display_name}】的收款码"
         )
 
     # 4. 付款时间窗
@@ -389,9 +391,9 @@ def _validate_detection(
         return False, "未识别到交易单号"
 
     confidence = detection.get("confidence", 0.0) or 0.0
+    # 不回显真实姓名(pass_reason 会随订单状态返给用户端)
     pass_reason = (
-        f"金额 ✓ 收款方 ✓({payee}→{expected}) "
-        f"时间 ✓ 单号 ✓ 置信度 {confidence:.2f}"
+        f"金额 ✓ 收款方 ✓ 时间 ✓ 单号 ✓ 置信度 {confidence:.2f}"
     )
     return True, pass_reason
 

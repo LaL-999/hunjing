@@ -10,6 +10,7 @@
  */
 import { computed, ref } from "vue";
 
+import { toast } from "../../composables/useToast";
 import { useScreenplayStore } from "../stores/screenplay";
 import type {
   AdaptationDecision,
@@ -20,6 +21,26 @@ import type {
 const store = useScreenplayStore();
 // 默认折叠 — 用户主动展开才显示三选项内容(用户反馈:不希望进入页面就被遮)
 const collapsed = ref<boolean>(true);
+
+// "确定生成" —— 有未落地选择时可点;落地中禁用
+const pendingCount = computed<number>(() => store.pendingDecisionCount);
+const applying = computed<boolean>(() => store.applyingDecisions);
+
+async function onApply() {
+  if (store.pendingDecisionCount === 0 || store.applyingDecisions) return;
+  try {
+    const res = await store.applyDecisions();
+    if (!res) return;
+    if (res.applied > 0) {
+      toast.success(`已应用 ${res.applied} 项改编,剧本正文已更新`);
+    }
+    if (res.skipped && res.skipped.length > 0) {
+      toast.info(`${res.skipped.length} 项未落地(元素已删或无改写文本)`);
+    }
+  } catch (e) {
+    toast.error(e instanceof Error ? e.message : "应用改编决策失败,请重试");
+  }
+}
 
 const decisions = computed<AdaptationDecision[]>(
   () => store.selectedSceneDecisions,
@@ -220,6 +241,53 @@ function toggle() {
           </div>
         </article>
       </div>
+
+      <!-- 确定生成 — 把选择确定性落到剧本正文(修 bug:之前选了没反应)-->
+      <footer v-if="!collapsed" class="dp-foot">
+        <p class="dp-foot-hint">
+          选好手法后点「确定生成」,所选内心独白会按你的选择即时改写进剧本正文。
+        </p>
+        <button
+          class="dp-apply-btn"
+          type="button"
+          :disabled="pendingCount === 0 || applying"
+          @click="onApply"
+        >
+          <svg
+            v-if="!applying"
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+          <svg
+            v-else
+            class="dp-spin"
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.2"
+            stroke-linecap="round"
+          >
+            <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+          </svg>
+          {{
+            applying
+              ? "生成中…"
+              : pendingCount > 0
+                ? `确定生成(${pendingCount} 项)`
+                : "已全部应用"
+          }}
+        </button>
+      </footer>
     </aside>
   </transition>
 </template>
@@ -332,6 +400,55 @@ function toggle() {
   flex: 1;
   overflow-y: auto;
   padding: 14px 16px;
+}
+
+/* 确定生成 footer — 固定在面板底部,列表滚动不遮 */
+.dp-foot {
+  flex-shrink: 0;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border-soft);
+  background: var(--card-bg);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.dp-foot-hint {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+.dp-apply-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 9px 14px;
+  border: none;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: filter var(--transition-fast), opacity var(--transition-fast);
+}
+.dp-apply-btn:hover:not(:disabled) {
+  filter: brightness(1.06);
+}
+.dp-apply-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.dp-spin {
+  animation: dp-spin 0.8s linear infinite;
+}
+@keyframes dp-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .decision-card {

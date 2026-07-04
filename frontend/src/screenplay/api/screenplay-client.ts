@@ -609,6 +609,31 @@ export async function optimizeScreenplay(
   );
 }
 
+/** 应用改编决策(确定性落地,不调 LLM)→ 存新版本,返回新剧本 id + 变更 */
+export interface ApplyDecisionsResponse {
+  new_screenplay_id: string;
+  parent_screenplay_id: string;
+  applied_count: number;
+  skipped: string[];
+  change_log: Array<{
+    scene_id: string;
+    element_id: string;
+    action: string;
+    summary: string;
+  }>;
+  yaml: string;
+}
+
+export async function applyDecisions(
+  screenplayId: string,
+  choices: Record<string, string>,
+): Promise<ApplyDecisionsResponse> {
+  return api.post(
+    `/screenplay/screenplays/${encodeURIComponent(screenplayId)}/apply-decisions`,
+    { choices },
+  );
+}
+
 export async function listScreenplayVersions(
   novelId: string,
 ): Promise<ScreenplayVersion[]> {

@@ -111,9 +111,12 @@ class Settings:
     founder_emails: frozenset[str]
 
     # === BYOK 支付(2026-06-05)— 个人收款码 + Vision LLM 自动审核 ===
-    # PAYEE_NAME:平台主体姓名(微信收款显示的姓名);Vision LLM 识别截图的"收款方"
-    # 必须包含这个字符串才算通过(防伪)。改这个 → 重启后端生效。
+    # PAYEE_NAME:收款账户的**真实姓名**,仅用于 Vision LLM 比对截图里的"收款方"
+    # (防伪);**不展示给用户**。换收款账户时改这个为新账户真实姓名 → 重启后端生效。
     byok_payee_name: str
+    # PAYEE_DISPLAY_NAME(2026-07-03):**展示给用户**的收款方名称(支付指引 / 弹窗里
+    # "向【X】转账")。与 PAYEE_NAME 解耦:对外只露品牌名(如 Ever),真实姓名不外泄。
+    byok_payee_display_name: str
     # 二维码图片相对 backend/data/payment_qrcodes/ 的文件名;
     # 在 backend/data/payment_qrcodes/ 下放对应文件即生效。
     # 不存在文件时前端会显示占位 + 提示去 setup。
@@ -205,6 +208,7 @@ def load_settings() -> Settings:
         ),
         # BYOK 支付配置(2026-06-05)
         byok_payee_name=os.getenv("HUIMENG_BYOK_PAYEE_NAME", "李爽"),
+        byok_payee_display_name=os.getenv("HUIMENG_BYOK_PAYEE_DISPLAY_NAME", "Ever"),
         byok_wechat_qr_filename=os.getenv(
             "HUIMENG_BYOK_WECHAT_QR_FILENAME", "wechat_qr.png",
         ),
